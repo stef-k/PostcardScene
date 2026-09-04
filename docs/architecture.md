@@ -1,16 +1,16 @@
 # Architecture
 
-This document captures the initial architecture for PostcardScene. It is intended to preserve the decisions already made while leaving implementation details open where there is not yet enough evidence to freeze them.
+This document captures the architectural direction for PostcardScene. It preserves decisions that should constrain implementation while leaving genuinely unresolved choices open until the issue that owns them has enough evidence to decide.
 
 ## 1. Product shape
 
-PostcardScene is best understood as a small self-hosted display appliance rather than a slideshow application.
+PostcardScene is a self-hosted ambient media and information display appliance, not merely a slideshow and not primarily a web application.
 
 Photography is the primary use case and travel is an important part of the project's identity, but the runtime is intentionally broader. It should be able to combine:
 
 - images
 - portrait image pairs
-- video
+- video and optional audio
 - web pages
 - live maps
 - weather
@@ -19,35 +19,51 @@ Photography is the primary use case and travel is an important part of the proje
 - generic remote data
 - future information widgets
 
-The target is a Raspberry Pi-class Linux host connected to a modern television or monitor. 1080p is the minimum intended display resolution; 4K is preferred.
+The initial target is a Raspberry Pi-class ARM64 Linux host connected to a modern television or monitor. 1080p is the minimum intended display resolution. A 4K path is preferred but must be physically validated on representative hardware before being described as supported.
 
-The application should remain portable enough to run on other Linux systems rather than hard-coding itself to Raspberry Pi hardware.
+The implementation should remain portable enough to run on other supported Linux systems instead of hard-coding application logic to Raspberry Pi hardware.
 
 ## 2. Design principles
 
 ### The display experience is primary
 
-The web application exists to configure and control the display. It is not the core of the product.
+The web application exists to configure, observe, and control the display appliance. The long-running runtime/player is the product execution environment.
 
-### Rich scenes without a heavy server architecture
+### Keep the server architecture proportionate
 
-Complexity should live in content selection, composition, rendering, context, scheduling, and hardware integration rather than in unnecessary web-framework or distributed-system machinery.
+Complexity should live in content selection, composition, rendering, media indexing, scheduling, context, hardware integration, recovery, and reliability rather than in unnecessary web-framework or distributed-system machinery.
 
 ### Graceful degradation
 
-A failed weather API, disconnected NAS, malformed video, or crashed browser must not take down the entire appliance.
+A disconnected NAS, malformed media item, crashed browser, unavailable display, failed power-control backend, or future external-provider outage must not unnecessarily take down the entire appliance.
+
+### Long-running work does not belong in web requests
+
+Source reconciliation, scheduling, renderer supervision, and later cached-provider refresh are long-running application work. They belong to the runtime/player process or a narrowly factored component it owns, not to Flask request handlers.
+
+V0 does not require Redis, Celery, RabbitMQ, a distributed queue, or an additional always-on worker service.
 
 ### Configuration through the product
 
-Important operating behavior should be tunable from the PostcardScene web interface rather than requiring users to edit service files or scripts for normal use.
+Important normal operating behavior should be tunable from the authenticated PostcardScene web interface rather than requiring users to edit service files or scripts.
+
+Host-level installation, recovery, device permissions, and other privileged operations remain bounded administrative responsibilities rather than ordinary web actions.
+
+### Security is an appliance boundary
+
+PostcardScene deliberately combines remote administration, filesystem access, arbitrary administrator-selected web content, subprocesses, and display hardware. These are separate trust boundaries and must not be collapsed merely because they run on one host.
+
+### Recovery is part of correctness
+
+A feature is not operationally complete if its durable state cannot be classified, backed up when necessary, and restored or regenerated predictably.
 
 ### Do not overbuild the first release
 
-The architecture must allow rich contextual scenes later, but the first implementation should prove reliable media playback, scheduling, display control, and composition before expanding into every possible integration.
+The architecture must allow rich contextual scenes later, but V0 should first prove a reliable, secure, installable, diagnosable, and recoverable media appliance.
 
 ## 3. Technology direction
 
-Initial application stack:
+Initial application direction:
 
 ```text
 Python
@@ -57,10 +73,10 @@ SQLite
 Alembic / Flask-Migrate
 Flask-Login
 Flask-WTF
-requests
-feedparser
-Flask-Sock (likely, if/when WebSockets are required)
 Pillow
+requests                 # when HTTP/provider work becomes active
+feedparser               # when RSS/Atom work becomes active
+Flask-Sock               # likely, only when live updates require it
 ```
 
 Runtime/system components:
@@ -69,7 +85,8 @@ Runtime/system components:
 Chromium
 mpv
 systemd
-SMB / NFS
+SMB / NFS mounts
+Linux graphics stack selected by #31
 HDMI-CEC tools
 DDC/CI tools
 Linux DRM/KMS display control
@@ -79,49 +96,65 @@ Linux DRM/KMS display control
 
 PostcardScene needs a proper web settings/control surface, authentication, forms, persistence, and APIs, but the web layer is not the main application runtime.
 
-Flask plus a small set of mature libraries provides the required web capabilities without making the rest of the application conform to a larger full-stack framework.
+Flask plus a small set of mature libraries provides the required control-plane capabilities without making the rest of the application conform to a larger full-stack framework.
 
-The architecture should not turn into a large collection of Flask extensions. Ordinary Python should be used where framework integration is unnecessary.
+The project should not become a collection of thin Flask extensions. Ordinary Python should be used where framework integration is unnecessary.
 
 ### Why SQLite initially
 
-Configuration, schedules, scene definitions, source metadata, cache metadata, and user accounts do not initially require a separate database server.
+Users, settings, schedules, source definitions, scene definitions, media catalog records, and other application state do not initially require a separate database server.
 
-SQLite keeps installation and recovery simple. Large media objects stay in filesystems or external services rather than in the database.
+SQLite keeps installation and recovery simple. Original media remains in filesystems or external services rather than in the database.
+
+Because the web process and runtime/background work may access the same database, V0 must explicitly choose suitable SQLite journaling, timeout, connection, and transaction conventions. Long write transactions should be avoided. Database schema changes are owned by migrations rather than silent application-startup mutation.
 
 ## 4. High-level architecture
 
 ```text
-                         PostcardScene
-                              |
-              +---------------+---------------+
-              |                               |
-        CONTROL PLANE                   DISPLAY PLANE
-              |                               |
-           Flask                         Player service
-              |                               |
-      Settings / Auth                    Scene engine
-      Sources / Scenes                   Sequence engine
-      Schedules / API                    Scheduler
-      SQLAlchemy                         Context/state
-              |                               |
-              +--------- shared state --------+
-                                              |
-                         +--------------------+-------------------+
-                         |                    |                   |
-                     Chromium               mpv          Display power
-                   scene renderer       video playback     CEC/DDC/DRM
+                              PostcardScene
+                                   |
+              +--------------------+--------------------+
+              |                                         |
+        CONTROL PLANE                         LONG-RUNNING RUNTIME
+              |                                         |
+            Flask                               Runtime/player service
+              |                                         |
+      Auth / Settings / UI                    Scene / sequence engine
+      Status / Control API                    Operating scheduler
+      Configuration                            Background jobs
+              |                               Renderer supervision
+              |                                         |
+              +-------------+---------------------------+
+                            |
+                     SQLite / state
+                            |
+              +-------------+---------------------------+
+              |                                         |
+      Source definitions                         Media catalog
+                                                        |
+                                           filesystem MediaItems
+                                                        |
+                              +-------------------------+------------------+
+                              |                         |                  |
+                         Chromium                     mpv          Display power
+                      rich/image/web scenes        video/audio      CEC/DDC/DRM
+                              |                         |
+                              +------------+------------+
+                                           |
+                                  Linux graphics session
+                                           |
+                                      HDMI display
 ```
 
-The control plane and display plane should be separate long-running processes/services.
+The web/control and runtime/player processes must be independently restartable.
 
-A Chromium, mpv, or media failure must be recoverable without losing access to the web administration interface. Conversely, restarting the web service should not unnecessarily destroy display state.
+A Chromium, mpv, cataloging, source, or media failure must be recoverable without losing access to the web administration interface. Restarting the control plane should not unnecessarily destroy the active display session.
 
-The precise inter-process communication mechanism is intentionally not frozen yet.
+The precise control-plane/runtime IPC mechanism remains intentionally open.
 
-## 5. Core domain model
+## 5. Core composition model
 
-The foundation is:
+The foundational composition model is:
 
 ```text
 Source -> Widget -> Scene -> Sequence
@@ -129,7 +162,7 @@ Source -> Widget -> Scene -> Sequence
 
 ### Source
 
-A `Source` provides content or data.
+A `Source` defines authority for content or data.
 
 Examples:
 
@@ -140,13 +173,13 @@ Examples:
 - weather provider
 - RSS/Atom feed
 - generic HTTP/JSON endpoint
-- arbitrary URL/web source
+- arbitrary supported web URL
 
-A source should expose normalized data to the rest of the system where possible instead of forcing scene code to know provider-specific details.
+Sources should expose normalized data to the rest of the system where useful instead of forcing scenes to understand provider-specific mechanics.
 
 ### Widget
 
-A `Widget` renders one kind of information or media.
+A `Widget` presents one kind of media or information.
 
 Potential widget types include:
 
@@ -162,13 +195,13 @@ Potential widget types include:
 - text
 - clock/time context
 
-Widgets consume source data and/or shared scene context.
+Widgets consume source data, catalog entries, and/or shared scene context.
 
 ### Scene
 
 A `Scene` is the primary visual composition shown on the display.
 
-A scene may be simple:
+A scene can be simple:
 
 ```text
 +------------------------------------------+
@@ -195,38 +228,140 @@ or composed:
 +------------------------------------------+
 ```
 
-A scene should define layout, widgets, visual layers, transitions, duration/default dwell behavior, and conditions where relevant.
+A scene defines layout, widgets, visual presentation, duration/default dwell behavior, and only the V0 safety/presentation hints that are concretely required.
+
+Ordinary source-driven scenes should not permanently store whichever media item happened to be selected at runtime. Explicitly pinned-media scenes may do so when that is the intended user configuration.
 
 ### Sequence
 
-A `Sequence` determines how scenes are presented over time.
+A `Sequence` determines how scenes are presented.
 
 A sequence may specify:
 
-- ordered or shuffled scenes
-- scene duration
+- ordered or shuffled scene membership
+- scene duration/defaults
 - full-duration video behavior
 - transition style
-- weighting/frequency
-- time/day applicability
-- conditions
+- weighting/frequency where required
 - fallback behavior
 
-Example:
+Operating-hour scheduling remains a separate subsystem. Future conditional-scene eligibility is not part of the foundational V0 sequence model unless a concrete V0 requirement promotes it.
+
+## 6. Filesystem media catalog
+
+The media catalog is a source/runtime data layer, not a fifth universal composition concept.
+
+Conceptually:
 
 ```text
-Morning sequence
-
-Photo                     45 sec
-Photo                     45 sec
-News + Weather             2 min
-Portrait Pair             45 sec
-Wayfarer Live              3 min
-Photo sequence             5 min
-Video                      full duration
+Filesystem Source
+      |
+      v
+bounded enumeration
+      |
+      v
+MediaItem catalog
+      |
+      v
+Widget selection
 ```
 
-## 6. Scene composition and rendering
+A filesystem-backed `MediaItem` may hold normalized data such as:
+
+- stable source-relative/canonical identity
+- media type
+- locator/path identity
+- image dimensions/orientation
+- video duration where proportionately obtainable
+- freshness/modification identity
+- capture timestamp where safely and usefully obtainable
+- availability/stale/error state
+
+Original image/video bytes remain in the source filesystem.
+
+### Reconciliation rules
+
+Cataloging must distinguish:
+
+- newly discovered item
+- changed item requiring metadata refresh
+- confirmed removed item
+- source temporarily unavailable
+- item temporarily unreadable
+
+A NAS outage must never be interpreted as authoritative deletion of the entire catalog.
+
+Large scans must be bounded/cancellable and use short database transactions. Reconciliation is owned by the long-running runtime/background-work boundary, not synchronous Flask requests.
+
+V0 does not require thumbnails, computer vision, face recognition, broad EXIF indexing, or a generic catalog for future provider assets.
+
+Whether catalog state is backed up as useful durable state or treated as a regenerable optimization must be decided by #30/#27 and recorded in the backup contract.
+
+## 7. Image behavior
+
+PostcardScene V0 should support:
+
+- full-screen landscape images
+- portrait images
+- intelligent consecutive portrait pairing
+- correct orientation using presentation/EXIF semantics
+- deterministic fit/fill/crop behavior
+- configured dwell times
+- transitions
+- ordered/shuffled selection through stable media identities
+- useful quality for 1080p/validated-4K display without unnecessary source recompression
+- intentional color/profile behavior with documented platform limitations
+- bounded decode/load behavior for malformed, extremely large, or unreachable media
+
+Portrait pairing is a core feature. When eligible consecutive media are portrait-oriented and compatible with the current layout rules, the runtime can display them side-by-side to use a landscape screen efficiently.
+
+PostcardScene should not rewrite original photographs merely for ordinary playback.
+
+## 8. Video and audio behavior
+
+Video playback should use mpv where practical because codec support, hardware acceleration, control, and failure isolation benefit from a dedicated player.
+
+V0 should support:
+
+- local/network video files through the common catalog
+- full-duration playback where configured
+- bounded load/start timeouts
+- controlled skip/failure behavior
+- supervised player recovery
+- hardware decoding where the validated runtime supports it
+- an honest supported codec/container boundary
+
+V0 does not require automatic transcoding.
+
+Audio is explicit appliance state rather than an accidental mpv default. The system must define at least:
+
+- audio enabled/muted
+- bounded configured volume when enabled
+- intended audio output where practical, including HDMI on validated hardware
+- safe behavior with no audio track/device
+- immediate silence when the owning scene is skipped/stopped or the panel is put to sleep
+
+No orphan audio may continue after a scene transition, player restart, or scheduled display-off state.
+
+## 9. Scene/sequence runtime behavior
+
+The runtime executes the composition model and owns transient playback state.
+
+Useful transient state may include:
+
+- current scene/membership
+- recent-play history
+- previous/next navigation state
+- current selected MediaItems
+- renderer health
+
+This state should not be pushed into configuration models unless a concrete restart requirement justifies a small durable field.
+
+When content is unavailable, the runtime must use bounded skipping/fallback behavior. It must not enter a tight retry loop.
+
+If no eligible content remains, the display should converge to a defined safe blank/idle state and may invoke panel-protection behavior rather than leave stale content indefinitely.
+
+## 10. Scene composition and rendering
 
 Rich scenes should primarily be rendered with Chromium using HTML/CSS/JavaScript.
 
@@ -242,108 +377,66 @@ This provides a flexible composition surface for:
 - lightweight animations
 - image presentation effects where appropriate
 
-The exact boundary between Chromium-rendered images and any dedicated/native image rendering remains open. Chromium is the default direction because it allows the same scene system to handle both pure photography and complex mixed-information layouts.
+The exact boundary between Chromium-rendered images and any dedicated/native image-rendering path remains open.
 
-Video playback should use mpv rather than browser video where practical, especially where codec support, hardware acceleration, reliability, or playback control benefits from mpv.
+The runtime/player service coordinates the active scene and Chromium/mpv processes.
 
-The player service is responsible for coordinating the active scene and the underlying Chromium/mpv processes.
+## 11. Web-content isolation
 
-## 7. Media behavior
+Configured web pages are untrusted renderer content even when the administrator chose the URL.
 
-### Images
+V0 web scenes should normally accept only supported HTTP/HTTPS URLs. Dangerous local/script/browser-extension schemes such as `file:` or `javascript:` are not ordinary web-scene inputs.
 
-PostcardScene should support:
+The kiosk browser must use a dedicated profile/runtime state separate from the administrator's normal browser and from PostcardScene's control-plane session cookies/secrets.
 
-- full-screen landscape images
-- full-screen portrait images where requested
-- intelligent side-by-side portrait pairing
-- configurable fit/fill behavior
-- configured dwell times
-- transitions
-- shuffle/order rules
-- image metadata where useful
+Persistent third-party kiosk login/session support, if implemented in V0, must use an explicit isolated mechanism. Generic credentials/tokens should not be embedded in URLs merely to display private pages.
 
-Portrait pairing is a core feature. When consecutive images are portrait-oriented and compatible with the current scene/layout rules, the system should be able to display them side-by-side to use a landscape screen efficiently.
+Public/share-token display pages such as a purpose-built Wayfarer display/share view are the simpler preferred integration before native structured Wayfarer support exists.
 
-### Video
+Production Chromium must not expose unnecessary remote-debug/automation listeners. If a control mechanism requires one, it must be bound to a narrow local authority.
 
-Video should support:
+Navigation/load retries and timeouts must be bounded so one unreachable site cannot monopolize a sequence indefinitely.
 
-- local/network files
-- appropriate hardware-accelerated playback where available
-- play-full-video behavior
-- optional duration/skip policies
-- recovery from malformed or unavailable media
-
-## 8. Sources and integrations
+## 12. Sources and later integrations
 
 ### Local storage
 
-Local directories are first-class media sources.
+Local directories are first-class V0 media sources.
 
 ### Network storage
 
 SMB/NFS should normally be mounted by Linux and exposed to PostcardScene as filesystem paths.
 
-The application should not implement its own SMB/NFS filesystem client unless a concrete need emerges.
+V0 does not own NAS credentials or arbitrary remote mounting. A missing/unresponsive mount is a degraded source condition, not a reason to fall back silently to an unrelated local path.
 
-If mount management is later exposed through the web UI, privileged work must happen through a narrow controlled mechanism rather than by giving Flask arbitrary root access.
+If mount management is ever exposed through the web UI, privileged work must happen through a narrow controlled mechanism rather than by giving Flask general root authority.
 
 ### Immich
 
-Immich should be an adapter/source rather than a special case embedded throughout the player.
+Immich is a V1 adapter/source rather than a special case embedded throughout the player.
 
-Useful data may include:
+Useful data may include asset IDs, URLs/paths, media type, dimensions/orientation, capture time, geolocation, and album/source grouping.
 
-- asset IDs
-- URLs/paths
-- media type
-- dimensions/orientation
-- capture time
-- geolocation
-- album/source grouping
-
-This data can then drive normal image widgets, photo strips, location-aware selection, and future scene types.
+Immich assets do not need to be forced into the V0 filesystem catalog model merely because filesystem sources use a persistent catalog.
 
 ### Wayfarer
 
-PostcardScene should support two Wayfarer modes:
+PostcardScene should support two eventual Wayfarer modes:
 
-1. ordinary URL display in Chromium
-2. a native structured-data integration
+1. ordinary isolated URL display
+2. native structured-data integration
 
-The native integration is expected to make Wayfarer especially valuable as a context source.
+The native integration is expected to provide context such as live position, shared timeline state, current trip, route/timeline data, place information, and shared-location state.
 
-Potential Wayfarer data:
+### Weather, news, and generic HTTP/JSON
 
-- current/live position
-- live timeline state
-- current trip
-- route/timeline data
-- place information
-- shared-location state
+These are V1 integrations. Rendering should normally consume locally cached provider state rather than block on external requests.
 
-A dedicated Wayfarer display/timeline mode may later provide a cleaner kiosk-oriented map than embedding the full normal web UI.
+The V0 security model for outbound URLs, credentials, logging, privacy, and retention must be extended rather than bypassed when these providers are implemented.
 
-### Weather
+## 13. Shared context
 
-Weather should be provider-based and capable of using explicit locations or shared current-location context.
-
-### News
-
-Prefer RSS/Atom feeds where suitable, using `feedparser`, rather than scraping arbitrary news web pages.
-
-Provider APIs can be added where they offer a clear advantage.
-
-### Generic HTTP/JSON
-
-A generic source type should eventually allow selected remote JSON/text data to feed widgets without requiring a bespoke integration for every useful service.
-
-Use a shared HTTP client abstraction around `requests`, persistent sessions where useful, explicit timeouts, and bounded retry behavior.
-
-## 9. Shared context
-
-Rich scenes need more than independent widgets. They need a controlled way to share context.
+Rich V1/V2 scenes need a controlled way to share context.
 
 A key example is live travel:
 
@@ -360,123 +453,108 @@ Wayfarer live position
  marker      for location    nearby photos
 ```
 
-Wayfarer may establish the current latitude/longitude and timestamp. Weather can resolve conditions for that point. Immich can search for recent or historical photographs within a configured radius. The scene can then compose all of those outputs.
+The context mechanism should remain generic enough for real relationships such as this, but it should not become a speculative global event framework.
 
-The context mechanism should remain generic enough for other future relationships, but it should not become a speculative global event framework before real use cases require it.
+## 14. Data collection and caching
 
-## 10. Data collection and caching
-
-Rendering should not normally block on external API calls.
-
-Preferred pattern:
+Future external rendering should normally follow:
 
 ```text
 External provider
        |
        v
-Collector / refresh job
+runtime collector / refresh job
        |
        v
-Local cached state
+local cached state
        |
        v
-Scene renderer
+scene renderer
 ```
 
-Refresh intervals should be configurable by source/provider where appropriate.
+The long-running runtime process owns these jobs initially, just as it owns filesystem reconciliation.
 
-Examples:
+Refresh intervals should be configurable where appropriate. A provider outage should leave the last valid cached state usable when sensible and should expose stale/error state without breaking unrelated scene content.
 
-- weather: periodic refresh
-- news/RSS: periodic refresh
-- Immich: periodic or event-driven refresh later
-- Wayfarer live state: shorter polling interval or WebSocket/event mechanism where supported
+The exact general cache implementation remains open.
 
-If a provider is unavailable, PostcardScene should use the most recent valid cached state where sensible and expose stale/error state without breaking unrelated scene content.
+## 15. Live updates
 
-The exact cache implementation is still open.
+Some scenes benefit from server-to-renderer updates without full reloads, especially Wayfarer live-location views.
 
-## 11. Live updates
+The likely direction is a lightweight WebSocket path using Flask-Sock when real-time updates are required.
 
-Some scenes benefit from live changes without full-page reloads, especially Wayfarer live-location views.
+The system should not introduce heavier Socket.IO/event infrastructure unless concrete requirements exceed this model.
 
-The likely direction is a lightweight WebSocket path using Flask-Sock when real-time server-to-renderer updates are required.
-
-The system should not introduce a heavier Socket.IO/event infrastructure unless its features are actually needed.
-
-## 12. Scheduling
+## 16. Scheduling and time semantics
 
 Scheduling has two related but distinct responsibilities.
 
 ### Display operating schedule
 
-Controls when the physical panel should be awake.
+Controls when the panel should be awake.
 
-Examples:
+V0 should support:
 
-- daily on/off times
-- different weekday/weekend schedules
-- multiple active/off periods in one day
-- temporary overrides
+- daily on/off periods
+- multiple periods where practical
+- day-specific/weekday-weekend rules
+- one configured application timezone
+- temporary/manual override with explicit persistence/expiry semantics
 
-All normal schedule settings should be editable from the web UI.
+Schedule evaluation must define DST skipped/repeated local times and recover safely after reboot, host downtime, NTP correction, manual clock jumps, or timezone changes.
+
+After long downtime, the scheduler should converge to the state that should be active now rather than replay every missed transition.
 
 ### Content scheduling
 
-Controls which sequence or scenes are appropriate at a given time.
+Later content rules may control which sequence/scenes are appropriate at a given time. Rich conditional scenes are primarily V2 work.
 
-Examples:
+Scheduling logic belongs to the long-running application runtime, not Flask request handlers.
 
-```text
-Morning
-Weather + news
-Photos
+## 17. Linux graphics session
 
-Day
-Photos
-Wayfarer
-Video
+PostcardScene is a display appliance and must explicitly own its graphical session.
 
-Evening
-Photos
-Travel scenes
-Wayfarer Live
-News
-```
+Issue #31 must select the smallest supported production graphics/session model for the target Linux baseline. Candidate approaches may include a minimal Wayland compositor, X11 session, or direct KMS-capable arrangement.
 
-Scenes may also have conditions such as:
+The selected path should avoid a general desktop environment or interactive display manager unless evidence proves one is necessary.
 
-- Wayfarer live location is available
-- recent Immich uploads exist
-- a weather condition is present
-- source data is available/fresh
+The graphical runtime must define:
 
-The exact scheduling library/implementation is not frozen. Scheduling logic belongs to the application/player domain, not to Flask request handlers.
+- which user owns the session
+- how it starts under boot/systemd ownership
+- how Chromium and mpv target the same display
+- safe blank/background behavior before renderers are ready
+- EDID/display connector discovery
+- deterministic 1080p/4K mode/refresh/scaling behavior
+- boot with no display attached
+- HDMI disconnect/reconnect
+- GPU/render/video device permissions
+- hardware acceleration/video decode expectations
+- audio-output ownership relevant to video playback
 
-## 13. Display power management
+Hardware-specific support claims require physical representative ARM64/Pi evidence. Generic CI cannot prove HDMI/GPU behavior.
 
-Stopping playback is not sufficient. During configured sleep periods the application should attempt to put the physical panel into standby so it is neither a night-time light source nor needlessly active.
+## 18. Display power management
 
-Power control should be abstracted behind a small display controller.
+Stopping playback is not sufficient. During configured sleep periods PostcardScene should attempt to put the physical panel into standby so it is neither a night-time light source nor needlessly active.
+
+Power control remains a separate subsystem from the Linux graphics session.
 
 Preferred methods:
 
-1. **HDMI-CEC** for TVs that support reliable CEC standby/wake.
-2. **DDC/CI** for compatible monitors.
-3. **DRM/KMS / HDMI signal control** as a fallback so the panel sees no active video signal and can enter power saving.
+1. HDMI-CEC for compatible TVs.
+2. DDC/CI for compatible monitors.
+3. DRM/KMS or HDMI-signal control as a fallback where supported.
 
-The settings UI should allow:
+Settings should allow automatic capability discovery where practical, preferred backend, fallback, wake/handshake delay, test actions, and schedule configuration.
 
-- automatic capability detection where practical
-- preferred power-control backend
-- fallback backend
-- wake delay/handshake delay
-- test power on/off actions
-- schedule configuration
+The host/runtime remains alive while the panel sleeps so administration, scheduling, catalog reconciliation, and later provider refresh can continue.
 
-The host computer remains on while the display sleeps so PostcardScene can continue serving its web UI, indexing media, refreshing data, and waking the display later.
+A failed power operation should surface degraded/unknown state rather than falsely claiming the physical panel reached the requested state.
 
-## 14. Burn-in and static-content protection
+## 19. Burn-in and static-content protection
 
 Panel protection is separate from scheduled sleep.
 
@@ -484,16 +562,16 @@ Potential configurable protections include:
 
 - maximum dwell time for static web/dashboard scenes
 - optional subtle position/pixel shifting for appropriate static content
-- avoidance of permanent UI overlays
+- avoidance of unnecessary permanent overlays
 - renderer/player watchdog
-- blanking if the renderer stalls
-- eventual standby if a severe stall persists
+- safe blanking if the renderer stalls
+- eventual standby after prolonged severe failure
 
 Ordinary changing photography should not be subjected to distracting movement solely for burn-in prevention.
 
-## 15. Web/control application
+## 20. Web/control application
 
-The web interface should provide purpose-built management pages rather than expose raw database/admin structures as the product interface.
+The web interface should provide purpose-built management pages rather than expose raw database structures.
 
 Expected areas include:
 
@@ -510,103 +588,162 @@ Users
 System
 ```
 
-Configuration should eventually cover:
+The frontend should remain simple initially. Server-rendered Flask/Jinja pages with modest JavaScript are sufficient until a concrete interaction justifies more. HTMX remains an option, not a requirement.
 
-- media directories/network sources
-- Immich/Wayfarer/provider credentials
-- source refresh intervals
-- scene layouts/widgets
-- sequence timing/order
-- image/video behavior
-- transitions
-- display power and fallback methods
-- burn-in safeguards
-- operating schedules
-- renderer/system status
+The base settings/status UI should be responsive and preserve normal accessible labels, keyboard operation, focus/error feedback, and reasonable contrast.
 
-The frontend should remain simple initially. Server-rendered Flask/Jinja pages with normal JavaScript are sufficient until a concrete interaction justifies something more. HTMX is an option, not a current requirement.
+The Flask development server/debug mode is not the production appliance serving contract.
 
-## 16. Authentication and permissions
+## 21. Authentication, network exposure, and secrets
 
 Initial authentication should be simple and appropriate to a self-hosted appliance.
 
-Expected initial roles:
+Expected initial authority:
 
 - administrator
-- possibly operator/viewer later
+- optional viewer/operator only when a concrete need appears
 
-Do not implement a complex permission graph without need.
+Use secure password hashing, session protection, CSRF protection, and a persistent installation-owned application/session secret.
 
-Use secure password hashing, session protection, CSRF protection for state-changing forms, and normal web security practices.
+A host-authorized local administrator password-reset path must exist without requiring manual database editing or an unauthenticated email-reset service.
 
-Credentials for external services must not be exposed in logs or unnecessarily returned to the client.
+Before V0 release, the project must explicitly define:
 
-The exact credential-at-rest mechanism remains open and should be decided before storing sensitive long-lived integration credentials in production.
+- control-interface bind/listen defaults
+- HTTP/HTTPS/reverse-proxy support boundary
+- Host/proxy assumptions
+- session-cookie behavior for the effective transport
+- credential-at-rest strategy before long-lived third-party credentials are stored
+- master-key/secret recovery behavior
 
-## 17. Privilege boundaries
+No external telemetry/analytics is enabled by default.
+
+## 22. Privilege boundaries
 
 The normal Flask service must not run with broad root privileges.
 
-Operations that may need elevated access include:
+Potential privileged/device operations include:
 
-- controlled SMB/NFS mount changes
-- some display/hardware operations
-- service/system integration
+- display/GPU/CEC/DDC device access
+- service/install operations
+- future controlled mount changes
 
-Where elevation is necessary, prefer a narrowly scoped helper or system service that only exposes the exact allowed operations with strict argument validation.
+Prefer normal Linux group/device permissions where possible. If elevation is necessary, use a narrowly scoped helper/service exposing only exact allowlisted operations and validated arguments.
 
-## 18. Reliability and unattended operation
+Subprocesses should be invoked with argument vectors rather than untrusted shell construction. Avoid `shell=True` for application-controlled external commands.
 
-PostcardScene is expected to run for long periods without supervision.
+## 23. Reliability, logging, and resource bounds
 
-The architecture must tolerate:
+PostcardScene is intended to run unattended for long periods.
+
+The runtime must tolerate:
 
 - service restart
-- host reboot
+- host reboot/power loss
+- display absent at boot
 - display disconnect/reconnect
-- NAS temporarily offline
-- internet outage
-- individual API outage
-- Chromium crash
-- mpv crash
-- malformed media
-- renderer stall
+- NAS temporarily offline or unresponsive
+- internet/provider outage
+- Chromium crash/hang
+- mpv crash/hang
+- malformed/unsupported media
 - missing files
+- renderer stall
+- catalog interruption/restart
 
 The control plane should remain reachable whenever the host itself is healthy.
 
-systemd should supervise long-running services and restart failed runtime processes according to sensible policies.
+Use systemd for service supervision. Logs should be diagnosable but have bounded disk growth. Cache growth should be bounded/cleanable. Low disk-space state should be visible through status/doctor paths rather than discovered only after corruption/failure.
 
-## 19. Deployment direction
+## 24. Release, installation, and update boundary
 
-Initial deployment target:
+V0 targets a managed native Linux installation rather than requiring users to deploy from a Git checkout.
+
+Expected conceptual layout separates:
 
 ```text
-Linux host
-  |
-  +-- postcardscene-web.service
-  +-- postcardscene-player.service
-  +-- Chromium
-  +-- mpv
-  +-- SQLite database
-  +-- local/cache directories
-  +-- /mnt/... SMB/NFS media mounts
+application payload
+configuration
+secrets
+SQLite/durable application state
+replaceable caches
+transient runtime state
+logs
+backup destination
 ```
 
-Docker is not required for the initial design. Native Linux/systemd integration is preferable because PostcardScene needs direct access to displays, media mounts, hardware interfaces, and local playback processes.
+Normal managed installation should use an isolated project-owned Python environment or another equally safe supported mechanism rather than modifying distro-owned Python through privileged pip installation.
 
-## 20. Open architectural decisions
+The exact release artifact format remains open: wheel, archive, or another small Python-native shape may be selected by #26.
 
-The following are intentionally unresolved until implementation reaches them:
+Stable releases should be tied to immutable source/tag/version identity and final artifact checksums. Clean-install smoke tests, explicit migrations, diagnostics, backup-backed forward updates, and safe removal/reinstall are V0 lifecycle requirements.
 
-1. Exact control-plane/player IPC mechanism: Unix socket, localhost HTTP/WebSocket, another narrow local protocol, or a combination.
-2. Whether all images are rendered in Chromium or whether some image modes use a dedicated rendering path.
-3. Exact local cache implementation and cache invalidation strategy.
-4. Exact credential-at-rest strategy.
-5. Exact Wayfarer native API endpoints/authentication and whether Wayfarer provides a dedicated display-mode page.
-6. Exact persistence representation for scene layouts: normalized database models, JSON scene definitions, or a hybrid.
-7. Whether a formal plugin/provider registration system becomes worthwhile.
-8. Whether HTMX or another small frontend enhancement is justified after the basic Flask/Jinja interface exists.
-9. Exact scheduling library/mechanism.
+V0 does not require an APT repository, mandatory `.deb`, Docker, an auto-update daemon, or a transactional application/database rollback engine.
 
-These are implementation decisions, not blockers for the foundation. They should be resolved when a concrete milestone requires them and documented at that time.
+## 25. Backup and restore boundary
+
+PostcardScene backup owns PostcardScene durable state, not the user's original media libraries.
+
+The V0 recovery contract must classify:
+
+- SQLite database
+- installation-owned secret/key material required for protected state, or credentials explicitly requiring re-entry
+- any application-owned durable assets
+- media catalog as durable or regenerable
+- manifest with application/schema/archive identity
+- checksums
+
+It excludes external media libraries and replaceable caches by default.
+
+Backup creation must use a SQLite-consistent method, publish atomically, verify integrity, and support bounded retention.
+
+Restore must be tested both:
+
+1. in place; and
+2. onto a clean supported replacement host.
+
+An older backup is not automatically a safe application rollback. Unknown application/schema compatibility must fail closed with actionable recovery guidance.
+
+## 26. Documentation and release evidence
+
+Documentation is part of feature completion.
+
+Before V0 closes, a new administrator must be able to determine support, install, configure, secure, diagnose, update, remove/reinstall, back up, and recover the appliance without reading implementation code.
+
+Hardware claims should distinguish physically tested configurations from intended/untested possibilities.
+
+Before a public distributable release, the project should select an explicit software license and provide required third-party notices/attributions.
+
+The V0 tracker/release issue owns exact-candidate closure evidence for:
+
+- source/tag/version/artifact checksum
+- CI/test/lint/security state
+- schema/migration identity
+- clean installation
+- physical graphics/4K claims
+- backup/restore
+- security review
+- operator docs/license/notices
+- no known release blocker
+
+## 27. Open architectural decisions
+
+The following are intentionally unresolved until the owning issue has enough evidence:
+
+1. **Control-plane/runtime IPC** — Unix socket, localhost HTTP, another narrow local protocol, or a combination.
+2. **Image rendering boundary** — all images in Chromium vs a dedicated rendering path for some modes.
+3. **General cached-provider storage** — exact V1 cache implementation/invalidation strategy.
+4. **Credential-at-rest mechanism** — exact protection/master-key approach and recovery behavior.
+5. **Wayfarer native integration** — API endpoints/authentication and whether Wayfarer provides a dedicated display-oriented page.
+6. **Scene-layout persistence** — normalized database models, JSON scene definitions, or a hybrid.
+7. **Provider/plugin registration** — whether a formal plugin mechanism ever becomes worthwhile.
+8. **Frontend enhancement** — whether HTMX or another small enhancement is justified after the basic Flask/Jinja UI exists.
+9. **Scheduling implementation primitive** — exact library/timer implementation behind the frozen scheduling semantics.
+10. **Linux graphics/session model** — exact Wayland/X11/KMS/compositor path, owned by #31.
+11. **Kiosk authenticated-session persistence** — whether V0 persists third-party web-session cookies and how that state is isolated/recovered.
+12. **Media catalog backup classification** — useful durable state vs regenerable optimization, owned by #30/#27.
+13. **Release artifact format** — wheel/archive/other small managed-native distribution shape, owned by #26.
+14. **Production web serving/network boundary** — exact WSGI server and HTTP/HTTPS/reverse-proxy model, owned by #29/#26.
+15. **Optional code-quality tooling** — static type checking and Agent Code Guard only if they provide proportionate value, owned by #12.
+
+These are deliberate implementation decisions, not reasons to invent answers early. When one is resolved, update this document in the same change that relies on the decision.
