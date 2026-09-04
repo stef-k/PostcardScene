@@ -143,6 +143,63 @@ Design for:
 
 Failures in one source or renderer should degrade gracefully rather than take down the control interface or the entire sequence engine.
 
+## Release and installation lifecycle
+
+Release/install/update behavior has one authority. Do not create multiple independent scripts or workflows that make different decisions about versions, migrations, paths, services, or durable state.
+
+Follow the release-engineering epic and these rules:
+
+- GitHub CI should validate the exact code that becomes a release candidate.
+- Stable releases should have one authoritative application version.
+- Published artifacts must be versioned and integrity-verifiable.
+- Prefer a small native-Linux installation path suitable for Raspberry Pi-class ARM64 systems.
+- Do not require Docker, an APT repository, or a `.deb` package in V0.
+- Do not install application dependencies into the distro-owned Python environment using unsafe system-wide `pip` practices.
+- Keep release payload, configuration/secrets, durable state, cache, and logs in clearly separate ownership boundaries.
+- Database migrations during install/update must be explicit and failure-aware.
+- A failed update must leave a truthful service/state outcome and actionable recovery path.
+- Do not interpret installing an older artifact as a safe database rollback.
+- Reuse the same status/diagnostic checks across install/update/troubleshooting where practical rather than duplicating lifecycle policy.
+
+## Backup and restore
+
+PostcardScene backup owns PostcardScene application state, not the user's external media collection.
+
+The durable-state inventory must be explicit. It is expected to include the SQLite database plus any application-owned configuration/secrets required for a complete recovery. External local/NAS media, Immich assets, caches, thumbnails, and logs are excluded unless a later requirement explicitly changes their classification.
+
+Backup rules:
+
+- use a consistent SQLite backup mechanism rather than blindly copying a live database file;
+- allow a local or administrator-provided already-mounted backup destination;
+- never silently substitute a local destination when a configured remote/mounted destination is unavailable;
+- publish backups atomically so failed work cannot replace a complete archive;
+- include version/schema/manifest identity and integrity checksums;
+- retention may delete only archives clearly owned by PostcardScene's backup convention;
+- treat backup archives as sensitive because they may contain credentials and private configuration;
+- do not claim encryption unless the destination or transport actually supplies it;
+- a restore is successful only after integrity/compatibility checks, state restoration, ownership/permission repair where required, and post-restore validation;
+- include a disposable restore drill in evidence; successful archive creation alone is not sufficient recovery proof.
+
+Do not build NAS-vendor mounting, cloud-backup, encryption, or general disaster-recovery frameworks without explicit scope.
+
+## Documentation
+
+Documentation is part of the definition of done.
+
+If a change affects user-visible behavior, configuration, installation, upgrades, backup/recovery, hardware compatibility, security-sensitive operator behavior, or a consequential architecture decision, update the smallest authoritative documentation in the same PR.
+
+Keep the documentation tree lean:
+
+- `README.md` is the entry point;
+- `docs/architecture.md` owns architectural boundaries and resolved consequential decisions;
+- `docs/roadmap.md` owns milestone capability boundaries;
+- `AGENTS.md` owns agent working rules;
+- prefer one cohesive operations guide when operational documentation becomes necessary rather than creating many small files immediately.
+
+Do not make untested hardware compatibility claims. Record real CEC/DDC/DRM/display evidence when available and distinguish tested behavior from expected/fallback behavior.
+
+Documentation-only follow-up issues should be exceptional; implementation should not knowingly merge with stale authoritative docs.
+
 ## Security
 
 - Never store plaintext passwords when password hashing is appropriate.
@@ -166,6 +223,8 @@ Add tests with new behavior where practical. Prioritize tests for:
 - provider failure and cache fallback
 - display power state decisions
 - security-sensitive validation
+- release/version/configuration decisions
+- backup publication/retention/restore compatibility decisions
 
 Hardware-dependent code should be structured so decision logic can be tested without requiring a physical TV, monitor, NAS, or Raspberry Pi in CI.
 
