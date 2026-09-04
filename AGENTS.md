@@ -48,6 +48,8 @@ issue number
 
 Issue number by itself is never scheduling authority.
 
+A cross-epic dependency can make a later-listed epic or child runnable before an earlier-listed epic is complete. In that case the dependency-ready rule wins; however, do not skip an earlier ready item merely for convenience.
+
 ### Parallel and blocked work
 
 Parallel work is allowed only when the graph makes it independent. If the next branch is blocked by unavailable physical hardware, an external prerequisite, or other genuine evidence dependency:
