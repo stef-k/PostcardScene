@@ -14,6 +14,60 @@ Treat the repository as authoritative. Before implementing or materially hardeni
 
 If implementation and documentation disagree, do not silently invent a new architecture. Resolve the inconsistency explicitly and update the relevant authority document in the same change when the decision is consequential.
 
+## Deterministic issue execution protocol
+
+The GitHub milestone/tracker/epic/child graph is the project execution authority. A fresh coding agent must not choose work merely because an issue looks interesting, has a low issue number, or is easy to implement.
+
+For V0, start from tracker issue `#1` and use this algorithm:
+
+1. Read `#1`, the four repository authority documents above, and the current milestone state.
+2. Walk the incomplete V0 epics in the order listed by `#1`.
+3. Cross-issue `Depends on`, `Blocks`, explicit prerequisite text, and authoritative architecture dependencies override display/list order. An item is **dependency-ready** only when every required prerequisite is complete or the owning issue explicitly permits parallel work.
+4. Select the first incomplete dependency-ready epic in tracker order.
+5. If that epic already has implementation children, follow its explicit `Suggested execution` order when present. Otherwise use the child checklist order. Select the first incomplete dependency-ready child.
+6. If the selected epic has not yet been decomposed, **harden/decompose the epic first**: reread repository authority, resolve only decisions needed to make the work executable, create bounded child issues with parent/dependency links and acceptance criteria, and update the epic checklist/execution order. Do not treat an undecomposed epic as permission to implement the entire epic in one oversized change.
+7. Implement one bounded child issue at a time unless the owning issue explicitly authorizes a cohesive combined slice. Run the required tests/checks and update affected documentation in the same PR/change.
+8. Close a child only when its acceptance criteria and required evidence are satisfied. Keep the parent epic checklist accurate; do not rely on issue closure automatically updating every Markdown task list.
+9. Close an epic only after every owned child is complete **and** the epic-level completion contract has been reread against the resulting repository. A completed child checklist alone is not sufficient if an epic requirement is still unmet.
+10. Return to `#1` after each child/epic completion and resolve the next dependency-ready item using the same algorithm.
+11. Close `#1` only after all V0 epics and the explicit V0 closure gates are satisfied for the exact release candidate.
+
+Canonical precedence is therefore:
+
+```text
+explicit dependency / prerequisite
+        >
+tracker epic order
+        >
+epic Suggested execution
+        >
+epic child checklist order
+        >
+issue number
+```
+
+Issue number by itself is never scheduling authority.
+
+### Parallel and blocked work
+
+Parallel work is allowed only when the graph makes it independent. If the next branch is blocked by unavailable physical hardware, an external prerequisite, or other genuine evidence dependency:
+
+- record/report the blocker truthfully;
+- do not mark the blocked issue complete;
+- do not manufacture mock evidence for a physical/external requirement;
+- continue with the next dependency-ready independent child/epic only when doing so does not violate an explicit prerequisite or architecture boundary;
+- return to the blocked gate when the required evidence becomes available.
+
+For example, software decision logic around display hardware may proceed in CI, but the physical 4K/HDMI claims in `#31` remain open until representative hardware evidence exists.
+
+### Milestone progression
+
+V1 and V2 milestones intentionally exist without speculative implementation backlogs. Do not begin them merely because no V0 child is immediately convenient.
+
+- Finish the current V0 capability boundary and closure gates first unless the user explicitly reprioritizes the roadmap.
+- When V1 or V2 becomes active, use its roadmap section to create the milestone tracker/epics just in time, then apply the same deterministic tracker -> epic -> child protocol.
+- Do not pre-create large future backlogs solely to make the milestone look populated.
+
 ## Product boundary
 
 PostcardScene is a self-hosted ambient media and information **display appliance**, not merely a slideshow and not primarily a web application.
