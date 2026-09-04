@@ -4,28 +4,29 @@ This file defines the working rules for coding agents contributing to PostcardSc
 
 ## Repository authority
 
-Treat the repository as authoritative. Before making architectural changes, read:
+Treat the repository as authoritative. Before implementing or materially hardening an issue, read:
 
 1. `README.md`
 2. `docs/architecture.md`
 3. `docs/roadmap.md`
 4. this file
+5. the owning epic and implementation issue
 
-If implementation and documentation disagree, do not silently invent a new architecture. Resolve the inconsistency explicitly and update the relevant documentation with the code change.
+If implementation and documentation disagree, do not silently invent a new architecture. Resolve the inconsistency explicitly and update the relevant authority document in the same change when the decision is consequential.
 
 ## Product boundary
 
-PostcardScene is a self-hosted ambient media and information display, not merely a slideshow and not primarily a web application.
+PostcardScene is a self-hosted ambient media and information **display appliance**, not merely a slideshow and not primarily a web application.
 
-The core model is:
+The composition model is:
 
 ```text
 Source -> Widget -> Scene -> Sequence
 ```
 
-Preserve this model unless there is a strong implementation reason to change it.
+Preserve this model unless a separately reviewed architectural change demonstrates a better boundary.
 
-The web interface is the control surface. The display/player is the product runtime. Keep those concerns separated.
+The web interface is the control plane. The long-running runtime/player is the display/application runtime. Keep those concerns separated.
 
 ## Architecture rules
 
@@ -35,47 +36,113 @@ The web interface is the control surface. The display/player is the product runt
 - Use Alembic/Flask-Migrate for schema migrations.
 - Use Flask-Login for authentication and Flask-WTF or equivalent framework support for forms/CSRF where needed.
 - Keep authorization simple initially; do not build enterprise-style permission machinery without a concrete requirement.
-- Keep the core player, source, scene, layout, scheduling, and media logic in ordinary Python modules that do not depend unnecessarily on Flask.
-- Keep the web/control process and player/display process independently restartable.
-- Chromium is the preferred rich scene renderer; mpv is the preferred video playback engine.
+- Keep core source, catalog, player, scene, layout, scheduling, media, and hardware decision logic in ordinary Python modules that do not depend unnecessarily on Flask.
+- Keep the web/control process and runtime/player process independently restartable.
+- Chromium is the preferred rich scene renderer; mpv is the preferred video/audio playback engine.
 - Use Linux/systemd integration for long-running services and display/media system integration.
-- Do not introduce Docker as a requirement unless the project later gains a concrete deployment reason for it.
-- Do not introduce Redis, Celery, RabbitMQ, or similar infrastructure without a demonstrated need.
+- Do not introduce Docker as a requirement unless a later concrete deployment reason justifies it.
+- Do not introduce Redis, Celery, RabbitMQ, a distributed queue, or a third always-on worker service without demonstrated need and an architecture update.
 - Prefer a small number of mature dependencies over many thin framework extensions.
 
-## Data and integrations
+## Long-running work ownership
 
-External data providers should be represented behind source/provider abstractions rather than leaking provider-specific logic throughout scenes.
+Do not put scans, reconciliation, schedules, renderer supervision, or future provider refresh loops inside Flask request handlers.
 
-Expected source families include:
+V0's default owner for long-running application work is the runtime/player process or a narrowly factored runtime component it hosts.
 
-- local directories
-- SMB/NFS-mounted directories
-- Immich
-- Wayfarer
-- arbitrary URLs
-- weather providers
-- RSS/Atom feeds
-- generic HTTP/JSON sources
+Examples include:
 
-Use `requests` or the project's shared HTTP abstraction for synchronous HTTP access unless an asynchronous requirement is demonstrated. Use explicit timeouts. Retries must be bounded and appropriate for the operation.
+- operating schedule evaluation;
+- filesystem media reconciliation;
+- renderer/player supervision;
+- later provider cache refresh.
 
-External data should normally be cached or collected independently of rendering. A scene should not become unusable simply because a remote request is slow or temporarily unavailable.
+Long-running work must have bounded/cancellable shutdown behavior. A service restart must not abandon uncontrolled work or require a distributed job framework merely for convenience.
 
-## Context-aware scenes
+The runtime remains alive while the physical display is asleep so required schedules/reconciliation can continue.
 
-Provider data may contribute to shared scene context. For example, a Wayfarer live location may drive:
+## Composition model vs media catalog
 
-- the live map position
-- current local weather
-- local time/place information
-- geographically relevant Immich image selection
+The filesystem media catalog does **not** replace or extend the universal composition model.
 
-Do not hard-code these combinations into one monolithic integration. Prefer reusable sources/widgets consuming shared context.
+```text
+Filesystem Source -> MediaItem catalog -> Widget selection
+```
 
-## Display and power
+remains beneath:
 
-Display power management is a first-class subsystem.
+```text
+Source -> Widget -> Scene -> Sequence
+```
+
+Rules:
+
+- `MediaItem` is normalized source/runtime data, not a fifth universal composition concept.
+- Original photo/video bytes remain in their source filesystem.
+- Do not copy media into SQLite merely to index it.
+- Playback should consume the common catalog/source boundary rather than repeatedly walking entire filesystem sources.
+- A temporary NAS outage is not authoritative deletion of cataloged items.
+- Catalog scans/reconciliation must be bounded and cancellable.
+- Do not add face recognition, computer vision, thumbnails, or broad EXIF indexing to V0 unless a concrete issue explicitly promotes that scope.
+- Do not force future Immich/provider assets into the filesystem catalog design when their provider model does not need it.
+
+## SQLite and migrations
+
+SQLite is shared application state, not a distributed coordination service.
+
+- Keep write transactions short.
+- Use the journaling/timeout/connection policy frozen by the persistence issue.
+- Avoid designs requiring multiple processes to hold long concurrent write transactions.
+- Apply schema changes through Alembic/Flask-Migrate.
+- Application startup must not silently rewrite an unexpected production schema.
+- Preserve application/schema identity needed by release and backup/restore workflows.
+- Tests that introduce background/catalog writes should exercise representative concurrency/locking behavior at a stable seam.
+
+## Media behavior
+
+### Images
+
+- Respect presentation/EXIF orientation.
+- Preserve useful source quality for 1080p/validated-4K output; do not rewrite originals for normal playback.
+- Make fit/fill/crop behavior deterministic.
+- Keep portrait-pair selection in the normal media/runtime path rather than special filesystem code.
+- Bound corrupt, unreachable, or extremely large image loads/decodes so one item cannot exhaust memory or stall the sequence indefinitely.
+- Treat color/profile behavior deliberately and document platform limitations rather than making unsupported color-accuracy claims.
+
+### Video and audio
+
+- Use mpv through a supervised, validated subprocess boundary.
+- Do not promise every codec/container; base support on the validated platform/runtime.
+- Do not introduce automatic transcoding as an implicit V0 requirement.
+- Bound media load/start failure.
+- Audio state is explicit: enabled/muted/volume and intended output where supported.
+- No video/audio may outlive the scene that owns it.
+- Display sleep/off must leave media audio silent.
+
+## Scene and sequence runtime
+
+- Execute all V0 content through the shared scene/sequence runtime rather than parallel media-specific slideshow loops.
+- Keep transient current/recent-play/previous-next state in the runtime unless a concrete restart contract requires a small durable field.
+- Use stable scene/media identities for shuffle/history.
+- Failed or unavailable scenes/items must use bounded skip/fallback behavior.
+- Never enter a tight retry loop on unavailable content.
+- If no eligible scene remains, converge to a defined safe blank/idle state and cooperate with panel protection rather than leave stale content indefinitely.
+
+## Graphics session and display boundary
+
+PostcardScene owns a Linux graphical display session; this is separate from physical panel power.
+
+- Follow the graphics/session model selected by #31.
+- Do not add a general desktop environment or interactive display manager unless the issue's evidence requires it.
+- Chromium and mpv must target the same intended display/session predictably.
+- Preserve safe blank/background behavior while renderers are unavailable.
+- Handle boot without a display and later hotplug/reconnect according to the supported runtime contract.
+- Hardware-specific 1080p/4K, GPU/decode/audio/CEC claims require representative physical evidence; CI cannot prove HDMI hardware behavior.
+- Use normal device/group permissions where practical rather than broad root execution.
+
+## Display power and panel protection
+
+Display power management is a first-class subsystem and is **not** equivalent to stopping the renderer.
 
 Keep physical display control behind a narrow abstraction with methods equivalent to:
 
@@ -85,151 +152,211 @@ power_off()
 get_power_state()
 ```
 
-Expected backends are:
+Expected backend families are:
 
 1. HDMI-CEC
 2. DDC/CI
 3. DRM/KMS or HDMI signal control fallback
 
-Do not grant the Flask process broad root privileges to achieve display or mount control. If privileged operations become necessary, use a narrowly scoped helper or controlled system service.
+Rules:
 
-Burn-in/static-content protection and renderer-stall handling are part of the display subsystem, not incidental UI behavior.
+- A failed power command must surface degraded/unknown state rather than claim success without evidence.
+- Scheduled display sleep must also stop/silence media playback.
+- Burn-in/static-content protection and renderer-stall handling belong to this subsystem/runtime cooperation, not incidental UI behavior.
+- Do not grant the Flask process broad root privileges for display control.
+
+## Scheduling and time
+
+Scheduling must be timezone-aware and deterministic across real clock transitions.
+
+- Keep one explicit application timezone.
+- Define DST skipped/repeated-time behavior.
+- Treat temporary/manual overrides as explicit state with persistence/expiry semantics.
+- After reboot, long downtime, NTP correction, manual clock jump, or timezone change, converge to the state that should be active now rather than replay every missed transition.
+- Test midnight, week boundaries, DST forward/back, and large forward/backward clock changes.
+- Scheduling belongs to the long-running runtime, not Flask requests.
 
 ## Network storage
 
-Prefer normal Linux SMB/NFS mounts and expose mounted paths to PostcardScene as media sources.
+Prefer normal Linux SMB/NFS mounts and expose mounted paths to PostcardScene as filesystem sources.
 
-If the web UI later manages mounts, use a narrowly scoped privileged mechanism. Never allow arbitrary mount commands or shell execution from user-provided web input.
+- V0 does not own NAS credentials or mounting policy.
+- Never allow arbitrary mount commands or shell execution from user-provided web input.
+- Path and symlink handling must remain within configured source authority.
+- An unavailable/hung network source must not indefinitely block the control plane or unrelated playback.
+- Never silently fall back to a similarly named local path when a configured remote mount is unavailable.
+
+## Web scenes are untrusted content
+
+Configured web pages are a separate trust boundary.
+
+- Normal V0 web scenes should accept only supported HTTP/HTTPS URLs.
+- Reject dangerous local/script/browser-extension schemes unless an explicit future trusted feature owns them.
+- Use a dedicated Chromium kiosk profile/session separate from PostcardScene administration cookies/secrets.
+- Do not inject generic usernames/passwords/tokens into URLs as an authentication feature.
+- Persistent third-party kiosk sessions, if implemented, must use an explicit isolated mechanism.
+- Disable unnecessary production remote-debugging/automation listeners or bind required control surfaces narrowly to local authority.
+- Bound navigation/load retries/timeouts.
+- Do not turn PostcardScene into a generic web-scraping/browser-automation platform.
+
+## Authentication, network exposure, and secrets
+
+Follow the trust boundary owned by the security epic.
+
+- Never store plaintext passwords.
+- Use a persistent protected installation-owned session/application secret; do not regenerate it on every boot or commit it to the repository.
+- Protect state-changing web actions against CSRF.
+- Keep production debug mode disabled.
+- Do not expose the Flask development server as the normal production appliance boundary.
+- Define production bind/HTTP/HTTPS/reverse-proxy behavior before V0 release rather than assuming a trusted LAN makes credential transport irrelevant.
+- Provide a deliberate local/host-authorized administrator password-recovery path.
+- Define credential-at-rest protection before storing long-lived third-party credentials.
+- Keep secrets out of logs, errors, status/doctor output, command lines, release artifacts, tests, and backup manifests where the secret value is not explicitly owned by the archive.
+- No external telemetry or analytics by default.
+
+## Privilege and subprocess rules
+
+- Keep the Flask process unprivileged.
+- Prefer normal device/group permissions for DRM/render/video/audio/CEC access.
+- If privileged helpers become necessary, expose only narrow allowlisted operations with strict argument validation.
+- Prefer subprocess argument vectors; avoid `shell=True` and string-built commands from untrusted/user configuration.
+- Validate URLs, paths, archive members, versions, and subprocess arguments at their owning boundary.
+- Never recursively change ownership/delete outside exact known roots merely to make an installation work.
+
+## Release, installation, and update
+
+Release/install lifecycle is a first-class V0 concern.
+
+- Use one authoritative application version identity.
+- Use deterministic dependency resolution/locking for release builds/production installs.
+- Release artifacts must correspond to immutable source/tag identity and have checksums of the final published bytes.
+- Rebuilding/repackaging different bytes creates a new artifact-specific candidate; do not reuse an earlier checksum as authority.
+- Normal production installation should use an isolated project-owned Python environment or another approved mechanism, not unsafe privileged modification of distro-owned Python.
+- Separate application payload, configuration/secrets, durable state, replaceable caches/runtime state, logs, and backups.
+- Apply production schema changes explicitly through migrations.
+- Forward updates that mutate schema/durable state require the recovery boundary owned by backup/restore.
+- Do not interpret installing older application files as database rollback.
+- Safe remove/uninstall preserves durable state and backups by default; destructive purge/factory reset is a separate deliberate action if ever implemented.
+- Do not introduce an auto-update daemon in V0.
+
+## Backup and restore
+
+PostcardScene backup owns PostcardScene durable state, not the user's original media libraries.
+
+- Use a SQLite-consistent backup method; do not blindly copy a live database file.
+- Classify every application-owned path as durable, replaceable/regenerable, secret authority, or external/unowned.
+- Decide explicitly whether the filesystem media catalog is backed up or regenerated.
+- Use manifests with application/schema/archive identity and checksums.
+- Publish backups atomically and delete only archives owned by the documented retention convention.
+- Missing mounted remote backup storage must fail visibly; never fall back silently to an unintended local destination.
+- Treat backup archives as sensitive.
+- Test restoration, not only archive creation.
+- V0 requires an in-place restore and a clean replacement-host restore path.
+- Protected credentials must either restore with the matching key authority or be explicitly classified as requiring re-entry.
+- An old backup is not automatically a safe application rollback; fail closed on unproven app/schema compatibility.
 
 ## UI and configuration
 
-Important user-facing behavior should be configurable through the web settings UI where practical, including:
-
-- media sources
-- scenes and sequences
-- schedules
-- display power method and fallbacks
-- wake delays
-- static-content/burn-in protection
-- source refresh intervals
-- playback timings and transitions
+Important user-facing behavior should be configurable through the authenticated web settings UI where practical.
 
 Defaults should make the system useful without requiring constant administration.
 
 Do not expose raw internal database structures as the normal product UI merely because they are easy to generate.
 
-## Scope discipline
+Control UI changes should preserve the project's normal responsive/accessibility baseline:
 
-Follow `docs/roadmap.md` and implement the smallest coherent milestone first.
+- visible labels
+- keyboard operation
+- focus/error feedback
+- sufficient contrast through the chosen CSS system
+- usable desktop/mobile containment
 
-Do not build speculative plugin systems, multi-tenant authorization, distributed workers, elaborate event buses, or generalized abstractions solely because they may be useful someday.
+Do not create a large frontend framework or browser-test matrix merely for these basics.
 
-However, do preserve the foundational `Source -> Widget -> Scene -> Sequence` separation from the beginning so the MVP does not have to be rewritten to support richer scenes later.
-
-## Reliability
+## Reliability and observability
 
 The display is intended to run unattended for long periods.
 
 Design for:
 
 - process crashes and restarts
-- temporary NAS unavailability
-- temporary internet/API failures
-- malformed media
+- host reboot/power loss
+- display absent at boot and hotplug/reconnect
+- temporary NAS unavailability/hangs
+- malformed/unreachable media
 - Chromium/mpv failure
 - renderer stalls
-- display disconnect/reconnect
-- host reboot
+- background/catalog interruption
+- future internet/API failures
+- low disk space and cache/log growth
 
-Failures in one source or renderer should degrade gracefully rather than take down the control interface or the entire sequence engine.
+Observability is shared by owning layers:
 
-## Release and installation lifecycle
+- web dashboard/status for user-visible health;
+- runtime/systemd/journald for process/resource/runtime evidence;
+- release/install `doctor`-style diagnostics for installation/configuration consistency.
 
-Release/install/update behavior has one authority. Do not create multiple independent scripts or workflows that make different decisions about versions, migrations, paths, services, or durable state.
+Do not create a metrics/telemetry platform in V0 merely because diagnostics are required.
 
-Follow the release-engineering epic and these rules:
+## Documentation and definition of done
 
-- GitHub CI should validate the exact code that becomes a release candidate.
-- Stable releases should have one authoritative application version.
-- Published artifacts must be versioned and integrity-verifiable.
-- Prefer a small native-Linux installation path suitable for Raspberry Pi-class ARM64 systems.
-- Do not require Docker, an APT repository, or a `.deb` package in V0.
-- Do not install application dependencies into the distro-owned Python environment using unsafe system-wide `pip` practices.
-- Keep release payload, configuration/secrets, durable state, cache, and logs in clearly separate ownership boundaries.
-- Database migrations during install/update must be explicit and failure-aware.
-- A failed update must leave a truthful service/state outcome and actionable recovery path.
-- Do not interpret installing an older artifact as a safe database rollback.
-- Reuse the same status/diagnostic checks across install/update/troubleshooting where practical rather than duplicating lifecycle policy.
+Documentation is part of feature completion.
 
-## Backup and restore
+When a change alters user-visible behavior, configuration, installation, security, recovery, hardware support, or a consequential architectural boundary, update the smallest relevant authority document in the same PR.
 
-PostcardScene backup owns PostcardScene application state, not the user's external media collection.
+Keep documentation lean. Prefer the current authority documents and a future cohesive `docs/operations.md` over many one-topic files until size/audience justifies splitting.
 
-The durable-state inventory must be explicit. It is expected to include the SQLite database plus any application-owned configuration/secrets required for a complete recovery. External local/NAS media, Immich assets, caches, thumbnails, and logs are excluded unless a later requirement explicitly changes their classification.
+Before a public distributable release, select an explicit project software license and include required third-party notices/attributions.
 
-Backup rules:
+Hardware/support claims must distinguish physically tested evidence from intended but unverified configurations.
 
-- use a consistent SQLite backup mechanism rather than blindly copying a live database file;
-- allow a local or administrator-provided already-mounted backup destination;
-- never silently substitute a local destination when a configured remote/mounted destination is unavailable;
-- publish backups atomically so failed work cannot replace a complete archive;
-- include version/schema/manifest identity and integrity checksums;
-- retention may delete only archives clearly owned by PostcardScene's backup convention;
-- treat backup archives as sensitive because they may contain credentials and private configuration;
-- do not claim encryption unless the destination or transport actually supplies it;
-- a restore is successful only after integrity/compatibility checks, state restoration, ownership/permission repair where required, and post-restore validation;
-- include a disposable restore drill in evidence; successful archive creation alone is not sufficient recovery proof.
+## Testing expectations
 
-Do not build NAS-vendor mounting, cloud-backup, encryption, or general disaster-recovery frameworks without explicit scope.
+Add tests with new behavior at the lowest stable seam. Prioritize:
 
-## Documentation
+- source/path safety and symlinks
+- source/catalog reconciliation and outage recovery
+- media selection and portrait pairing
+- image orientation/pathological media bounds
+- video failure/audio lifecycle
+- scheduling/timezone/DST transitions
+- scene/sequence fallback behavior
+- SQLite migration/concurrency assumptions
+- authentication/session/CSRF
+- web-scene URL/profile isolation
+- display-power state decisions
+- backup integrity/retention/restore compatibility
+- security-sensitive validation/redaction
 
-Documentation is part of the definition of done.
+Hardware-dependent decision logic should be testable without physical equipment, but actual HDMI/GPU/CEC/DDC/4K support claims require representative physical evidence rather than mocks alone.
 
-If a change affects user-visible behavior, configuration, installation, upgrades, backup/recovery, hardware compatibility, security-sensitive operator behavior, or a consequential architecture decision, update the smallest authoritative documentation in the same PR.
+## Development tooling
 
-Keep the documentation tree lean:
+Issue #12 owns the initial development toolchain.
 
-- `README.md` is the entry point;
-- `docs/architecture.md` owns architectural boundaries and resolved consequential decisions;
-- `docs/roadmap.md` owns milestone capability boundaries;
-- `AGENTS.md` owns agent working rules;
-- prefer one cohesive operations guide when operational documentation becomes necessary rather than creating many small files immediately.
+- Prefer one clear formatter/linter authority rather than overlapping tools.
+- Add static type checking only if it provides proportionate value and has one documented command/CI owner.
+- Agent Code Guard may be evaluated because this repository is coding-agent driven, but it is not mandatory merely because Wayfarer uses it.
+- Tooling complements tests/review; it must not become a separate architecture project.
 
-Do not make untested hardware compatibility claims. Record real CEC/DDC/DRM/display evidence when available and distinguish tested behavior from expected/fallback behavior.
+## Scope discipline
 
-Documentation-only follow-up issues should be exceptional; implementation should not knowingly merge with stale authoritative docs.
+Follow `docs/roadmap.md` and implement the smallest coherent milestone first.
 
-## Security
+Do not build speculative plugin systems, multi-tenant authorization, distributed workers, generalized event buses, configuration-management systems, browser automation frameworks, media-analysis pipelines, auto-update systems, or deployment/package-manager machinery solely because they may be useful someday.
 
-- Never store plaintext passwords when password hashing is appropriate.
-- Protect state-changing web actions against CSRF.
-- Validate and constrain file paths, URLs, mount configuration, and subprocess arguments.
-- Avoid `shell=True` and arbitrary shell construction.
-- Keep external credentials/API keys out of logs.
-- Do not expose unrestricted filesystem access through media-source configuration.
-- Keep privileged operations outside the normal Flask process.
+Preserve the foundational boundaries that avoid later rewrites:
 
-The initial deployment may be a trusted home network, but do not rely on that assumption to justify unsafe implementation patterns.
-
-## Tests
-
-Add tests with new behavior where practical. Prioritize tests for:
-
-- media/source selection
-- portrait-pairing logic
-- scheduling and time-window behavior
-- scene/sequence rules
-- provider failure and cache fallback
-- display power state decisions
-- security-sensitive validation
-- release/version/configuration decisions
-- backup publication/retention/restore compatibility decisions
-
-Hardware-dependent code should be structured so decision logic can be tested without requiring a physical TV, monitor, NAS, or Raspberry Pi in CI.
+- `Source -> Widget -> Scene -> Sequence` composition;
+- source-owned filesystem catalog beneath `Source`;
+- separate control and runtime processes;
+- long-running work outside Flask requests;
+- separate graphics-session and physical-panel-power ownership;
+- explicit security/privilege boundaries;
+- explicit durable/replaceable/backup state ownership.
 
 ## Open decisions
 
-Some implementation choices are intentionally not frozen yet. They are listed in `docs/architecture.md`.
+Some implementation choices are intentionally not frozen. The authoritative list is in `docs/architecture.md`.
 
-Do not resolve them globally before a concrete implementation milestone requires the decision. When a consequential decision is made, update the architecture documentation in the same change.
+Do not resolve an open decision globally before its owning issue requires the decision and has enough evidence. When a consequential decision is made, update `docs/architecture.md` in the same change.
