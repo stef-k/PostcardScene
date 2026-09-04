@@ -17,7 +17,6 @@ Goal: prove that PostcardScene can operate reliably as an unattended media-displ
 - local authentication
 - settings UI foundation
 - separate web/control and player services
-- systemd service definitions/install direction
 - status/health information sufficient to diagnose player failures
 
 ### Core domain
@@ -102,11 +101,81 @@ The scene representation should leave room for multiple widgets without requirin
 - fallback toward panel standby for prolonged severe failure
 - settings for the implemented protection behavior
 
+### Linux runtime and unattended operation
+
+- separate `postcardscene-web` and `postcardscene-player` systemd services
+- service ordering and restart behavior
+- standard runtime user/group and state/cache/log ownership expectations
+- host reboot recovery
+- display disconnect/reconnect handling
+- unattended smoke and failure-recovery validation
+
+This work owns the behavior of an already-installed runtime. Release packaging, installation/update orchestration, and backup policy are separate concerns.
+
+### Release engineering and managed installation
+
+- GitHub Actions CI for supported Python/runtime combinations
+- authoritative version identity
+- versioned GitHub Release artifacts
+- release checksums
+- clean-environment installation/start smoke testing
+- standard native-Linux installation layout
+- managed installation/bootstrap path
+- dependency checks for Python, Chromium, mpv, and required display-control tools
+- installation of systemd units and runtime directories
+- explicit database migration on install/update
+- safe forward update preserving durable state
+- stable status/doctor-style diagnostics
+- release and upgrade notes
+
+The exact release artifact format is intentionally open until implementation compares the smallest practical Python-native options. V0 does not require a `.deb`, APT repository, Docker image, or transactional rollback engine.
+
+### Backup and restore
+
+Back up PostcardScene's own durable state, not the user's external media libraries.
+
+V0 should provide:
+
+- authoritative durable-state inventory
+- consistent SQLite backup
+- required application-owned configuration/secret state where applicable
+- local or administrator-provided already-mounted backup destination
+- manual and scheduled backup
+- manifest/version/schema identity
+- integrity checksums
+- atomic publication of complete backups
+- bounded retention
+- backup listing/verification
+- deliberate restore procedure
+- disposable restore drill
+- pre-update recovery integration where schema/state changes justify it
+
+External photos/videos, NAS libraries, Immich assets, replaceable caches, thumbnails, and logs are excluded by default.
+
+### Documentation and operator guidance
+
+Documentation is part of feature completion rather than a final cleanup stage.
+
+V0 documentation should remain lean while covering:
+
+- development/test setup once stable
+- supported Linux/Python/hardware expectations
+- installation and upgrade
+- service operation/status/log troubleshooting
+- local and mounted-network source configuration
+- display-power configuration and practical CEC/DDC/DRM limitations
+- backup, verification, and restore
+- configuration/secrets locations and operator security responsibilities
+- tested hardware/compatibility evidence where real hardware has been validated
+- release notes/changelog discipline
+
+Prefer updating the existing authority documents and, when needed, one cohesive `docs/operations.md` rather than creating many small documents prematurely.
+
 ### V0 completion criteria
 
-V0 is successful when a Raspberry Pi-class Linux system can boot unattended, start PostcardScene, play local/NAS images and video, display URLs, compose at least basic scenes, obey a configured operating schedule, sleep/wake the connected display reliably, and recover from ordinary renderer/player failures without losing the management interface.
+V0 is successful when a Raspberry Pi-class Linux system can consume a verified PostcardScene release through the documented native installation path, boot unattended, start PostcardScene, play local/NAS images and video, display URLs, compose at least basic scenes, obey a configured operating schedule, sleep/wake the connected display reliably, recover from ordinary renderer/player failures without losing the management interface, create and verify a complete application-state backup, perform a tested restore, and provide sufficient operator documentation to install, diagnose, update, back up, and recover the appliance without reading implementation code.
 
-Do not postpone reliability work merely to add additional content providers.
+Do not postpone reliability, recovery, or operability work merely to add additional content providers.
 
 ---
 
@@ -288,11 +357,12 @@ Possible future capabilities should be driven by actual use rather than committe
 - more formal provider/plugin registration
 - mobile-friendly remote controls
 - richer rule/condition systems
+- Debian package/APT distribution if native release installation demonstrates a real need for it
 
-These are not foundation requirements.
+These are not foundation requirements unless explicitly promoted into an earlier milestone.
 
 ## Roadmap rule
 
-When choosing between adding another provider and making the existing display runtime more reliable, prefer reliability until the foundation completion criteria are satisfied.
+When choosing between adding another provider and making the existing display runtime more reliable, recoverable, installable, or operable, prefer the latter until the Foundation completion criteria are satisfied.
 
 The project should grow outward from a stable display appliance, not inward from a large collection of integrations.
