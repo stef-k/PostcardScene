@@ -236,7 +236,7 @@ V0 documentation should remain lean while covering:
 - timezone/DST scheduling behavior
 - control-network/security/secrets/password-recovery boundary
 - backup, verification, in-place restore, and replacement-host recovery
-- explicit project license and required third-party notices/attributions before public distribution
+- MIT project license plus required third-party notices/attributions before public distribution
 - release notes/changelog discipline
 - responsive/accessibility baseline for the control UI
 
@@ -323,9 +323,9 @@ Include:
 
 ### Live renderer updates
 
-Where justified, add a lightweight WebSocket path, likely Flask-Sock, so a running Chromium scene can receive updated state without full reloads.
+Use ordinary authenticated HTTP polling where it provides the required update cadence. This keeps the Flask control plane synchronous and avoids adding persistent-connection plumbing before it is needed.
 
-Do not introduce heavier messaging infrastructure unless concrete requirements exceed this model.
+If a concrete live-scene requirement demonstrates a material benefit from server push, evaluate the smallest suitable mechanism at that time, such as SSE or WebSockets. Do not preselect Flask-Sock, Socket.IO, an ASGI migration, a message broker, or other event infrastructure merely to anticipate future live updates.
 
 ### V1 completion criteria
 

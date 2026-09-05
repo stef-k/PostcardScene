@@ -52,7 +52,6 @@ The current design direction is deliberately lightweight on the control side whi
 - Flask-WTF
 - `requests`
 - `feedparser`
-- WebSockets, likely through Flask-Sock when justified
 - Pillow
 - Chromium in kiosk mode for rich HTML/CSS/JavaScript scene rendering
 - mpv for video/audio playback
@@ -61,6 +60,8 @@ The current design direction is deliberately lightweight on the control side whi
 - HDMI-CEC, DDC/CI, and DRM/KMS display-power control where available
 
 The web/control process and the long-running runtime/player process are separate services. Long-running source reconciliation/scheduling belongs outside Flask requests. A browser, media, or runtime failure must not take the administration interface down with it.
+
+Renderer state updates should use the simplest transport that satisfies the required update cadence. Ordinary HTTP polling is preferred where adequate; WebSockets, SSE, or another server-push mechanism should be introduced only when a concrete live-scene requirement justifies the extra dependency and lifecycle complexity.
 
 ## Planned integrations
 
@@ -106,7 +107,7 @@ The Foundation milestone is not complete merely when source code can display med
 - a PostcardScene-state backup/verification/restore system, including recovery onto a clean replacement host;
 - status/doctor-style diagnostics and bounded logs/cache/disk behavior;
 - operator documentation and a tested support/hardware matrix;
-- an explicit software license and required third-party notices before a public distributable release.
+- required third-party notices before a public distributable release.
 
 External media libraries themselves are not copied into PostcardScene backups.
 
@@ -117,6 +118,10 @@ External media libraries themselves are not copied into PostcardScene backups.
 - [Agent/development guidance](AGENTS.md)
 
 A single `docs/operations.md` is expected when implementation reaches stable installation/operation workflows; it should not be split prematurely.
+
+## License
+
+PostcardScene is licensed under the [MIT License](LICENSE).
 
 ## Status
 

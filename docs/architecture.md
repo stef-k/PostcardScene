@@ -76,7 +76,6 @@ Flask-WTF
 Pillow
 requests                 # when HTTP/provider work becomes active
 feedparser               # when RSS/Atom work becomes active
-Flask-Sock               # likely, only when live updates require it
 ```
 
 Runtime/system components:
@@ -480,11 +479,13 @@ The exact general cache implementation remains open.
 
 ## 15. Live updates
 
-Some scenes benefit from server-to-renderer updates without full reloads, especially Wayfarer live-location views.
+Some scenes may benefit from server-to-renderer updates without full reloads, especially later Wayfarer live-location views.
 
-The likely direction is a lightweight WebSocket path using Flask-Sock when real-time updates are required.
+Use the simplest transport that satisfies the required update cadence. Ordinary authenticated HTTP polling is preferred where it is adequate because PostcardScene is a small local appliance and the control plane does not otherwise need an async-first web architecture.
 
-The system should not introduce heavier Socket.IO/event infrastructure unless concrete requirements exceed this model.
+If a concrete V1/V2 requirement demonstrates that server push materially improves behavior, evaluate the smallest suitable mechanism at that time, such as SSE or WebSockets. Do not preselect Flask-Sock, Socket.IO, an ASGI migration, a message broker, or other event infrastructure without evidence that the simpler path is insufficient.
+
+The renderer transport is distinct from the control-plane/runtime IPC boundary: live state remains authoritative in the runtime/player process, so changing browser transport must not collapse the process separation defined elsewhere in this architecture.
 
 ## 16. Scheduling and time semantics
 
@@ -712,7 +713,7 @@ Before V0 closes, a new administrator must be able to determine support, install
 
 Hardware claims should distinguish physically tested configurations from intended/untested possibilities.
 
-Before a public distributable release, the project should select an explicit software license and provide required third-party notices/attributions.
+PostcardScene is licensed under the MIT License. Before a public distributable release, the project must also provide any required third-party notices/attributions.
 
 The V0 tracker/release issue owns exact-candidate closure evidence for:
 
@@ -745,5 +746,6 @@ The following are intentionally unresolved until the owning issue has enough evi
 13. **Release artifact format** — wheel/archive/other small managed-native distribution shape, owned by #26.
 14. **Production web serving/network boundary** — exact WSGI server and HTTP/HTTPS/reverse-proxy model, owned by #29/#26.
 15. **Optional code-quality tooling** — static type checking and Agent Code Guard only if they provide proportionate value, owned by #12.
+16. **Renderer live-update transport** — ordinary HTTP polling is preferred where adequate; SSE, WebSockets, or another server-push mechanism is selected only if a concrete V1/V2 requirement proves it useful.
 
 These are deliberate implementation decisions, not reasons to invent answers early. When one is resolved, update this document in the same change that relies on the decision.
