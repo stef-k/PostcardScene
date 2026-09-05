@@ -115,6 +115,7 @@ External media libraries themselves are not copied into PostcardScene backups.
 
 - [Architecture](docs/architecture.md)
 - [Roadmap](docs/roadmap.md)
+- [Display hardware guidance](docs/display-hardware.md)
 - [Agent/development guidance](AGENTS.md)
 
 A single `docs/operations.md` is expected when implementation reaches stable installation/operation workflows; it should not be split prematurely.
