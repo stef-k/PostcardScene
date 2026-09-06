@@ -11,7 +11,7 @@ mounted-storage operations outside this synchronous path-checking seam.
 import os
 import stat
 from collections.abc import Callable, Generator, Iterator
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -348,3 +348,44 @@ def _enumerate_directory(
         if started:
             raise EnumerationFailed("Source enumeration was incomplete.") from error
         raise SourceUnavailable("Source storage is unavailable.") from error
+
+
+@contextmanager
+def open_image_item(kind, configuration, policy, relative_path, size_bytes, mtime_ns):
+    """Pin a regular, fresh asset using no-follow descriptor-relative opens.
+
+    Canonical Source roots retain #22 semantics. Walk even their ancestors with
+    no-follow opens so a concurrent symlink replacement cannot redirect authority.
+    All callers must isolate this potentially blocking operation in a helper.
+    """
+    relative_path = validate_relative_path(relative_path)
+    parts = relative_path.split("/")
+    try:
+        root = _source_directory(kind, configuration, policy)
+    except (OSError, RuntimeError) as error:
+        raise SourceUnavailable("Source storage is unavailable.") from error
+    if not configuration["recursive"] and len(parts) != 1:
+        raise InvalidSource("Nonrecursive Sources allow only direct children.")
+    with ExitStack() as stack:
+        try:
+            directory = stack.enter_context(_open_directory("/"))
+            for part in (*root.parts[1:], *parts[:-1]):
+                directory = stack.enter_context(_open_directory(part, parent=directory))
+            descriptor = os.open(
+                parts[-1],
+                os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
+                dir_fd=directory,
+            )
+            stack.callback(os.close, descriptor)
+            info = os.fstat(descriptor)
+            if not stat.S_ISREG(info.st_mode) or (info.st_size, info.st_mtime_ns) != (
+                size_bytes,
+                mtime_ns,
+            ):
+                raise InvalidSource("Image is unsafe or stale.")
+            stream = stack.enter_context(
+                os.fdopen(descriptor, "rb", buffering=0, closefd=False)
+            )
+        except OSError as error:
+            raise InvalidSource("Image cannot be safely opened.") from error
+        yield stream

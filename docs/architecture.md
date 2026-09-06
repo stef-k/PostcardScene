@@ -776,10 +776,49 @@ Sequence overrides remain #19/#20 configuration. Shared transitions remain #8;
 #57 may use a simple fixed image-local fade without another Widget option.
 #10 owns static-dwell/panel protection, including while paused.
 
+### Trusted image frame delivery (#57)
+
+`capture_image_source(session, frame)` captures a frozen DB-only `ImageSource`
+for a validated one/two-image `ImageFrame` and one enabled filesystem Source.
+Capture immediately before `start_image_frame(frame, source, policy)`; the snapshot
+is short-lived launch authority, not a live subscription to Source edits. No ORM
+object or Source-path I/O crosses into the parent delivery operation.
+
+Each frame owns one disposable `spawn` helper bound to `127.0.0.1` on an ephemeral
+port. Its unpredictable token authorizes only the fixed page, asset `0` (and `1`
+for a pair), and empty ready/failed POSTs. Exact routes, Host/origin checks and
+hashed-inline CSP restrict browser authority; there is no general media API,
+Flask service, `file:` access, persistent cache or playback-control surface.
+
+All local/mounted Source access occurs inside the helper. `open_image_item`
+rechecks #22 authority, pins directories with descriptor-relative no-follow opens,
+rejects special files, and compares opened size/mtime to selection before serving.
+Mounted access also reuses #24's deepest NFS/NFS4/CIFS mount guard and checks the
+opened descriptor's mount identity to refuse local mountpoint fallthrough.
+Original compressed/profile bytes stream from that descriptor in bounded 64 KiB
+chunks with HTTP backpressure, without Pillow decoding or conversion.
+
+The fixed black, centered HTML page uses one viewport image or two equal vertical
+columns, `object-fit: contain|cover`, and `image-orientation: from-image`. It waits
+for all image decodes before asserting ready, or asserts failed on load/decode
+failure. The first valid terminal callback wins; byte transfer alone is not ready.
+`handle.wait_ready()` consumes the closed progress/terminal protocol and reaps the
+helper. Always close the handle (or use it as a context manager). Startup and
+waiting enforce a trusted finite positive lack-of-progress timeout and prompt
+caller cancellation. Close uses bounded terminate/join/kill/join; Linux
+uninterruptible kernel sleep can still prevent timely final reaping.
+
+`ImageDeliveryError.reason` distinguishes invalid context, unsafe/stale item,
+unavailable Source, timeout, helper/protocol failure, presentation failure and
+cancellation without raw diagnostics or catalog mutation. #8 owns skip/fallback
+and global controls. Controlled HTTP tests prove this protocol only: #58 must
+prove real supervised Chromium navigation/readiness and frame retention after
+helper exit; #59 owns actual format/color/quality evidence.
+
 ### Presentation and quality boundaries
 
 Chromium/HTML/CSS is the V0 image compositor selected by #5; mpv remains the video
-engine. #57 owns trusted disposable image delivery and the HTML/CSS frame; #31
+engine. #57 implements trusted disposable image delivery and the HTML/CSS frame; #31
 owns the production graphics session, Chromium supervision and common overlay/input
 mechanism; #58 adapts image frames to that controller. No renderer is added by #56.
 
