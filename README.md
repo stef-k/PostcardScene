@@ -237,6 +237,26 @@ all fields and replace configuration as a whole; invalid input raises
 `DomainError` before mutation. See [architecture](docs/architecture.md#source-and-widget-persistence)
 for kinds, limits, relationships and the configuration trust boundary.
 
+### Scene domain
+
+After stopping database users, explicitly run `db upgrade` to apply `0005_scene`.
+Existing administrator, settings, Sources and Widgets are preserved. Scene APIs
+in `postcardscene.domain` work inside `Database.transaction()` without Flask:
+`create_scene`, `get_scene`, `list_scenes`, `update_scene`, `remove_scene`, and
+`list_scene_placements`. There is no Scene editor or renderer yet.
+
+Create/update takes a complete list of `(region, widget_id)` pairs; the domain
+derives canonical positions for `single` (`main`), `split_vertical` (`left`,
+`right`), or `split_horizontal` (`top`, `bottom`). For example, use
+`placements=[("main", pair_widget_id)]` with `layout="single"` for an existing
+`portrait_image_pair` Widget. Update supplies all Scene fields and validates the
+replacement before mutation. `duration_seconds` is `None` for no fixed dwell or
+an integer 1–86400; `enabled` is a boolean.
+
+Referenced Widgets cannot be deleted. Removing a Scene deletes only placements,
+preserving Widgets and Sources; disable preserves references. See
+[Scene architecture](docs/architecture.md#scene) for the complete contract.
+
 ### Application settings and status
 
 After stopping database users, run the explicit `db upgrade` command when updating
