@@ -8,7 +8,10 @@ from types import SimpleNamespace
 
 import pytest
 
+from postcardscene.filesystem_source import PathPolicy
+from postcardscene.video_file import VideoSource, open_video_item
 from postcardscene.video_player import MpvController, PlaybackError
+from postcardscene.video_selection import SelectedVideo
 
 
 @pytest.fixture
@@ -71,8 +74,11 @@ time.sleep(10)
     def prepare(mode):
         path = tmp_path / "video"
         path.write_text(mode)
-        with path.open("rb") as media:
-            controller.prepare(media.fileno())
+        info = path.stat()
+        selected = SelectedVideo(1, path.name, info.st_size, info.st_mtime_ns)
+        source = VideoSource(1, "local_directory", str(tmp_path), True)
+        with open_video_item(selected, source, PathPolicy([tmp_path])) as descriptor:
+            controller.prepare(descriptor)
         # Caller lifetime and pathname no longer supply player authority.
         path.unlink()
         return controller
@@ -210,3 +216,12 @@ def test_content_surfaces_retire_video_before_replacement(player):
     surfaces.select(ContentClass.TRUSTED_IMAGE)
     assert child.returncode is not None
     assert calls == [BrowserContext.TRUSTED_IMAGE]
+
+
+def test_start_failure_clears_prepared_authority(player):
+    controller = player("playing")
+    controller.command = ("/nonexistent/postcardscene-mpv",)
+    with pytest.raises(PlaybackError, match="startup_failed"):
+        controller.ensure_started()
+    assert controller._media is None and controller._ipc is None
+    assert controller.status.state == "failed"

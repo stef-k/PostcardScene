@@ -99,6 +99,8 @@ class MpvController:
                 self._poll(0)
             except PlaybackError as error:
                 self._fail(error)
+            except OSError:
+                self._fail(PlaybackError("process_failed"))
         return PlaybackStatus(self._state, self._reason, self._cleanup_failed)
 
     def ensure_started(self, *, timeout_seconds=10, cancelled=None):

@@ -110,8 +110,8 @@ def open_video_item(selected, source, policy, *, cancelled=None, timeout_seconds
     """Yield a borrowed read-only FD valid only inside this context.
 
     Capture Source immediately beforehand, outside any storage-spanning transaction.
-    Trusted future player plumbing may use pass_fds and fd://N; it must retire its
-    child before context exit. Never close this borrowed FD or publish/persist it.
+    Trusted player plumbing may duplicate the FD to own an independent lifetime,
+    then use pass_fds and fd://N. Never close or publish/persist this borrowed FD.
     Pinning survives pathname replacement, not in-place writes by external owners.
     """
     _validate_context(selected, source)
