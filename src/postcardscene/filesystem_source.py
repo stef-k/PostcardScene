@@ -262,6 +262,7 @@ def _walk_directory(
     relative: str,
     recursive: bool,
     cancelled: Callable[[], bool] | None,
+    progress: Callable[[], None],
 ) -> Generator[MediaEntry, None, bool]:
     """Yield sorted depth-first candidates; return whether any work failed.
 
@@ -271,16 +272,20 @@ def _walk_directory(
     incomplete = False
     for name in names:
         _check_cancelled(cancelled)
+        progress()
         child = f"{relative}/{name}" if relative else name
         try:
             info = os.stat(name, dir_fd=descriptor, follow_symlinks=False)
+            progress()
             if stat.S_ISDIR(info.st_mode) and recursive:
                 _check_cancelled(cancelled)
                 with _open_directory(name, parent=descriptor) as directory:
+                    progress()
                     children = sorted(os.listdir(directory))
+                    progress()
                     _check_cancelled(cancelled)
                     failed = yield from _walk_directory(
-                        directory, children, child, recursive, cancelled
+                        directory, children, child, recursive, cancelled, progress
                     )
                     incomplete = incomplete or failed
             elif stat.S_ISREG(info.st_mode):
@@ -308,17 +313,34 @@ def enumerate_local_directory(
     cooperative check. Close the iterator when abandoning consumption early.
     Individual kernel calls are synchronous and may block; #24 owns isolation.
     """
+    yield from _enumerate_directory(
+        "local_directory", configuration, policy, cancelled=cancelled
+    )
+
+
+def _enumerate_directory(
+    kind: str,
+    configuration: object,
+    policy: PathPolicy,
+    *,
+    cancelled: Callable[[], bool] | None = None,
+    progress: Callable[[], None] = lambda: None,
+) -> Iterator[MediaEntry]:
+    """Shared traversal; mounted callers must run this inside their child."""
     _check_cancelled(cancelled)
     started = False
     try:
-        root = _source_directory("local_directory", configuration, policy)
+        root = _source_directory(kind, configuration, policy)
+        progress()
         with _open_directory(root) as directory:
             _check_cancelled(cancelled)
+            progress()
             names = sorted(os.listdir(directory))
+            progress()
             _check_cancelled(cancelled)
             started = True
             incomplete = yield from _walk_directory(
-                directory, names, "", configuration["recursive"], cancelled
+                directory, names, "", configuration["recursive"], cancelled, progress
             )
             if incomplete:
                 raise EnumerationFailed("Source enumeration was incomplete.")
