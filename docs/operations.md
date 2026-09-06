@@ -205,3 +205,73 @@ Unit/process tests prove software decisions and bounded tool behavior. Physical
 Pi/HDMI/4K/hotplug claims remain #66. Panel standby/wake stays with #10; its later
 runtime integration must suspend this reconciliation while intentionally disabling
 outputs. Renderer lifecycle and shared surfaces remain #64/#65.
+
+## Isolated Chromium control (#64)
+
+The implemented controller lives in `postcardscene.graphics.chromium`. It is not
+yet started by the runtime CLI: #58 owns image-adapter integration, #7 full web
+URL/session policy, #65 shared Chromium/mpv/overlay surfaces, and #8 playback.
+
+#26 must supply `ChromiumLaunchSpec(command, profile_root, environment={})` from
+trusted host configuration. `command` is a tuple whose first element is an
+absolute launcher path; remaining words are package invocation arguments, never
+browser options (prefix words beginning with `-` are rejected). A direct binary,
+installer-owned wrapper, or package invocation uses the same controller and
+code-owned flags. No `/usr/bin/chromium` assumption or distro detection exists.
+Launchers must forward the appended argv, stay in the owned process group, and
+exec or wait for Chromium; daemonizing/escaping the group is unsupported.
+
+Provision two distinct, non-nested, initially empty local roots owned by the
+dedicated non-root graphical/runtime user, mode `0700`, beneath trusted ancestors.
+Do not select an administrator's browser profile or an SMB/NFS path. Construction
+creates a context marker and a private `profile/` user-data directory; subsequent
+starts validate them and lock the marker. Cross-context reuse, symlinks, foreign
+ownership, loose permissions and adoption of nonempty unmarked roots fail closed.
+No cookie/history/profile copy or recursive permission/deletion operation occurs.
+
+Chromium's HOME/config/cache locations stay under its own root. The optional
+non-secret overlay accepts only `PATH`, `LANG`, `LC_ALL`, `SNAP_NAME` and
+`SNAP_INSTANCE_NAME`; it cannot replace the #62 Wayland environment or import
+`DISPLAY`, `WAYLAND_SOCKET`, preload variables, proxy settings or secrets. Defaults
+are `/usr/bin:/bin` and `C.UTF-8`. Package launchers needing more must receive a
+deliberately reviewed provisioning change, not a second renderer implementation.
+
+Trusted-image root contents are disposable/replaceable and excluded from backup
+authority. This controller reuses its dedicated user-data directory across process
+restarts but promises no cookie persistence or credential recovery. #7 decides
+intentional web-session retention; #26/#11 own managed cache/root cleanup and disk
+bounds. Never remove a root while its controller is running or its lock is held.
+
+CDP is bound to `127.0.0.1` with port `0` (OS selection). Under the private root,
+`DevToolsActivePort` is bounded to 512 bytes, validated as an owned regular file,
+and removed before launch and after cleanup. It is runtime metadata, never a
+persisted port setting. WebSocket messages are capped at 256 KiB, the receive
+queue at eight frames, and command-time event buffering at 128 messages. No
+HTTP discovery redirects, proxy use, CDP forwarding through Flask, or remote
+control endpoint is supported. Same-account/root access remains a host trust
+boundary for #29; profile permissions are not isolation from the appliance user.
+
+The owning runtime component serializes calls and supplies its shutdown Event's
+`is_set` as `cancelled`. Defaults are 10 seconds for start/restart, 15 for navigate,
+and 5 for blank, including startup when needed; explicit deadlines must be finite
+and within `(0, 120]` seconds. Protocol waits check cancellation/process exit every
+50 ms; a startup connect/handshake may take up to 250 ms per bounded phase.
+Cleanup adds at most a 100 ms CDP close, 250 ms TERM grace and 500 ms leader-reap
+allowance. No other component may reap this controller's child. Failed operations
+stop the browser; failed cleanup retains authority and blocks replacement.
+
+`ChromiumError.reason` distinguishes `invalid_spec`, `invalid_url`,
+`session_unavailable`, `startup_failed`, `cdp_startup`, `cdp_failed`,
+`navigation_timeout`, `navigation_failed`, `browser_exited`, `cancelled` and
+`cleanup_failed`. A secondary cleanup failure preserves the primary reason and
+sets `cleanup_failed=True`. Do not serialize exception locals or private controller
+state: URLs/frame tokens, cookies, debugging endpoints and browser output are not
+public diagnostics. On a healthy browser, blank success means its fixed black
+document loaded; it does not establish HDMI visibility or physical panel standby.
+
+Deterministic process/CDP tests and a real loopback WebSocket peer validate the
+software boundary. No suitable local Chromium/labwc installation was available
+for #64's optional browser smoke. Actual packaged Chromium plus private native
+Wayland, sandboxing, profile permissions and process-group behavior must still be
+validated on both Ubuntu Server and Raspberry Pi OS under #66. This is not a
+physical Pi/GPU/HDMI/4K support claim.
