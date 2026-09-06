@@ -1,3 +1,5 @@
+from html.parser import HTMLParser
+
 import pytest
 
 from postcardscene.web import create_app
@@ -30,14 +32,45 @@ def test_missing_explicit_configuration_fails_startup(monkeypatch, tmp_path):
         create_app()
 
 
-def test_home_and_packaged_stylesheet():
+class AssetParser(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.assets = []
+
+    def handle_starttag(self, tag, attrs):
+        attrs = dict(attrs)
+        if tag == "script":
+            self.assets.append(attrs["src"])
+        elif tag == "link" and attrs.get("rel") == "stylesheet":
+            self.assets.append(attrs["href"])
+
+
+def test_home_and_packaged_assets():
     client = create_app({"TESTING": True}).test_client()
     response = client.get("/")
     assert response.status_code == 200
     assert b"PostcardScene" in response.data
-    assert b'<nav aria-label="Main navigation">' in response.data
+    assert b'aria-label="Main navigation"' in response.data
     assert b'name="viewport"' in response.data
-    assert client.get("/static/control.css").status_code == 200
+    assert b'data-bs-theme="dark"' in response.data
+    assert b'type="module"' in response.data
+    assert b'aria-pressed="false"' in response.data
+    parser = AssetParser()
+    parser.feed(response.text)
+    assert parser.assets == [
+        "/static/vendor/bootstrap-5.3.8/bootstrap.min.css",
+        "/static/control.css",
+        "/static/control.js",
+        "/static/vendor/bootstrap-5.3.8/bootstrap.bundle.min.js",
+    ]
+    for path in parser.assets:
+        asset = client.get(path)
+        assert asset.status_code == 200
+        assert asset.data
+        assert "text/html" not in asset.content_type
+    license_response = client.get("/static/vendor/bootstrap-5.3.8/LICENSE")
+    assert license_response.status_code == 200
+    assert b"The MIT License (MIT)" in license_response.data
 
 
 def test_errors_hide_details_and_preserve_http_semantics():

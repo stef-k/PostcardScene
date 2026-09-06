@@ -1,7 +1,12 @@
 {% extends "base.html" %}
 {% block title %}{{ code }} · {{ name }}{% endblock %}
 {% block content %}
-<h1>{{ code }} · {{ name }}</h1>
-<p>The request could not be completed.</p>
-<p><a href="{{ url_for('control.index') }}">Return to overview</a></p>
+<div class="row">
+  <div class="col-lg-9 col-xl-8">
+    <p class="eyebrow mb-3">Request error</p>
+    <h1 class="mb-4">{{ code }} · {{ name }}</h1>
+    <p class="text-body-secondary mb-4">The request could not be completed.</p>
+    <a href="{{ url_for('control.index') }}">Return to overview</a>
+  </div>
+</div>
 {% endblock %}

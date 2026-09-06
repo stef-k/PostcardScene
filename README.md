@@ -154,6 +154,7 @@ error responses omit exception details; protected server logs remain diagnostic.
 
 - [Architecture](docs/architecture.md)
 - [Roadmap](docs/roadmap.md)
+- [UI design](docs/ui-design.md)
 - [Display hardware guidance](docs/display-hardware.md)
 - [Agent/development guidance](AGENTS.md)
 

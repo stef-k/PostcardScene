@@ -603,7 +603,17 @@ Users
 System
 ```
 
-The frontend should remain simple initially. Server-rendered Flask/Jinja pages with modest JavaScript are sufficient until a concrete interaction justifies more. HTMX remains an option, not a requirement.
+The control frontend uses server-rendered Flask/Jinja and locally vendored compiled
+Bootstrap 5.3.x (initially 5.3.8). A small PostcardScene CSS-variable layer defines
+the visual identity, with dark default and explicit light support through
+`data-bs-theme`. Browser-local theme preference is independent of application
+settings and projected-scene styling. First-party CSS/JS is served directly as
+readable, unminified source; browser code uses small modern vanilla JavaScript
+native ES modules. There is no Node, Sass, TypeScript, bundler/minifier, asset
+manifest or SPA/HTMX pipeline. Future tooling requires a concrete owning issue;
+substantial client state or typed editor/API contracts may justify TypeScript.
+See [UI design](ui-design.md) for the visual, accessibility and asset policies,
+including image-first projected content with dark translucent information overlays.
 
 The base settings/status UI should be responsive and preserve normal accessible labels, keyboard operation, focus/error feedback, and reasonable contrast.
 
