@@ -351,7 +351,7 @@ def _enumerate_directory(
 
 
 @contextmanager
-def open_image_item(
+def _open_media_item(
     kind,
     configuration,
     policy,
@@ -401,3 +401,25 @@ def open_image_item(
         except OSError as error:
             raise InvalidSource("Image cannot be safely opened.") from error
         yield stream
+
+
+def open_image_item(
+    kind,
+    configuration,
+    policy,
+    relative_path,
+    size_bytes,
+    mtime_ns,
+    *,
+    progress=lambda: None,
+):
+    """Preserve the image stream contract over the shared no-follow opener."""
+    return _open_media_item(
+        kind,
+        configuration,
+        policy,
+        relative_path,
+        size_bytes,
+        mtime_ns,
+        progress=progress,
+    )
