@@ -24,7 +24,6 @@ RuntimeDirectory=postcardscene-wayland
 RuntimeDirectoryMode=0700
 UMask=0077
 ExecStart=/opt/postcardscene/venv/bin/python -m postcardscene.graphics.cli launch
-ExecStartPost=/opt/postcardscene/venv/bin/python -m postcardscene.graphics.cli wait --pid ${MAINPID}
 Restart=on-failure
 RestartSec=5
 TimeoutStartSec=15

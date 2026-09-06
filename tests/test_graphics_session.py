@@ -211,5 +211,5 @@ def test_service_owns_nonroot_lifecycle_and_bounded_cleanup():
         "PAMName=postcardscene-graphics",
     ):
         assert directive in unit
-    assert " wait --pid ${MAINPID}" in unit
+    assert "ExecStartPost=" not in unit  # No second PAM/TTY session during startup.
     assert "postcardscene.runtime" not in unit

@@ -1029,27 +1029,42 @@ Scheduling logic belongs to the long-running application runtime, not Flask requ
 
 ## 17. Linux graphics session
 
-PostcardScene is a display appliance and must explicitly own its graphical session.
+The live #31/#62 contract selects native Wayland with labwc for Raspberry Pi
+4/5-class ARM64. Ubuntu Server LTS ARM64 on Raspberry Pi (24.04 and 26.04 where
+packages are available) and Raspberry Pi OS 64-bit are both primary V0 targets.
+One graphics implementation serves both; X11, alternate compositors and full
+desktop/display-manager dependencies are outside V0. Windows is outside V0,
+while platform-neutral application layers retain their existing boundaries.
 
-Issue #31 must select the smallest supported production graphics/session model for the target Linux baseline. Candidate approaches may include a minimal Wayland compositor, X11 session, or direct KMS-capable arrangement.
+#62 packages an isolated appliance labwc configuration and systemd/PAM templates
+beneath `postcardscene.graphics`. One dedicated non-root graphical/runtime user
+owns the service. The default unattended local-VT session uses pam_systemd/logind
+and libseat; seatd is an explicit provisioning alternative. Distro differences
+are limited to package/user/seat/device provisioning owned by #26. No managed
+installer, application service or renderer is introduced here.
 
-The selected path should avoid a general desktop environment or interactive display manager unless evidence proves one is necessary.
+The exec-only launcher gives labwc a private, systemd-owned 0700 local runtime
+directory `/run/postcardscene-wayland`, with the first socket `wayland-0`. It uses
+packaged configuration rather than the administrator's desktop profile, rejects
+stale socket state, and passes an allowlisted environment. Inert bindings prevent
+older labwc from loading desktop defaults. Empty composition clears to black
+without a wallpaper utility; native Wayland clients receive no X display.
 
-The graphical runtime must define:
+`WaylandSession` validates runtime-directory ownership/mode and returns explicit
+child graphics variables. Its bounded core Wayland sync probe reports compositor
+availability separately from process activation and physical display state;
+optional MainPID matching rejects a different peer. Public diagnostics contain
+only fixed safe vocabulary. Systemd owns restart and bounded TERM/KILL cleanup;
+RuntimeHost remains application lifecycle authority. Renderers must be runtime
+children, never labwc autostart jobs. No generic supervisor is added.
 
-- which user owns the session
-- how it starts under boot/systemd ownership
-- how Chromium and mpv target the same display
-- safe blank/background behavior before renderers are ready
-- EDID/display connector discovery
-- deterministic 1080p/4K mode/refresh/scaling behavior
-- boot with no display attached
-- HDMI disconnect/reconnect
-- GPU/render/video device permissions
-- hardware acceleration/video decode expectations
-- audio-output ownership relevant to video playback
-
-Hardware-specific support claims require physical representative ARM64/Pi evidence. Generic CI cannot prove HDMI/GPU behavior.
+[Operations](operations.md#linux-graphical-session-62) owns the service/PAM/seat
+provisioning contract, readiness semantics and evidence limits. #63 still owns
+connector/EDID/mode/hotplug policy, #64 Chromium isolation/control, #65 shared
+surfaces/overlay/input capability, and #66 representative physical validation on
+both primary distro paths. Package availability and headless Linux smoke do not
+prove Pi/HDMI/4K, non-root seat permissions, acceleration or audio support. #31
+remains open until those children and its umbrella acceptance contract are met.
 
 ## 18. Display power management
 
@@ -1306,7 +1321,7 @@ The following are intentionally unresolved until the owning issue has enough evi
 6. **Provider/plugin registration** — whether a formal plugin mechanism ever becomes worthwhile.
 7. **Frontend enhancement** — whether HTMX or another small enhancement is justified after the basic Flask/Jinja UI exists.
 8. **Scheduling implementation primitive** — exact library/timer implementation behind the frozen scheduling semantics.
-9. **Linux graphics/session model** — exact Wayland/X11/KMS/compositor path, owned by #31.
+9. **Graphics output and renderer integration** — Wayland/labwc session is frozen by #62; output/hotplug, Chromium control and overlay/input details remain with #63–#65, physically validated by #66.
 10. **Kiosk authenticated-session persistence** — whether V0 persists third-party web-session cookies and how that state is isolated/recovered.
 11. **Release artifact format** — wheel/archive/other small managed-native distribution shape, owned by #26.
 12. **Production web serving/network boundary** — exact WSGI server and HTTP/HTTPS/reverse-proxy model, owned by #29/#26.
