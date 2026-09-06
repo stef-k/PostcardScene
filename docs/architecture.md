@@ -91,6 +91,20 @@ DDC/CI tools
 Linux DRM/KMS display control
 ```
 
+### Bootstrap package and tooling
+
+Issue #12 establishes one `postcardscene` distribution under `src/postcardscene`,
+with side-effect-free `web` and `runtime` namespaces. Python 3.11 is the bootstrap
+compatibility floor; #26 owns the supported release matrix and version identity.
+The initial package version is `0.0.0` and runtime dependencies are empty.
+
+uv and the committed `uv.lock` own project environments and dependency resolution;
+`uv_build` owns builds. Ruff is the sole project-local formatter/linter and pytest
+the test runner. The bootstrap CI gate checks locked sync, formatting, lint,
+tests, and builds on Python 3.11. No mandatory static type checker is introduced;
+revisit typing when substantive contracts warrant it. Code Guard remains an
+agent-supplied capability without repository-local copies or configuration.
+
 ### Why Flask
 
 PostcardScene needs a proper web settings/control surface, authentication, forms, persistence, and APIs, but the web layer is not the main application runtime.
@@ -745,7 +759,6 @@ The following are intentionally unresolved until the owning issue has enough evi
 12. **Media catalog backup classification** — useful durable state vs regenerable optimization, owned by #30/#27.
 13. **Release artifact format** — wheel/archive/other small managed-native distribution shape, owned by #26.
 14. **Production web serving/network boundary** — exact WSGI server and HTTP/HTTPS/reverse-proxy model, owned by #29/#26.
-15. **Optional code-quality tooling** — static type checking and Agent Code Guard only if they provide proportionate value, owned by #12.
-16. **Renderer live-update transport** — ordinary HTTP polling is preferred where adequate; SSE, WebSockets, or another server-push mechanism is selected only if a concrete V1/V2 requirement proves it useful.
+15. **Renderer live-update transport** — ordinary HTTP polling is preferred where adequate; SSE, WebSockets, or another server-push mechanism is selected only if a concrete V1/V2 requirement proves it useful.
 
 These are deliberate implementation decisions, not reasons to invent answers early. When one is resolved, update this document in the same change that relies on the decision.
