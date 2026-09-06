@@ -226,6 +226,17 @@ migrations, never autogeneration. Forward production updates and restore require
 the recovery contract still owned by #26/#27; replacing application files or
 matching the schema revision alone does not establish safe rollback.
 
+### Source and Widget domain
+
+When updating from the application foundation, stop database users and run
+`db upgrade` explicitly. Migration `0004_source_widget` adds Source/Widget tables
+and preserves administrator/settings state. There is no Source management UI yet.
+Ordinary Python callers use `postcardscene.domain` create/update/get/list/remove
+functions within the existing `Database.transaction()` context. Updates supply
+all fields and replace configuration as a whole; invalid input raises
+`DomainError` before mutation. See [architecture](docs/architecture.md#source-and-widget-persistence)
+for kinds, limits, relationships and the configuration trust boundary.
+
 ### Application settings and status
 
 After stopping database users, run the explicit `db upgrade` command when updating

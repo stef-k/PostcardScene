@@ -287,6 +287,38 @@ Potential widget types include:
 
 Widgets consume source data, catalog entries, and/or shared scene context.
 
+### Source and Widget persistence
+
+Issue #18 adds `postcardscene.domain` and explicit migration `0004_source_widget`.
+Both models inherit the common Base and store generated integer IDs, trimmed
+1–128 character names, ordinary 64-character string kind columns, JSON-object
+configuration and boolean enabled state. Application allowlists own Source kinds
+`local_directory`, `mounted_directory`, `web_url` and Widget kinds `image`,
+`portrait_image_pair`, `video`, `web_view`; adding kinds needs no enum migration.
+
+A Widget has at most one nullable `source_id`. Independent inputs belong primarily
+in separate Widgets composed by a Scene. The foreign key restricts Source deletion;
+the domain reports a referenced Source explicitly. Widget deletion never deletes
+its Source. Disable preserves both records and never changes the other's flag.
+Scene relationships and final cross-kind/lifecycle invariants remain with #19/#21.
+
+Ordinary application writes use the explicit create/update/remove functions in
+`postcardscene.domain` inside `Database.transaction()`; get/list functions return
+session-bound ORM records. Creates flush to obtain identity; updates validate all
+fields before assignment and replace the entire configuration object. Do not use
+direct ORM writes or in-place JSON edits as an application mutation API. Capture
+IDs/values within the transaction because normal commit expiration still applies.
+Validation errors are `DomainError`; storage/constraint failures retain the shared
+SQLAlchemy rollback contract.
+
+The framework-independent structural validator accepts only dicts with string
+keys and finite JSON-native values, copies validated input, and bounds compact
+UTF-8 JSON to 16 KiB. This is not provider semantic validation: #22 owns paths,
+#7/#29 URLs/security, and later providers their own semantics. Configuration must
+not contain credentials before #29 establishes credential-at-rest handling, nor
+original media, catalog metadata, derived provider payloads or runtime selections.
+No catalog is added here; #30 attaches filesystem MediaItems beneath Source IDs.
+
 ### Scene
 
 A `Scene` is the primary visual composition shown on the display.

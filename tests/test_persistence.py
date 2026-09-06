@@ -63,6 +63,8 @@ def test_cli_initialization_identity_and_idempotent_upgrade(tmp_path):
             ("alembic_version",),
             ("administrator",),
             ("application_settings",),
+            ("source",),
+            ("widget",),
         ]
     other = create_app({"DATABASE_PATH": tmp_path / "other.sqlite3"})
     assert other.test_cli_runner().invoke(args=["db", "check"]).exit_code != 0

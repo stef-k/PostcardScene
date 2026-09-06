@@ -4,6 +4,7 @@ from alembic import context
 
 from postcardscene import (  # noqa: F401 -- register migration metadata
     accounts,
+    domain,
     settings,
 )
 from postcardscene.persistence import Base
