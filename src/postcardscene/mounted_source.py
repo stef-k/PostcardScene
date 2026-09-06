@@ -142,7 +142,11 @@ def _receive_entries(connection, cancelled, timeout_seconds, enumerate_entries):
         if not isinstance(message, tuple) or len(message) != 2:
             raise EnumerationFailed("Mounted worker protocol failed.")
         kind, value = message
-        if kind == "entry" and enumerate_entries and isinstance(value, MediaEntry):
+        if (
+            kind == "entry"
+            and enumerate_entries is True
+            and isinstance(value, MediaEntry)
+        ):
             yield value
         elif (
             kind == "metadata"

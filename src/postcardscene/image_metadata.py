@@ -29,7 +29,9 @@ def inspect_image(kind, configuration, policy, entry):
             warnings.simplefilter("error", Image.DecompressionBombWarning)
             with Image.open(path) as image:
                 width, height = image.size
-                if image.getexif().get(274) in (5, 6, 7, 8):
+                # Use header EXIF only: PNG.getexif() otherwise calls load()
+                # to discover trailing chunks, decoding the entire image.
+                if Image.Image.getexif(image).get(274) in (5, 6, 7, 8):
                     width, height = height, width
         info = resolve_item_path(
             kind, configuration, policy, entry.relative_path

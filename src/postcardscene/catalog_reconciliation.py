@@ -175,6 +175,12 @@ def _save_metadata(database, source_id, generation, result):
         row.orientation = result.orientation
 
 
+def _local_metadata(kind, configuration, policy, entries, cancelled):
+    for entry in entries:
+        _check_cancelled(cancelled)
+        yield inspect_image(kind, configuration, policy, entry)
+
+
 def _metadata(
     database,
     source_id,
@@ -203,9 +209,7 @@ def _metadata(
                 timeout_seconds=timeout,
             )
         else:
-            results = (
-                inspect_image(kind, configuration, policy, entry) for entry in entries
-            )
+            results = _local_metadata(kind, configuration, policy, entries, cancelled)
         with closing(results):
             for result in results:
                 _check_cancelled(cancelled)
