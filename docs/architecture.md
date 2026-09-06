@@ -691,6 +691,16 @@ installed. #29/#26 retain production serving ownership. The shell has a lazy sha
 database handle and explicit migration CLI; #15 adds authentication, without settings
 behavior or runtime IPC. See README for local startup.
 
+Issue #16 adds authenticated Overview/status and Settings. The explicit
+`0003_application_settings` migration seeds one typed singleton with timezone `UTC`;
+validated IANA names use Python `zoneinfo` and short shared transactions. This is
+durable appliance configuration; #9 retains scheduling/DST ownership. Status
+composition lives in a small explicit `postcardscene.status` view model using
+`Database.check()`, with sanitized failure rows. Later owning issues add concrete
+contributors that contain their own failures, without a registry. Runtime is only
+unavailable/not yet connected until #17 defines IPC. Authentication still depends
+on a compatible readable database; status does not bypass that boundary.
+
 ## 21. Authentication, network exposure, and secrets
 
 Initial authentication should be simple and appropriate to a self-hosted appliance.

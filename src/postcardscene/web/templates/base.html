@@ -18,6 +18,7 @@
           <div class="d-flex align-items-center flex-wrap gap-3">
             {% if current_user.is_authenticated %}
             <a class="nav-link py-2" href="{{ url_for('control.index') }}"{% if request.endpoint == 'control.index' %} aria-current="page"{% endif %}>Overview</a>
+            <a class="nav-link py-2" href="{{ url_for('settings.index') }}"{% if request.endpoint == 'settings.index' %} aria-current="page"{% endif %}>Settings</a>
             <form method="post" action="{{ url_for('auth.logout') }}">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <button class="btn btn-theme" type="submit">Log out all sessions</button>
