@@ -17,6 +17,7 @@ dependencies = [
 ]
 
 [project.scripts]
+postcardscene-input-emitter = "postcardscene.graphics.local_input:main"
 postcardscene-runtime = "postcardscene.runtime.cli:main"
 
 [build-system]
