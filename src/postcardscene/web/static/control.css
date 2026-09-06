@@ -139,8 +139,22 @@ h1 {
 
 a:focus-visible,
 button:focus-visible,
+.form-control:focus-visible,
 main:focus-visible {
   outline: 3px solid var(--psc-focus);
   outline-offset: 4px;
   box-shadow: none;
+}
+
+.btn-primary {
+  --bs-btn-color: var(--psc-body);
+  --bs-btn-bg: var(--psc-accent);
+  --bs-btn-border-color: var(--psc-accent);
+  --bs-btn-hover-color: var(--psc-body);
+  --bs-btn-hover-bg: var(--psc-focus);
+  --bs-btn-hover-border-color: var(--psc-focus);
+  --bs-btn-active-color: var(--psc-body);
+  --bs-btn-active-bg: var(--psc-focus);
+  --bs-btn-active-border-color: var(--psc-focus);
+  min-height: 2.75rem;
 }

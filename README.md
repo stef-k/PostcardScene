@@ -127,8 +127,9 @@ local control interface with:
 uv run flask --app postcardscene.web:create_app run --host 127.0.0.1 --no-debug
 ```
 
-Open <http://127.0.0.1:5000/> and log in. Authentication protects the overview;
-settings, runtime status and playback controls are not implemented.
+Open <http://127.0.0.1:5000/> and log in. Authentication protects Overview and Settings. Overview shows the application
+version, database/schema health and unavailable runtime status; playback controls
+are not implemented.
 The command starts only the web process. Stop it with Ctrl-C.
 
 The Flask development server is for local development only. It is not the managed
@@ -212,6 +213,28 @@ ID; it does not pre-create future domain tables. Production uses packaged
 migrations, never autogeneration. Forward production updates and restore require
 the recovery contract still owned by #26/#27; replacing application files or
 matching the schema revision alone does not establish safe rollback.
+
+### Application settings and status
+
+After stopping database users, run the explicit `db upgrade` command when updating
+from the authentication foundation. Migration `0003_application_settings` creates
+one typed settings row with application timezone `UTC`; repeated upgrades preserve
+saved settings and the administrator. Startup never creates or repairs settings.
+
+Log in and open **Settings** to save an IANA timezone such as `Europe/Athens` or
+`UTC`. Names are validated against Python `zoneinfo` and the host timezone database;
+invalid input leaves the previous value unchanged and shows form feedback. Keep
+the host timezone database installed and current. This stores appliance
+configuration only: it does not change the host clock or implement schedules/DST
+behavior (#9). The dark/light toggle remains a browser-local presentation choice.
+
+**Overview** shows the installed application version and the exact schema revision
+only after the shared database health check succeeds. An unsuccessful check shows
+**Needs attention** with an unverified revision, without raw errors or paths; use
+`db check` on the host for diagnosis. Authentication itself still requires a
+compatible, readable database; the dashboard is not an out-of-band recovery tool.
+Runtime/player status is **Unavailable / Not yet connected** until #17 establishes
+its real contract. No runtime service is probed or controlled by these pages.
 
 ### Local authentication and recovery
 

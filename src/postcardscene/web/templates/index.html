@@ -1,16 +1,24 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="row">
-  <div class="col-lg-9 col-xl-8">
+  <div class="col-lg-10 col-xl-9">
     <p class="eyebrow mb-3">Your ambient display</p>
     <h1 class="mb-4">Your display,<br>at a glance.</h1>
-    <p class="lead text-body-secondary mb-5">A place for your photographs, places and everyday discoveries.</p>
-    <section class="card" aria-labelledby="welcome-title">
+    <p class="lead text-body-secondary mb-5">Appliance health and the essentials for getting started.</p>
+    <section class="card mb-4" aria-labelledby="status-title">
       <div class="card-body p-4 p-md-5">
-        <h2 id="welcome-title" class="h4 mb-3">Welcome to PostcardScene</h2>
-        <p class="text-body-secondary mb-0">Display setup and controls will be available here as development continues.</p>
+        <h2 id="status-title" class="h4 mb-4">System status</h2>
+        <dl class="mb-0">
+          <dt>Application</dt>
+          <dd class="text-body-secondary mb-4">PostcardScene · Version {{ status.application_version }}</dd>
+          {% for row in status.rows %}
+          <dt class="d-flex flex-wrap align-items-center gap-2">{{ row.label }} <span class="badge text-body border">{{ row.state }}</span></dt>
+          <dd class="text-body-secondary{% if not loop.last %} mb-4{% else %} mb-0{% endif %}">{{ row.detail }}</dd>
+          {% endfor %}
+        </dl>
       </div>
     </section>
+    <a class="btn btn-primary" href="{{ url_for('settings.index') }}">Application settings</a>
   </div>
 </div>
 {% endblock %}

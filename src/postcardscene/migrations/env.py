@@ -2,7 +2,10 @@
 
 from alembic import context
 
-from postcardscene import accounts  # noqa: F401 -- register migration metadata
+from postcardscene import (  # noqa: F401 -- register migration metadata
+    accounts,
+    settings,
+)
 from postcardscene.persistence import Base
 
 connection = context.config.attributes.get("connection")
