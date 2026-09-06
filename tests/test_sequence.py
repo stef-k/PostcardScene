@@ -60,7 +60,7 @@ def test_upgrade_preserves_existing_state(tmp_path):
     assert (
         upgrade_database(database.path).schema_revision
         == SCHEMA_REVISION
-        == "0007_media_catalog"
+        == "0008_catalog_requests"
     )
     with database.transaction() as session:
         for table in tables:

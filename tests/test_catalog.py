@@ -87,7 +87,7 @@ def test_migration_preserves_full_configuration(tmp_path):
             table: connection.exec_driver_sql(f"SELECT * FROM {table}").all()
             for table in tables
         }
-    assert upgrade_database(db.path).schema_revision == "0007_media_catalog"
+    assert upgrade_database(db.path).schema_revision == "0008_catalog_requests"
     with db.engine.connect() as connection:
         for table in tables:
             assert (
@@ -231,12 +231,12 @@ def test_batches_release_database_before_filesystem_and_metadata(catalog, monkey
     active = False
 
     @contextmanager
-    def checked_transaction():
+    def checked_transaction(**kwargs):
         nonlocal active
         assert not active
         active = True
         try:
-            with transaction() as session:
+            with transaction(**kwargs) as session:
                 yield session
         finally:
             active = False
@@ -250,7 +250,7 @@ def test_batches_release_database_before_filesystem_and_metadata(catalog, monkey
         for entry in original(*args, **kwargs):
             assert not active
             # A control-plane writer can complete between streaming entries.
-            with transaction() as session:
+            with transaction(write=True) as session:
                 session.get(d.Source, source_id).name = "Still responsive"
             yield entry
 
@@ -338,9 +338,9 @@ def test_cleanup_rechecks_generation_each_batch(catalog, monkeypatch):
     removed = []
 
     @contextmanager
-    def interleaved():
+    def interleaved(**kwargs):
         nonlocal supersede
-        with transaction() as session:
+        with transaction(**kwargs) as session:
             before = c.count_media_items(session, source_id)
             yield session
             after = c.count_media_items(session, source_id)
@@ -348,7 +348,7 @@ def test_cleanup_rechecks_generation_each_batch(catalog, monkeypatch):
             removed.append(before - after)
             if not supersede:
                 supersede = True
-                with transaction() as session:
+                with transaction(**kwargs) as session:
                     session.get(c.MediaCatalogState, source_id).scan_generation += 1
 
     monkeypatch.setattr(db, "transaction", interleaved)

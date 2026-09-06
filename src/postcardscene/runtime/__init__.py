@@ -80,11 +80,14 @@ class RuntimeHost:
             self._set_state(Lifecycle.RUNNING)
             try:
                 self.stop_event.wait()
-            finally:
-                self.request_shutdown()
-                self._set_state(Lifecycle.STOPPING)
-                if self.catalog_worker is not None:
-                    self.catalog_worker.join()
+            except BaseException as error:
+                try:
+                    self._stop_catalog_worker()
+                except Exception:
+                    error.add_note("Catalog worker cleanup also failed.")
+                raise
+            else:
+                self._stop_catalog_worker()
             if (
                 self.catalog_worker is not None
                 and self.catalog_worker.failure is not None
@@ -97,3 +100,9 @@ class RuntimeHost:
             self._set_state(Lifecycle.ERROR)
             self.request_shutdown()
             raise
+
+    def _stop_catalog_worker(self):
+        self.request_shutdown()
+        self._set_state(Lifecycle.STOPPING)
+        if self.catalog_worker is not None:
+            self.catalog_worker.join()

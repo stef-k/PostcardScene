@@ -7,6 +7,8 @@ from threading import Event, Thread
 
 import pytest
 
+from postcardscene.catalog import MediaCatalogState
+from postcardscene.catalog_requests import request_catalog_reconciliation
 from postcardscene.runtime import Lifecycle, RuntimeHost, cli
 
 
@@ -66,7 +68,9 @@ def test_degraded_remains_operational(monkeypatch):
     assert host.status.state == Lifecycle.STOPPED
 
 
-def test_fatal_failure_propagates_and_executable_returns_nonzero(monkeypatch, capsys):
+def test_fatal_failure_propagates_and_executable_returns_nonzero(
+    monkeypatch, capsys, catalog
+):
     host = RuntimeHost()
 
     def fail():
@@ -82,7 +86,12 @@ def test_fatal_failure_propagates_and_executable_returns_nonzero(monkeypatch, ca
 
     executable_host = RuntimeHost()
     monkeypatch.setattr(executable_host.stop_event, "wait", fail)
-    monkeypatch.setattr(cli, "RuntimeHost", lambda: executable_host)
+    monkeypatch.setattr(cli, "RuntimeHost", lambda *args: executable_host)
+    monkeypatch.setattr(
+        cli,
+        "load_runtime_config",
+        lambda: {"DATABASE_PATH": catalog[0].path, "MEDIA_ALLOWED_ROOTS": []},
+    )
     previous = {s: signal.getsignal(s) for s in (signal.SIGINT, signal.SIGTERM)}
     assert cli.main() == 1
     assert executable_host.status.state == Lifecycle.ERROR
@@ -102,8 +111,17 @@ def test_shutdown_before_run_and_no_restart():
 
 
 @pytest.mark.parametrize("signum", [signal.SIGTERM, signal.SIGINT])
-def test_packaged_entrypoint_without_flask_and_cooperative_signals(tmp_path, signum):
-    # The wrapper announces readiness after executable handlers are installed.
+def test_packaged_entrypoint_without_flask_and_cooperative_signals(
+    tmp_path, signum, catalog, monkeypatch
+):
+    config = tmp_path / "runtime.py"
+    config.write_text(
+        f"DATABASE_PATH = {str(catalog[0].path)!r}\n"
+        f"MEDIA_ALLOWED_ROOTS = [{str(catalog[2])!r}]\n"
+    )
+    monkeypatch.setenv("POSTCARDSCENE_CONFIG", str(config))
+    request_catalog_reconciliation(catalog[0], catalog[1])
+    # The wrapper announces readiness after the persisted request is consumed.
     # It invokes the installed entry point, rejecting any Flask/web imports.
     script = """
 import sys
@@ -114,10 +132,18 @@ class RejectWeb:
             raise AssertionError("Runtime must not import web code")
 sys.meta_path.insert(0, RejectWeb())
 from postcardscene.runtime import RuntimeHost, Lifecycle
+from postcardscene.runtime.catalog_refresh import CatalogRefreshWorker
+original_consume = CatalogRefreshWorker.consume_one
+def consume(self):
+    result = original_consume(self)
+    if result:
+        print("ready", flush=True)
+    return result
+CatalogRefreshWorker.consume_one = consume
 original_run = RuntimeHost.run
 def run(self):
-    print("ready", flush=True)
     original_run(self)
+    assert not self.catalog_worker.thread.is_alive()
     assert self.stop_event.is_set()
     assert self.status.state == Lifecycle.STOPPED
 RuntimeHost.run = run
@@ -141,6 +167,10 @@ sys.exit(entry.load()())
         stdout, stderr = process.communicate(timeout=5)
         assert process.returncode == 0, stderr
         assert stdout == stderr == ""
+        with catalog[0].transaction() as session:
+            state = session.get(MediaCatalogState, catalog[1])
+            assert state.last_result == "ready"
+            assert not state.refresh_pending
     finally:
         if process.poll() is None:
             process.kill()

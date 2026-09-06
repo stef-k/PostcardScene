@@ -160,8 +160,12 @@ After `uv sync --locked`, run `uv run postcardscene-runtime`. The packaged
 Ctrl-C (SIGINT) or SIGTERM requests cooperative shutdown. Normal exit is zero;
 fatal failure exits nonzero with a safe diagnostic.
 
-No database setup, Flask configuration, display, browser or hardware is required.
-The skeleton performs no playback, scans, scheduling or display-power operations.
+Initialize/migrate the shared database first, as described below. Web and runtime
+read `DATABASE_PATH` and `MEDIA_ALLOWED_ROOTS` from the same optional operator-owned
+Python file selected by `POSTCARDSCENE_CONFIG`; the runtime loader does not import
+Flask. A configured missing/unreadable file or incompatible database fails runtime
+startup. The runtime performs only explicitly requested catalog refreshes, with no
+playback, automatic scans, scheduling or display-power operations.
 Web and runtime restart independently; Overview still reports runtime unavailable
 until a later issue chooses and connects IPC.
 
@@ -271,7 +275,37 @@ presence scan removes missing items; outages/partial scans preserve unseen rows.
 Mounted metadata reads run in disposable child processes. Bad images remain present
 with metadata errors, and unchanged ready images are not reopened. Source disable
 preserves the catalog. Scan generations/results and bounded query/count functions
-are available for later runtime/UI work; no automatic scan scheduling is added.
+are available for runtime/UI work; no automatic scan scheduling is added.
+
+Migration `0008_catalog_requests` preserves existing state and adds durable refresh
+request counters. Configure `MEDIA_ALLOWED_ROOTS = ["/absolute/media/root"]` in the
+same trusted Python file used by both processes. It defaults to an empty tuple
+(no filesystem authority), accepts only a list/tuple of absolute host roots via
+`PathPolicy`, and is never Source JSON or an ordinary web setting. #26 owns managed
+installation provisioning; #25 will add the authenticated management/refresh UI.
+
+Ordinary Python callers can use
+`postcardscene.catalog_requests.request_catalog_reconciliation(database, source_id)`
+to request refresh of an existing enabled filesystem Source. This writes only the
+DB and returns an incremented coalescing token. The runtime polls one request per
+second on one dedicated thread and invokes the existing reconciliation operation.
+Ready/unavailable/error results consume the captured token without automatic retry;
+a newer request remains pending. Shutdown cancellation/process death leaves work
+pending for restart. Read `MediaCatalogState.refresh_pending`, `interrupted`, result
+and attempt/success timestamps for queued/active/interrupted and last-result health.
+
+Use `domain.update_source` inside `database.transaction(write=True)` for Source
+edits: changing kind/path/recursive supersedes scans/requests and clears derived
+items/freshness; disabling supersedes work while preserving items and last success.
+Renaming/re-enabling preserves catalog knowledge. An enabled edited Source needs a
+new explicit request after saving. Deletion keeps the existing composition rule
+and cascades Source-owned catalog/request state.
+
+Normal shutdown cancels and joins the catalog thread within five seconds. Mounted
+I/O retains disposable-process isolation. Python cannot interrupt a blocked local
+kernel filesystem call; if cleanup exceeds the bound, the runtime exits nonzero
+with a safe diagnostic rather than claiming clean shutdown. The worker thread is
+daemonic only to preserve that process-exit bound, not another service.
 
 Catalog state is regenerable. Whole-database backups may contain it, but restored
 catalog freshness must be re-established from external Sources by reconciliation.

@@ -1,5 +1,7 @@
 """Durable manual requests and Source authority at the SQLite/catalog seam."""
 
+from threading import Event
+
 import pytest
 
 from postcardscene import catalog_reconciliation as reconciliation
@@ -8,7 +10,6 @@ from postcardscene.catalog import MediaCatalogState, list_media_items
 from postcardscene.catalog_requests import request_catalog_reconciliation
 from postcardscene.filesystem_source import InvalidSource, ScanCancelled
 from postcardscene.runtime.catalog_refresh import CatalogRefreshWorker
-from threading import Event
 
 
 def state(db, source_id):
@@ -143,3 +144,97 @@ def test_edit_supersedes_active_scan_and_pending_request(catalog, monkeypatch, c
         assert items == []
         assert row.last_result == "never_scanned"
         assert row.last_success_ns is row.last_attempt_ns is None
+
+
+def test_migration_preserves_application_and_catalog(tmp_path):
+    from alembic import command
+    from alembic.autogenerate import compare_metadata
+    from alembic.migration import MigrationContext
+
+    from postcardscene.persistence import Base, Database
+    from postcardscene.schema import migration_config, upgrade_database
+
+    db = Database(tmp_path / "old.sqlite3", create=True)
+    with db.engine.begin() as connection:
+        command.upgrade(migration_config(connection), "0007_media_catalog")
+        for statement in [
+            "INSERT INTO administrator VALUES (1, 'admin', 'hash', 'identity')",
+            "UPDATE application_settings SET timezone = 'Europe/Athens'",
+            "INSERT INTO source VALUES (1, 'Photos', 'local_directory', '{}', 1)",
+            "INSERT INTO widget VALUES (1, 'Image', 'image', '{}', 0, 1)",
+            "INSERT INTO scene VALUES (1, 'Scene', 'single', 30, 0)",
+            "INSERT INTO scene_placement VALUES (1, 1, 1, 0, 'main')",
+            "INSERT INTO sequence VALUES (1, 'Sequence', 'ordered', 1)",
+            "INSERT INTO sequence_membership VALUES (1, 1, 1, 0, NULL)",
+            "INSERT INTO media_item VALUES (1,1,'a.jpg','image',42,123,7,20,10,'landscape','ready',NULL)",
+            "INSERT INTO media_catalog_state VALUES (1,7,7,'ready',123,456)",
+        ]:
+            connection.exec_driver_sql(statement)
+        tables = [
+            "administrator",
+            "application_settings",
+            "source",
+            "widget",
+            "scene",
+            "scene_placement",
+            "sequence",
+            "sequence_membership",
+            "media_item",
+        ]
+        before = {
+            table: connection.exec_driver_sql(f'SELECT * FROM "{table}"').all()
+            for table in tables
+        }
+    assert upgrade_database(db.path).schema_revision == "0008_catalog_requests"
+    with db.engine.connect() as connection:
+        for table in tables:
+            assert (
+                connection.exec_driver_sql(f'SELECT * FROM "{table}"').all()
+                == before[table]
+            )
+        assert connection.exec_driver_sql(
+            "SELECT * FROM media_catalog_state"
+        ).one() == (1, 7, 7, "ready", 123, 456, 0, 0)
+        assert (
+            compare_metadata(MigrationContext.configure(connection), Base.metadata)
+            == []
+        )
+    db.engine.dispose()
+
+
+def test_concurrent_requests_preserve_every_increment(catalog):
+    from threading import Barrier, Thread
+
+    db, source_id, _, _ = catalog
+    barrier = Barrier(3)
+    tokens = []
+    failures = []
+
+    def request():
+        try:
+            barrier.wait(timeout=2)
+            tokens.append(request_catalog_reconciliation(db, source_id))
+        except Exception as error:
+            failures.append(error)
+
+    threads = [Thread(target=request) for _ in range(2)]
+    for thread in threads:
+        thread.start()
+    barrier.wait(timeout=2)
+    for thread in threads:
+        thread.join(6)
+        assert not thread.is_alive()
+    assert failures == []
+    assert sorted(tokens) == [1, 2]
+    assert state(db, source_id).requested_generation == 2
+
+
+def test_rename_keeps_pending_request_and_invalid_update_rolls_back(catalog):
+    db, source_id, _, _ = catalog
+    request_catalog_reconciliation(db, source_id)
+    edit(db, source_id, name="Renamed")
+    assert state(db, source_id).refresh_pending
+    with pytest.raises(domain.DomainError):
+        edit(db, source_id, name="", configuration={"path": "/different"})
+    assert state(db, source_id).refresh_pending
+    assert state(db, source_id).scan_generation == 0

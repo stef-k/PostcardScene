@@ -60,9 +60,10 @@ class CatalogRefreshWorker:
                 request_generation=generation,
             )
         except ScanCancelled:
-            # Shutdown remains pending. Supersession already invalidated the
-            # old authority, or a later reconciliation can service this token.
-            return True
+            # Only runtime shutdown requires replay; edits already supersede
+            # old authority, and other handled cancellations need a new request.
+            if self.stop_event.is_set():
+                return True
         except FilesystemSourceError:
             # #30 records expected outcomes; missing/disabled Sources are also
             # handled without touching storage. Never expose raw storage errors.
@@ -71,10 +72,13 @@ class CatalogRefreshWorker:
             )
         with self.database.transaction(write=True) as session:
             state = session.get(MediaCatalogState, source_id)
-            if state is not None:
-                state.handled_request_generation = max(
-                    state.handled_request_generation, generation
-                )
+            if state is not None and state.handled_request_generation < generation:
+                if state.interrupted:
+                    raise RuntimeError("Catalog completion was not persisted.")
+                # A deleted Source has no state to recreate. Edits have already
+                # advanced handled authority, and newer requests remain pending.
+                if generation <= state.requested_generation:
+                    state.handled_request_generation = generation
         return True
 
     def run(self):

@@ -114,7 +114,11 @@ class Database:
 
     @contextmanager
     def transaction(self, *, write=False):
-        """Commit success, roll back failure, always close; no implicit retries."""
+        """Commit success, roll back failure, always close; no implicit retries.
+
+        write=True reserves SQLite's writer before reading a mutable snapshot.
+        Use only for short DB-only units, including catalog and Source edits.
+        """
         with self._sessions.begin() as session:
             require_schema(
                 session.connection(execution_options={"sqlite_write": write})

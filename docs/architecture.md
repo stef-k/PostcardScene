@@ -222,8 +222,10 @@ A Chromium, mpv, cataloging, source, or media failure must be recoverable withou
 The precise control-plane/runtime IPC mechanism remains intentionally open.
 
 Issue #17 provides the packaged `postcardscene-runtime` executable and ordinary
-Python `RuntimeHost`, independent of Flask, database setup and display hardware.
-It starts no renderers, scans, schedules or workers. `host.status` returns a frozen
+Python `RuntimeHost`, independent of Flask and display hardware. #52 injects a
+shared Database/PathPolicy and starts one catalog request thread; the executable
+checks the explicitly migrated database before starting. A bare host remains
+available for lifecycle tests. It starts no renderers or schedules. `host.status` returns a frozen
 `RuntimeStatus` with lifecycle state and fixed safe summary; control callers can
 inspect it and call `request_shutdown()`. No transport or serialization is added.
 
@@ -239,7 +241,8 @@ SIGINT request the same shutdown path; the host waits interruptibly on that even
 Future source reconciliation, scheduling, provider refresh and renderer supervision
 belong here, outside Flask requests, and must observe the shared event without
 clearing it and bound their work and cleanup. This freezes ownership/cancellation,
-not the future concurrency primitive; no job framework or third service is added.
+not a general concurrency framework. #52 uses one dedicated catalog thread with
+a bounded join; no job framework or third service is added.
 Managed systemd installation remains owned by #11/#26.
 
 ## 5. Core composition model
@@ -614,7 +617,7 @@ it without mutation. Source-to-Widget deletion restrictions remain unchanged.
 `catalog_reconciliation.reconcile_filesystem_source(database, source_id, policy,
 *, cancelled=None, batch_size=100, metadata_batch_size=32,
 mounted_timeout_seconds=10.0)` performs one operation outside Flask requests.
-Later runtime work serializes ordinary per-Source scans and owns cadence/retries;
+#52 serializes explicit requests through this operation on one runtime thread;
 #30 adds no scheduling, service or queue. Presence batches accept 1–500 entries;
 metadata batches accept 1–64. All filesystem work and mounted waits occur outside
 short database transactions, consuming exactly the #23/#24 enumeration stream.
@@ -654,6 +657,60 @@ Catalog rows/state are **regenerable derived state** for #27. Whole-database bac
 may incidentally include them, but restore must require fresh reconciliation before
 treating catalog freshness as authoritative. Original media remain external/unowned;
 no second catalog database or catalog-dependent recovery authority is introduced.
+
+### Manual catalog refresh requests (#52)
+
+`0008_catalog_requests` preserves existing application/catalog state and adds
+nonnegative integer `requested_generation` and `handled_request_generation`
+counters, both defaulting to zero. A missing state row or zero requested generation
+means no refresh has been requested; `refresh_pending` means requested > handled.
+Together with #30's scan/completed mismatch, result and attempt/success timestamps,
+this exposes queued, active/interrupted and last handled health without per-file
+progress. These are coalescing tokens, not a job/event queue or distributed lock.
+
+`catalog_requests.request_catalog_reconciliation(database, source_id)` validates
+an existing enabled filesystem Source and increments its token in one short DB-only
+transaction. It neither probes paths nor imports/calls reconciliation. #25 owns the
+later authenticated UI and will use this seam without scanning in a Flask request.
+
+The runtime-owned `CatalogRefreshWorker` polls the first pending Source by ID with
+`LIMIT 1`, serially invoking #30 off the RuntimeHost thread. It captures request N;
+#30 checks N against supersession in its existing start transaction before capturing
+Source authority. Success/unavailable/error consumes only N, leaving N+1 pending.
+No automatic failure retry occurs. Shutdown cancellation leaves N pending for the
+next runtime start; deletion/disable safely skips obsolete work. A database or
+infrastructure failure stops the host with error rather than silently losing the
+worker. Polling waits one second between attempts, including failures and idle polls.
+
+`domain.update_source` calls the focused `catalog.supersede_catalog` helper in the
+same transaction as an authority change (kind/path/recursive) or disable. Authority
+changes increment the scan token, consume outstanding requests, delete derived
+MediaItems and reset result/timestamps to never-scanned. Tokens remain monotonic;
+the state row is not recreated. Disable supersedes scans/requests but preserves
+items, result and successful knowledge. Re-enable/rename does not queue work; #25
+requests a fresh token after an enabled authority edit. Source deletion retains
+composition restrictions and cascades catalog/request state.
+
+Short catalog writes and Source edits use `Database.transaction(write=True)`:
+`BEGIN IMMEDIATE` reserves SQLite's single writer before read/modify/write, retaining
+the existing bounded busy timeout. Read-only transactions still use `BEGIN`. No
+transaction spans filesystem work, mounted IPC or cancellation waits; this is
+SQLite transaction policy, not a lease or advisory lock.
+
+Both entrypoints load the same optional trusted executable Python configuration
+file selected by `POSTCARDSCENE_CONFIG` through `configuration.load_operator_config`.
+The runtime consumes only `DATABASE_PATH` and `MEDIA_ALLOWED_ROOTS`, without importing
+Flask. Missing/unreadable configured files fail startup. `MEDIA_ALLOWED_ROOTS` is a
+list/tuple of absolute host roots consumed through #22 `PathPolicy`, empty by default,
+never persisted in Source JSON or editable through the ordinary UI. #25 reads the
+same key from Flask configuration; #26 later owns installation provisioning.
+
+Shutdown sets the shared stop event and joins for at most five seconds. Cooperative
+cleanup leaves no live catalog thread. Mounted scans/metadata retain #24 isolation;
+local kernel calls retain their synchronous-call limitation. If a local call blocks
+past the join bound, shutdown reports error; the thread is daemonic so it cannot
+prevent process exit. This does not claim Python can cancel an arbitrary syscall.
+No automatic cadence, scheduler, third service, pool, playback or refresh UI is added.
 
 ## 7. Image behavior
 
@@ -1126,7 +1183,7 @@ The V0 tracker/release issue owns exact-candidate closure evidence for:
 
 The following are intentionally unresolved until the owning issue has enough evidence:
 
-1. **Control-plane/runtime IPC** — Unix socket, localhost HTTP, another narrow local protocol, or a combination.
+1. **General control-plane/runtime IPC** — Unix socket, localhost HTTP, another narrow local protocol, or a combination. #52 freezes only catalog refresh requests as coalescing SQLite tokens; live status/playback transport remains open.
 2. **Image rendering boundary** — all images in Chromium vs a dedicated rendering path for some modes.
 3. **General cached-provider storage** — exact V1 cache implementation/invalidation strategy.
 4. **Credential-at-rest mechanism** — exact protection/master-key approach and recovery behavior.

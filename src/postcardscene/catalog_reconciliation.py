@@ -235,6 +235,8 @@ def reconcile_filesystem_source(
 ):
     """Reconcile once; caller owns cadence and serializes normal per-Source work.
 
+    request_generation optionally gates runtime work against request supersession
+    in the same transaction that captures Source authority and starts the scan.
     Disabled/missing/non-filesystem Sources raise InvalidSource without mutation.
     Presence failures record handled state then propagate. Metadata worker failures
     propagate too, but retain the already committed ready presence result. Abrupt
