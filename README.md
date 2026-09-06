@@ -118,6 +118,38 @@ Development requires Python >=3.11 and
 See [AGENTS.md](AGENTS.md#project-local-development-tooling) for the canonical
 development commands and tooling workflow.
 
+### Control shell development
+
+After `uv sync --locked`, start the local control interface with:
+
+```bash
+uv run flask --app postcardscene.web:create_app run --host 127.0.0.1 --no-debug
+```
+
+Open <http://127.0.0.1:5000/>. This is a read-only navigation shell; authentication,
+settings, persistence, runtime status and playback controls are not implemented.
+The command starts only the web process. Stop it with Ctrl-C.
+
+The Flask development server is for local development only. It is not the managed
+production appliance server. Issues #29 and #26 own the production WSGI server,
+bind address, HTTP/HTTPS and reverse-proxy deployment policy.
+
+`create_app(config=None)` loads Flask defaults (debug/testing off, no session
+secret), then an optional Python configuration file named by the
+`POSTCARDSCENE_CONFIG` environment variable, then explicit mapping overrides for
+tests or a deployment entrypoint. Use an absolute path to an operator-owned file
+outside the checkout; a specified missing/unreadable file fails startup. Python
+configuration is trusted executable host configuration, never web input. Keep
+secrets out of source control; this shell does not generate or require a secret.
+
+Flask configuration such as `TRUSTED_HOSTS` can be supplied through that file or
+mapping. `SERVER_NAME` is not a bind address or a Host allowlist. The future WSGI
+server owns listening configuration; the factory returns a standard Flask WSGI
+application and does not bind a socket. Forwarded headers are not trusted through
+proxy middleware by default; #29 must define trusted proxy topology before adding
+such middleware. Keep debug/testing disabled in deployment configuration. Normal
+error responses omit exception details; protected server logs remain diagnostic.
+
 ## Documentation
 
 - [Architecture](docs/architecture.md)

@@ -1,0 +1,7 @@
+{% extends "base.html" %}
+{% block title %}{{ code }} · {{ name }}{% endblock %}
+{% block content %}
+<h1>{{ code }} · {{ name }}</h1>
+<p>The request could not be completed.</p>
+<p><a href="{{ url_for('control.index') }}">Return to overview</a></p>
+{% endblock %}

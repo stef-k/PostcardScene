@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}Overview{% endblock %} · PostcardScene</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='control.css') }}">
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <header>
+      <a class="brand" href="{{ url_for('control.index') }}">PostcardScene</a>
+      <nav aria-label="Main navigation">
+        <a href="{{ url_for('control.index') }}"{% if request.endpoint == 'control.index' %} aria-current="page"{% endif %}>Overview</a>
+      </nav>
+    </header>
+    <main id="main" tabindex="-1">{% block content %}{% endblock %}</main>
+  </body>
+</html>
