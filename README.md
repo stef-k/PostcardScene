@@ -111,6 +111,13 @@ The Foundation milestone is not complete merely when source code can display med
 
 External media libraries themselves are not copied into PostcardScene backups.
 
+## Development
+
+Development requires Python >=3.11 and
+[uv](https://docs.astral.sh/uv/getting-started/installation/).
+See [AGENTS.md](AGENTS.md#project-local-development-tooling) for the canonical
+development commands and tooling workflow.
+
 ## Documentation
 
 - [Architecture](docs/architecture.md)
