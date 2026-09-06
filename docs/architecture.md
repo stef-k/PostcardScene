@@ -714,23 +714,81 @@ prevent process exit. This does not claim Python can cancel an arbitrary syscall
 
 ## 7. Image behavior
 
-PostcardScene V0 should support:
+### Image Widget semantics and selection (#56)
 
-- full-screen landscape images
-- portrait images
-- intelligent consecutive portrait pairing
-- correct orientation using presentation/EXIF semantics
-- deterministic fit/fill/crop behavior
-- configured dwell times
-- transitions
-- ordered/shuffled selection through stable media identities
-- useful quality for 1080p/validated-4K display without unnecessary source recompression
-- intentional color/profile behavior with documented platform limitations
-- bounded decode/load behavior for malformed, extremely large, or unreachable media
+`postcardscene.image_selection` is the ordinary-Python, DB-only semantic seam for
+`image` and `portrait_image_pair`. `validate_image_configuration` accepts an object
+with only optional `fit`: `{}` normalizes to `{"fit": "contain"}`, and the only
+values are `contain` and `cover`. Other keys/values are rejected. Generic domain
+JSON validation remains structural. Presentation uses a fixed neutral black
+background and centered object position: contain preserves the whole image with
+unused black area; cover fills the region with centered cropping. Widget JSON
+contains no duration, transition, selection/shuffle/history, crop coordinates,
+color-profile or panel-safety configuration.
 
-Portrait pairing is a core feature. When eligible consecutive media are portrait-oriented and compatible with the current layout rules, the runtime can display them side-by-side to use a landscape screen efficiently.
+`resolve_image_context(session, widget_id)` requires an existing enabled image
+Widget referencing an existing enabled `local_directory` or `mounted_directory`
+Source. Invalid contexts raise `ImageSelectionError` without catalog mutation.
+Within the caller's short transaction, `get_selected_image` looks up canonical
+`(source_id, relative_path)` under that Widget, returning `None` for absent,
+mismatched or ineligible media. `list_selected_images` returns an immutable page
+plus its last row ID as continuation, or `((), None)` at exhaustion. Both queries
+resolve context on each call. Only same-Source images with metadata `ready`,
+positive presentation dimensions and a normalized portrait/landscape/square
+orientation are eligible; video and pending/error metadata are excluded.
 
-PostcardScene should not rewrite original photographs merely for ordinary playback.
+Pages accept 1–500 items and a nonnegative `after_id`. The existing
+Source/type/orientation index supports three bounded orientation queries; merging
+at most three pages avoids sorting a whole remaining Source catalog. Row IDs are
+only keyset continuation details, never media identity or playback ordering.
+The schema and indexes remain unchanged at `0008_catalog_requests`.
+
+Frozen `SelectedImage` records contain only Source ID, canonical relative path,
+expected `size_bytes`/`mtime_ns`, presentation width/height and normalized
+orientation. Frozen `ImageFrame` records hold one or two selected images plus
+normalized fit. Neither retains an ORM object/session, absolute path, bytes,
+Scene identity or playback state. Later file delivery must re-resolve current
+Source authority and recheck freshness when opening; a snapshot grants no lasting
+filesystem authority. Selection performs no storage probe, scan, read or decode.
+
+Catalog/Pillow metadata readiness is **not proof of Chromium format support**.
+There is no browser-format extension filter in selection. #57 owns browser
+readiness/decode-failure handling, #58 integrates that result with the real #31
+controller, and #59 owns the physically evidenced format/color/quality matrix.
+An eligible image may fail browser decoding safely without catalog deletion.
+
+### Automatic portrait grouping and runtime ownership
+
+`build_image_frame(widget_kind, fit, first, lookahead=None)` returns
+`(frame, consumed_count)`. The caller supplies already-selected candidates in its
+own runtime order. Ordinary `image` always consumes one. `portrait_image_pair`
+pairs only two distinct canonical identities with portrait orientation and
+consumes two; otherwise it presents the first singly and consumes one. Landscape,
+square and final unpaired portraits remain visible. Duplicate identity never
+pairs, even when freshness differs. Lookahead remains caller-owned and unconsumed
+on single fallback. There are no aspect-ratio heuristics or image-owned iterator,
+push-back buffer, cursor, shuffle or history.
+
+#8 defines consecutive candidates through its ordered/shuffled stream and advances
+by the consumption count. It owns display-step history, dwell execution,
+Previous/Next, Play/Pause and common auto-hiding controls. Scene duration and
+Sequence overrides remain #19/#20 configuration. Shared transitions remain #8;
+#57 may use a simple fixed image-local fade without another Widget option.
+#10 owns static-dwell/panel protection, including while paused.
+
+### Presentation and quality boundaries
+
+Chromium/HTML/CSS is the V0 image compositor selected by #5; mpv remains the video
+engine. #57 owns trusted disposable image delivery and the HTML/CSS frame; #31
+owns the production graphics session, Chromium supervision and common overlay/input
+mechanism; #58 adapts image frames to that controller. No renderer is added by #56.
+
+Image presentation must respect EXIF orientation, preserve original bytes/profile
+data and useful 1080p/validated-4K quality without ordinary recompression, and bound
+malformed, huge, unreachable or unsupported-image load/decode failures. #59 must
+document actual tested formats, color behavior and physical quality limitations
+before claiming supported playback. No speculative user-facing playback guide is
+created ahead of that evidence.
 
 ## 8. Video and audio behavior
 
@@ -792,7 +850,8 @@ This provides a flexible composition surface for:
 - lightweight animations
 - image presentation effects where appropriate
 
-The exact boundary between Chromium-rendered images and any dedicated/native image-rendering path remains open.
+Chromium is the V0 image compositor selected by #5; image content consumes the
+shared #31 graphics/controller boundary rather than a dedicated native stack.
 
 The runtime/player service coordinates the active scene and Chromium/mpv processes.
 
@@ -1202,7 +1261,6 @@ The V0 tracker/release issue owns exact-candidate closure evidence for:
 The following are intentionally unresolved until the owning issue has enough evidence:
 
 1. **General control-plane/runtime IPC** — Unix socket, localhost HTTP, another narrow local protocol, or a combination. #52 freezes only catalog refresh requests as coalescing SQLite tokens; live status/playback transport remains open.
-2. **Image rendering boundary** — all images in Chromium vs a dedicated rendering path for some modes.
 3. **General cached-provider storage** — exact V1 cache implementation/invalidation strategy.
 4. **Credential-at-rest mechanism** — exact protection/master-key approach and recovery behavior.
 5. **Wayfarer native integration** — API endpoints/authentication and whether Wayfarer provides a dedicated display-oriented page.
