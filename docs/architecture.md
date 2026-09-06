@@ -855,7 +855,7 @@ Immutable `SelectedVideo` carries only `source_id`, canonical `relative_path`,
 nonnegative integer `size_bytes` and integer `mtime_ns` (including pre-epoch values).
 It carries no ORM/session, absolute path, file descriptor, bytes or playback state.
 Selection does no filesystem scan/open, reconciliation, decoder probe or catalog
-mutation. Later #72 must revalidate and pin current file authority before playback.
+mutation. #72 revalidates and pins current file authority as described below.
 Catalog video classification identifies candidates, not actual mpv/container/codec
 support; unsupported media remains catalog knowledge. Progress/duration comes
 from the active player without catalog-wide duration indexing.
@@ -864,6 +864,42 @@ from the active player without catalog-wide duration indexing.
 row-ID pagination here defines none of those behaviors. #72–#75 own file authority,
 mpv and active-player controls/audio. End-user playback is not implemented by #71;
 physical format/HDMI/hwdec claims remain gated by #66/#76.
+
+### Pinned video file authority (#72)
+
+Call `video_file.capture_video_source(session, selected)` in a short transaction
+immediately before opening; it revalidates the current enabled filesystem Source
+and copies its identity/configuration without storage I/O. End the transaction,
+then use `with open_video_item(selected, source, policy) as fd:`.
+The immutable #71 selection is freshness state, not file authority. Capture is
+point-in-time; callers must recapture for every new pin after Source changes.
+
+The context yields one borrowed read-only, non-inheritable-by-default integer FD.
+It checks Source identity, canonical relative path, trusted PathPolicy authority,
+recursive policy, no-follow descendants and regular-file size/mtime freshness.
+The existing image stream API retains the same shared opener and mount checks.
+Rename/replacement after pin cannot redirect the FD; in-place writes by an external
+owner are not prevented, and equal-size/equal-mtime content changes cannot be
+distinguished by the catalog freshness contract. Original media remains
+external/unowned and is never copied into PostcardScene.
+
+Mounted opens run entirely in a fresh spawned helper, including path resolution,
+open/fstat, current network coverage and the pinned FD's actual mount identity.
+A private Unix socket transfers the already-open FD using SCM_RIGHTS, never a
+pathname for later reopening. Progress resets the configurable ten-second default
+idle timeout. Cancellation is polled during waiting. Every outcome closes socket
+and partial FD copies and uses bounded terminate/join/kill/join cleanup; a kernel
+task that resists reaping reports helper failure, preserving an existing primary
+failure. No mount worker/service or fallback to local mountpoint content is added.
+Local opens remain synchronous with cooperative cancellation between operations.
+
+`VideoFileError.reason` is only `invalid`, `unavailable`, `timeout`,
+`cancelled` or `helper`; diagnostics omit paths and raw OS/child details.
+The FD is trusted player plumbing only: do not close the borrowed FD, publish it
+in Flask/status, or persist it. #73 must explicitly inherit it (for example using
+`pass_fds`) and consume descriptor input such as `fd://N`, then retire its child
+before the context exits and closes the parent's copy. No player is launched by
+#72, and physical NAS/codec/HDMI support remains unproven.
 
 Video playback should use mpv where practical because codec support, hardware acceleration, control, and failure isolation benefit from a dedicated player.
 

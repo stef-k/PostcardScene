@@ -256,3 +256,24 @@ def inspect_mounted_images(
     yield from _mounted_operation(
         configuration, policy, cancelled, timeout_seconds, tuple(entries)
     )
+
+
+def _check_open_mount(stream):
+    """Also check the pinned file's mount, closing unmount/open fallthrough races."""
+    info = Path(f"/proc/self/fdinfo/{stream.fileno()}").read_text()
+    mount_id = next(
+        line.split()[1] for line in info.splitlines() if line.startswith("mnt_id:")
+    )
+    mounts = Path("/proc/self/mountinfo").read_text()
+    entry = next(
+        (line for line in mounts.splitlines() if line.split()[0] == mount_id), ""
+    )
+    if not entry or not _network_mount_covers(Path("/"), _root_mount_entry(entry)):
+        raise SourceUnavailable("Image mount is unavailable.")
+
+
+def _root_mount_entry(entry):
+    # Reuse the existing mount parser/type contract for this exact pinned mount.
+    fields = entry.split()
+    fields[4] = "/"
+    return " ".join(fields)
