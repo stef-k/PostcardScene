@@ -330,5 +330,130 @@ def update_scene(
 
 
 def remove_scene(session, scene_id):
-    session.delete(get_scene(session, scene_id))
+    scene = get_scene(session, scene_id)
+    if (
+        session.scalar(
+            select(SequenceMembership.id)
+            .where(SequenceMembership.scene_id == scene_id)
+            .limit(1)
+        )
+        is not None
+    ):
+        raise DomainError(
+            "Scene is referenced by a Sequence; remove its memberships first."
+        )
+    session.delete(scene)
+    session.flush()
+
+
+SEQUENCE_MODES = frozenset({"ordered", "shuffle"})
+
+
+class Sequence(Base):
+    __tablename__ = "sequence"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(MAX_NAME_LENGTH))
+    mode: Mapped[str] = mapped_column(String(64))
+    enabled: Mapped[bool] = mapped_column(Boolean)
+
+
+class SequenceMembership(Base):
+    __tablename__ = "sequence_membership"
+    __table_args__ = (
+        UniqueConstraint(
+            "sequence_id", "position", name="uq_sequence_membership_position"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    sequence_id: Mapped[int] = mapped_column(
+        ForeignKey("sequence.id", ondelete="CASCADE")
+    )
+    scene_id: Mapped[int] = mapped_column(
+        ForeignKey("scene.id", ondelete="RESTRICT"), index=True
+    )
+    position: Mapped[int]
+    duration_override_seconds: Mapped[int | None]
+
+
+def get_sequence(session, sequence_id):
+    sequence = session.get(Sequence, sequence_id)
+    if sequence is None:
+        raise DomainError("Sequence does not exist.")
+    return sequence
+
+
+def list_sequences(session):
+    return session.scalars(select(Sequence).order_by(Sequence.id)).all()
+
+
+def list_sequence_memberships(session, sequence_id):
+    get_sequence(session, sequence_id)
+    return session.scalars(
+        select(SequenceMembership)
+        .where(SequenceMembership.sequence_id == sequence_id)
+        .order_by(SequenceMembership.position)
+    ).all()
+
+
+def _validated_sequence(session, name, mode, memberships, enabled):
+    name = _validate_name_enabled(name, enabled)
+    if not isinstance(mode, str) or mode not in SEQUENCE_MODES:
+        raise DomainError("Unsupported Sequence mode.")
+    if not isinstance(memberships, (list, tuple)) or not memberships:
+        raise DomainError("Supply a nonempty complete ordered membership list.")
+    rows = []
+    for position, occurrence in enumerate(memberships):
+        if not isinstance(occurrence, (list, tuple)) or len(occurrence) != 2:
+            raise DomainError("Each membership must be a Scene identity/duration pair.")
+        scene_id, duration = occurrence
+        if type(scene_id) is not int or scene_id < 1:
+            raise DomainError("Scene identity must be a positive integer.")
+        get_scene(session, scene_id)
+        if duration is not None and (
+            type(duration) is not int or not 1 <= duration <= 86400
+        ):
+            raise DomainError(
+                "Duration override must be None or an integer from 1 to 86400 seconds."
+            )
+        rows.append(
+            SequenceMembership(
+                scene_id=scene_id, position=position, duration_override_seconds=duration
+            )
+        )
+    return dict(name=name, mode=mode, enabled=enabled), rows
+
+
+def create_sequence(session, *, name, mode, memberships, enabled=True):
+    """Create configured occurrences from ordered [(scene_id, duration), ...]."""
+    fields, rows = _validated_sequence(session, name, mode, memberships, enabled)
+    sequence = Sequence(**fields)
+    session.add(sequence)
+    session.flush()
+    for row in rows:
+        row.sequence_id = sequence.id
+    session.add_all(rows)
+    session.flush()
+    return sequence
+
+
+def update_sequence(session, sequence_id, *, name, mode, memberships, enabled):
+    """Replace all configuration atomically; membership identities may change."""
+    fields, rows = _validated_sequence(session, name, mode, memberships, enabled)
+    sequence = get_sequence(session, sequence_id)
+    session.execute(
+        delete(SequenceMembership).where(SequenceMembership.sequence_id == sequence_id)
+    )
+    for key, value in fields.items():
+        setattr(sequence, key, value)
+    for row in rows:
+        row.sequence_id = sequence_id
+    session.add_all(rows)
+    session.flush()
+    return sequence
+
+
+def remove_sequence(session, sequence_id):
+    session.delete(get_sequence(session, sequence_id))
     session.flush()

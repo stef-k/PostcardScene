@@ -387,7 +387,7 @@ Use the existing `Database.transaction()` with no Flask initialization.
 Widget deletion fails clearly while referenced, backed by a restrictive FK.
 Deleting a Scene cascades only to its owned placements; replacement never deletes
 Widgets or Sources. Disabling either object preserves the other's state and all
-references. #20 may restrict Scene deletion when Sequence references exist.
+references. Sequence memberships restrict Scene deletion as defined below.
 
 No generic Scene JSON, coordinates, nested layouts, rendering, selected MediaItem
 IDs, or speculative panel-safety fields are persisted. #8/#10 must establish an
@@ -395,18 +395,39 @@ exact semantic need before adding safety state; never infer it from name/layout.
 
 ### Sequence
 
-A `Sequence` determines how scenes are presented.
+Issue #20 persists Sequence configuration through `postcardscene.domain` and
+migration `0006_sequence`, preserving existing foundation/domain state. A Sequence
+has a generated integer ID, trimmed 1–128 character name, ordinary bounded string
+`mode` (`ordered` or `shuffle`), and boolean `enabled`.
 
-A sequence may specify:
+`SequenceMembership` represents one Scene occurrence with a generated integer ID,
+`sequence_id`, `scene_id`, zero-based `position`, and nullable
+`duration_override_seconds`. Complete nonempty lists of `(scene_id, duration)`
+pairs determine contiguous positions; queries return rows in position order.
+The database enforces unique `(sequence_id, position)`. Duplicate Scene IDs are
+allowed within and across Sequences; each occurrence has its own identity.
+Configured order remains authoritative in both modes. No randomization occurs here.
 
-- ordered or shuffled scene membership
-- scene duration/defaults
-- full-duration video behavior
-- transition style
-- weighting/frequency where required
-- fallback behavior
+Duration override is `None` to defer to Scene duration/later content completion,
+or an integer 1–86400 (never bool). It never changes Scene duration. This is the
+only membership timing field. Disabled Scenes are valid references, including an
+all-disabled set. Disabling a Scene or Sequence preserves memberships and never
+changes the other object's enabled flag. Missing Scenes are rejected.
 
-Operating-hour scheduling remains a separate subsystem. Future conditional-scene eligibility is not part of the foundational V0 sequence model unless a concrete V0 requirement promotes it.
+Create/get/list/update/remove and `list_sequence_memberships` use the existing
+short `Database.transaction()` seam without Flask. Updates validate all proposed
+fields and occurrences before mutation, so a caught `DomainError` cannot partially
+replace configuration. Updates replace the complete membership set; occurrence IDs
+remain stable while stored configuration remains in place, but deliberate list
+replacement may assign new IDs. No identity reconciliation is required.
+
+Referenced Scenes cannot be deleted through either the domain or restrictive
+membership FK. Deleting a Sequence cascades only to its owned memberships;
+replacing memberships never deletes Scenes, Widgets, or Sources.
+
+#8 owns execution, eligibility/fallback, shuffle, cursor and history. #9 owns
+operating schedules/timezone/DST. No playback state, random seed, transitions,
+weights, probabilities, conditional rules, or generic Sequence JSON is persisted.
 
 ## 6. Filesystem media catalog
 

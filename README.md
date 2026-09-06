@@ -253,9 +253,32 @@ derives canonical positions for `single` (`main`), `split_vertical` (`left`,
 replacement before mutation. `duration_seconds` is `None` for no fixed dwell or
 an integer 1–86400; `enabled` is a boolean.
 
-Referenced Widgets cannot be deleted. Removing a Scene deletes only placements,
+Referenced Widgets cannot be deleted. Unreferenced Scene removal deletes only placements,
 preserving Widgets and Sources; disable preserves references. See
 [Scene architecture](docs/architecture.md#scene) for the complete contract.
+
+### Sequence domain
+
+Stop database users and explicitly run `db upgrade` to apply `0006_sequence`.
+Existing administrator/settings and Source/Widget/Scene data are preserved.
+Within `Database.transaction()`, `postcardscene.domain` exposes `create_sequence`,
+`get_sequence`, `list_sequences`, `update_sequence`, `remove_sequence`, and
+`list_sequence_memberships`; no Flask initialization is needed.
+
+Create/update supplies `name`, `mode` (`ordered` or `shuffle`) and a complete
+nonempty ordered `memberships=[(scene_id, duration_override_seconds), ...]` list.
+Create defaults `enabled=True`; update requires all fields including `enabled`.
+Duplicate Scene occurrences are allowed. Positions are derived from list order
+and remain unchanged by shuffle mode. Each occurrence has a stable persisted ID
+until deliberate membership replacement, which may assign new IDs.
+Overrides accept `None` or integer 1–86400, excluding booleans; Scene durations
+remain unchanged. Invalid updates raise `DomainError` before mutation.
+
+Disabled Scenes remain valid references; disabling either object preserves
+membership configuration. Referenced Scenes cannot be deleted. Sequence deletion
+removes only its memberships, preserving Scenes, Widgets and Sources. There is no
+Sequence editor or playback yet; #8 owns shuffle execution/history and #9 owns
+operating schedules. See [Sequence architecture](docs/architecture.md#sequence).
 
 ### Application settings and status
 
