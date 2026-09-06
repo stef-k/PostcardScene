@@ -1,6 +1,5 @@
 """Flask control plane, independent of the runtime/player lifecycle."""
 
-import os
 from collections.abc import Mapping
 from datetime import timedelta
 from typing import Any
@@ -8,6 +7,7 @@ from typing import Any
 from flask import Flask, render_template
 from werkzeug.exceptions import HTTPException, SecurityError
 
+from postcardscene.configuration import load_operator_config
 from postcardscene.persistence import DEFAULT_DATABASE_PATH
 from postcardscene.session_secret import DEFAULT_SECRET_PATH
 from postcardscene.web.auth import init_auth
@@ -24,6 +24,7 @@ def create_app(config: Mapping[str, Any] | None = None) -> Flask:
         TESTING=False,
         SECRET_KEY=None,
         DATABASE_PATH=DEFAULT_DATABASE_PATH,
+        MEDIA_ALLOWED_ROOTS=(),
         SESSION_SECRET_PATH=DEFAULT_SECRET_PATH,
         SESSION_COOKIE_HTTPONLY=True,
         SESSION_COOKIE_SAMESITE="Lax",
@@ -34,8 +35,7 @@ def create_app(config: Mapping[str, Any] | None = None) -> Flask:
         SESSION_REFRESH_EACH_REQUEST=False,
         MAX_CONTENT_LENGTH=16 * 1024,
     )
-    if "POSTCARDSCENE_CONFIG" in os.environ:
-        app.config.from_envvar("POSTCARDSCENE_CONFIG")
+    app.config.from_mapping(load_operator_config())
     if config is not None:
         app.config.from_mapping(config)
     init_database(app)

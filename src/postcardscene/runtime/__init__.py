@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from enum import StrEnum
 from threading import Event
 
+from postcardscene.runtime.catalog_refresh import CatalogRefreshWorker
+
 
 class Lifecycle(StrEnum):
     STARTING = "starting"
@@ -39,10 +41,17 @@ class RuntimeHost:
     Panel power is separate from this lifecycle.
     """
 
-    def __init__(self):
+    def __init__(self, database=None, policy=None):
         self.stop_event = Event()
         self._status = RuntimeStatus(Lifecycle.STARTING, _SUMMARIES[Lifecycle.STARTING])
         self._has_run = False
+        if (database is None) != (policy is None):
+            raise ValueError("Supply both Database and PathPolicy.")
+        self.catalog_worker = (
+            CatalogRefreshWorker(database, policy, self.stop_event)
+            if database is not None
+            else None
+        )
 
     @property
     def status(self) -> RuntimeStatus:
@@ -66,10 +75,23 @@ class RuntimeHost:
             raise RuntimeError("Runtime host can only run once.")
         self._has_run = True
         try:
+            if self.catalog_worker is not None:
+                self.catalog_worker.start()
             self._set_state(Lifecycle.RUNNING)
-            self.stop_event.wait()
-            self._set_state(Lifecycle.STOPPING)
-            # Future owned responsibilities perform bounded cleanup here.
+            try:
+                self.stop_event.wait()
+            finally:
+                self.request_shutdown()
+                self._set_state(Lifecycle.STOPPING)
+                if self.catalog_worker is not None:
+                    self.catalog_worker.join()
+            if (
+                self.catalog_worker is not None
+                and self.catalog_worker.failure is not None
+            ):
+                raise RuntimeError(
+                    "Catalog worker failed."
+                ) from self.catalog_worker.failure
             self._set_state(Lifecycle.STOPPED)
         except BaseException:
             self._set_state(Lifecycle.ERROR)

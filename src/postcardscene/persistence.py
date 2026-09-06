@@ -12,7 +12,7 @@ from sqlalchemy.orm import DeclarativeBase, sessionmaker
 from sqlalchemy.pool import NullPool
 
 APPLICATION_ID = 0x5053434E  # PSCN, SQLite file identity (not a release number).
-SCHEMA_REVISION = "0007_media_catalog"
+SCHEMA_REVISION = "0008_catalog_requests"
 DEFAULT_DATABASE_PATH = Path("/var/lib/postcardscene/postcardscene.sqlite3")
 
 
@@ -106,13 +106,19 @@ class Database:
 
     @staticmethod
     def _begin(connection):
-        connection.exec_driver_sql("BEGIN")
+        connection.exec_driver_sql(
+            "BEGIN IMMEDIATE"
+            if connection.get_execution_options().get("sqlite_write")
+            else "BEGIN"
+        )
 
     @contextmanager
-    def transaction(self):
+    def transaction(self, *, write=False):
         """Commit success, roll back failure, always close; no implicit retries."""
         with self._sessions.begin() as session:
-            require_schema(session.connection())
+            require_schema(
+                session.connection(execution_options={"sqlite_write": write})
+            )
             yield session
 
     def check(self):
