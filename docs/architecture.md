@@ -896,10 +896,36 @@ Local opens remain synchronous with cooperative cancellation between operations.
 `VideoFileError.reason` is only `invalid`, `unavailable`, `timeout`,
 `cancelled` or `helper`; diagnostics omit paths and raw OS/child details.
 The FD is trusted player plumbing only: do not close the borrowed FD, publish it
-in Flask/status, or persist it. #73 must explicitly inherit it (for example using
-`pass_fds`) and consume descriptor input such as `fd://N`, then retire its child
-before the context exits and closes the parent's copy. No player is launched by
-#72, and physical NAS/codec/HDMI support remains unproven.
+in Flask/status, or persist it. The #73 controller duplicates this borrowed FD
+during preparation, so the safe-open context can close independently. No player
+is launched by #72, and physical NAS/codec/HDMI support remains unproven.
+
+### Supervised video process (#73)
+
+`video_player.MpvController` consumes the same Wayland session and implements the
+`ContentSurfaces` VIDEO owner contract. Construct the coordinator first, then
+`prepare(fd)` with a borrowed #72 pinned descriptor. Preparation duplicates the
+read-only regular-file FD; callers may then exit the safe-open context. Only one
+prepared/active item is allowed. Stop clears preparation and is idempotent.
+
+Every prepared item starts one fresh process with only the media and private
+socketpair endpoint in `pass_fds`. Media uses `fd://N`; JSON IPC uses inherited
+`--input-ipc-client=fd://N`, with no filesystem socket or network listener.
+Launch argv is shell-free, native Wayland, fullscreen and borderless. Host config,
+scripts, terminal/default input, OSC, external-file discovery and media references
+are disabled. Audio is forcibly disabled until #75. No playlist progression,
+pause/seek/progress, codec/hwdec selection or runtime scheduling is added.
+
+Startup waits boundedly for `file-loaded` and a correlated fixed JSON handshake.
+Messages are capped at 8 KiB and processing at 32 steps per poll. Unknown or invalid
+protocol fails closed. `end-file` with reason `eof` after load means `ended`;
+other endings, crash, timeout and cancellation produce fixed playback failures.
+The serialized owner polls `status`/surface reconciliation regularly; there is no
+background monitor or automatic retry. EOF stays observable until owner retirement.
+Stop closes parent FDs and sends bounded group TERM/KILL, retaining the child handle
+and `cleanup_failed` if reaping fails. Replacement content remains blocked through
+ContentSurfaces until cleanup succeeds. Launchers must retain descendants in their
+process group; systemd remains the outer runtime-owner crash boundary.
 
 Video playback should use mpv where practical because codec support, hardware acceleration, control, and failure isolation benefit from a dedicated player.
 

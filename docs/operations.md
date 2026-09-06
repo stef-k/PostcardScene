@@ -390,3 +390,28 @@ cancellation, process-group descendant cleanup and private typed input/config.
 No tests claim physical touch, Pi/HDMI/4K, acceleration, audio or packaged-distro
 installation support. #66 must supply that evidence; #8 owns real controls,
 #6 video, #7 web policy and #10 panel power/protection.
+
+### Supervised video capability (#73)
+
+`video_player.MpvController(session, command=(absolute_mpv_launcher, ...))` is the
+real video owner beneath `ContentSurfaces`; `MpvSurfaceProbe` remains inert.
+Supply the existing #62 session and a trusted exec/wait launcher retaining its
+process group. Prepare one borrowed #72 FD after coordinator construction, then
+select VIDEO. Preparation owns a duplicate, so the safe-open context may end.
+Switching content retires the video through the existing black interstitial rule.
+
+The child inherits only pinned media and private socketpair IPC descriptors.
+The [mpv JSON IPC contract](https://mpv.io/manual/stable/#json-ipc) supports inherited
+`--input-ipc-client=fd://N`; no listener or runtime socket provisioning is needed.
+Poll the serialized controller's status regularly to observe playing/ended/failed;
+startup is bounded by its timeout/cancellation and requires authoritative load.
+Stop retires prepared/active authority with bounded group TERM/KILL. A retained
+`cleanup_failed` indicates unresolved process authority (including possible kernel
+I/O stalls); do not activate replacement content until retirement succeeds.
+Diagnostics contain only state, fixed reason and cleanup marker.
+
+Audio is forced off. Transport/progress (#74), audio policy (#75), runtime scene
+execution (#8) and physical Pi/HDMI/codec/hwdec evidence (#66/#76) remain separate.
+Deterministic helper-process tests prove FD/IPC/lifecycle behavior, not physical
+playback support. No installed mpv/Wayland smoke is available in this development
+environment.
