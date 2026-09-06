@@ -17,7 +17,9 @@ FKyoEForCGlyvwx9Hj09JcYn3nv7wiPVlz7YYwJrWVcXK/BmnVDxM+D2scQbITxI
 
 Bootstrap is copyright 2011–2025 The Bootstrap Authors and licensed under MIT;
 see [LICENSE](LICENSE), copied from the upstream `v5.3.8` tag. The bundle includes
-Popper and retains its MIT attribution in the upstream header.
+Popper 2.11.8; its upstream MIT notice is retained in
+[POPPER-LICENSE.md](POPPER-LICENSE.md), downloaded from
+<https://cdn.jsdelivr.net/npm/@popperjs/core@2.11.8/LICENSE.md>.
 
 Source maps are intentionally omitted. Upstream source-map comments are retained
 to keep distributed bytes unchanged; developer tools may request unavailable maps.

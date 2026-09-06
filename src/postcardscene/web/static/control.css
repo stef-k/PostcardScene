@@ -41,11 +41,24 @@ body {
 }
 
 a {
+  color: var(--psc-accent);
   text-underline-offset: 0.25em;
+}
+
+a:hover {
+  color: var(--psc-text);
 }
 
 .control-header {
   background: var(--psc-surface);
+}
+
+.control-header .navbar {
+  --bs-navbar-color: var(--psc-muted);
+  --bs-navbar-hover-color: var(--psc-accent);
+  --bs-navbar-active-color: var(--psc-text);
+  --bs-navbar-brand-color: var(--psc-text);
+  --bs-navbar-brand-hover-color: var(--psc-accent);
 }
 
 .navbar-brand {
@@ -62,6 +75,7 @@ a {
 
 .nav-link {
   color: var(--psc-muted);
+  transition: none;
 }
 
 .nav-link[aria-current="page"] {
