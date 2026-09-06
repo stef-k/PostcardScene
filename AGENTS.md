@@ -28,7 +28,7 @@ For V0, start from tracker issue `#1` and use this algorithm:
 6. If the selected epic has not yet been decomposed, harden/decompose the epic first: reread repository authority, resolve only decisions needed to make the work executable, create bounded child issues with parent/dependency links and acceptance criteria, and update the epic checklist/execution order. Do not treat an undecomposed epic as permission to implement the entire epic in one oversized change.
 7. Implement one bounded child issue at a time unless the owning issue explicitly authorizes a cohesive combined slice. Run the required checks and update affected documentation in the same change.
 8. Close a child only when its acceptance criteria and required evidence are satisfied. Keep the parent epic checklist accurate; do not rely on issue closure automatically updating every Markdown task list.
-9. Close an epic only after every owned child is complete and the epic-level completion contract has been reread against the resulting repository.
+9. Close an epic only after every owned child is complete and the epic-level completion contract has been reread against the resulting repository. A completed child checklist alone is not sufficient if an epic requirement is still unmet.
 10. Return to `#1` after each child/epic completion and resolve the next dependency-ready item using the same algorithm.
 11. Close `#1` only after all V0 epics and the explicit V0 closure gates are satisfied for the exact release candidate.
 
@@ -46,7 +46,7 @@ epic child checklist order
 issue number
 ```
 
-Issue number by itself is never scheduling authority. A cross-epic dependency can make a later-listed epic or child runnable before an earlier-listed epic is complete; dependency readiness wins.
+Issue number by itself is never scheduling authority. A cross-epic dependency can make a later-listed epic or child runnable before an earlier-listed epic is complete; dependency readiness wins. Do not skip an earlier ready item merely for convenience.
 
 ### Parallel and blocked work
 
@@ -62,7 +62,7 @@ For example, software decision logic around display hardware may proceed in CI, 
 
 ### Milestone progression
 
-V1 and V2 intentionally exist without speculative implementation backlogs.
+V1 and V2 intentionally exist without speculative implementation backlogs. Do not begin them merely because no V0 child is immediately convenient.
 
 - Finish the current V0 capability boundary and closure gates first unless the user explicitly reprioritizes the roadmap.
 - When V1 or V2 becomes active, use its roadmap section to create the milestone tracker/epics just in time, then apply the same tracker -> epic -> child protocol.
@@ -104,7 +104,7 @@ Do not put scans, reconciliation, schedules, renderer supervision, or future pro
 
 V0's default owner for long-running application work is the runtime/player process or a narrowly factored runtime component it hosts. This includes operating schedule evaluation, filesystem media reconciliation, renderer/player supervision, and later provider cache refresh.
 
-Long-running work must have bounded/cancellable shutdown behavior. The runtime remains alive while the physical display is asleep so required schedules/reconciliation can continue.
+Long-running work must have bounded/cancellable shutdown behavior. A service restart must not abandon uncontrolled work or require a distributed job framework merely for convenience. The runtime remains alive while the physical display is asleep so required schedules/reconciliation can continue.
 
 ## Composition model vs media catalog
 
@@ -264,10 +264,12 @@ Follow the trust boundary owned by the security epic.
 
 ## Release, installation, and update
 
+Release/install lifecycle is a first-class V0 concern.
+
 - Use one authoritative application version identity.
 - Use deterministic dependency resolution/locking for release builds/production installs.
 - Release artifacts must correspond to immutable source/tag identity and have checksums of the final published bytes.
-- Rebuilding/repackaging different bytes creates a new artifact-specific candidate.
+- Rebuilding/repackaging different bytes creates a new artifact-specific candidate; do not reuse an earlier checksum as authority.
 - Normal production installation should use an isolated project-owned Python environment or another approved mechanism, not unsafe privileged modification of distro-owned Python.
 - Separate application payload, configuration/secrets, durable state, replaceable caches/runtime state, logs, and backups.
 - Apply production schema changes explicitly through migrations.
@@ -295,6 +297,8 @@ PostcardScene backup owns PostcardScene durable state, not the user's original m
 ## UI and configuration
 
 Important user-facing behavior should be configurable through the authenticated web settings UI where practical.
+
+Defaults should make the system useful without requiring constant administration.
 
 Do not expose raw internal database structures as the normal product UI merely because they are easy to generate.
 
