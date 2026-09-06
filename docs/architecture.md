@@ -477,7 +477,7 @@ only direct regular-file children; recursive sources may traverse normal directo
 `PathPolicy(allowed_roots)` comes exclusively from trusted host/application
 configuration. There are no default roots, Source JSON policy fields, database
 policy table, or ordinary UI authority to widen it. `/` is forbidden, including
-canonical aliases of `/`. #25 must use the same validator; #26 owns installation
+canonical aliases of `/`. #25 uses the same validator; #26 owns installation
 provisioning. Generic domain `create_source`/`update_source` still validate JSON
 structure only: operational adapters and Source forms must invoke semantic
 validation before filesystem use/persistence. Existing Source persistence and
@@ -670,8 +670,8 @@ progress. These are coalescing tokens, not a job/event queue or distributed lock
 
 `catalog_requests.request_catalog_reconciliation(database, source_id)` validates
 an existing enabled filesystem Source and increments its token in one short DB-only
-transaction. It neither probes paths nor imports/calls reconciliation. #25 owns the
-later authenticated UI and will use this seam without scanning in a Flask request.
+transaction. It neither probes paths nor imports/calls reconciliation. The #25
+authenticated Sources UI uses this seam without scanning in a Flask request.
 
 The runtime-owned `CatalogRefreshWorker` polls the first pending Source by ID with
 `LIMIT 1`, serially invoking #30 off the RuntimeHost thread. It captures request N;
@@ -710,7 +710,7 @@ cleanup leaves no live catalog thread. Mounted scans/metadata retain #24 isolati
 local kernel calls retain their synchronous-call limitation. If a local call blocks
 past the join bound, shutdown reports error; the thread is daemonic so it cannot
 prevent process exit. This does not claim Python can cancel an arbitrary syscall.
-No automatic cadence, scheduler, third service, pool, playback or refresh UI is added.
+#52 adds no automatic cadence, scheduler, third service, pool or playback.
 
 ## 7. Image behavior
 
@@ -1046,6 +1046,24 @@ composition lives in a small explicit `postcardscene.status` view model using
 contributors that contain their own failures, without a registry. Runtime is only
 unavailable/not yet connected until a later issue selects and wires IPC. Authentication still depends
 on a compatible readable database; status does not bypass that boundary.
+
+Issue #25 adds the authenticated filesystem-only `sources` blueprint: list,
+create/edit, POST refresh and POST delete, all mutations CSRF-protected. Forms
+validate through `PathPolicy(MEDIA_ALLOWED_ROOTS)` and #22 before short Source
+write transactions; normalized configuration goes through the domain seam.
+Enabled creation, authority edits and re-enable queue #52 requests after commit;
+queue failure preserves the saved Source and offers manual retry. Rename does
+not queue; disable and authority invalidation retain #52 semantics. Empty/invalid
+roots leave the DB-only list usable but prevent form saves. Roots are read-only
+host guidance; there are no mount controls, credentials or filesystem browser.
+
+A small explicit view model derives health from persisted Source/catalog state,
+prioritizing disabled, interrupted, queued, then last result. It shows older
+result/freshness, timestamps in the Settings timezone, and #30 grouped counts
+without materializing MediaItems or touching storage. Retained counts are not
+current availability claims; only a completed authoritative presence scan means
+Ready. Database failures produce sanitized 503 feedback. Deletion uses the
+existing restrictive domain/FK lifecycle. Schema remains `0008_catalog_requests`.
 
 ## 21. Authentication, network exposure, and secrets
 

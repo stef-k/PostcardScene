@@ -127,7 +127,7 @@ local control interface with:
 uv run flask --app postcardscene.web:create_app run --host 127.0.0.1 --no-debug
 ```
 
-Open <http://127.0.0.1:5000/> and log in. Authentication protects Overview and Settings. Overview shows the application
+Open <http://127.0.0.1:5000/> and log in. Authentication protects Overview, Settings and Sources. Overview shows the application
 version, database/schema health and unavailable runtime status; playback controls
 are not implemented.
 The command starts only the web process. Stop it with Ctrl-C.
@@ -234,7 +234,8 @@ matching the schema revision alone does not establish safe rollback.
 
 When updating from the application foundation, stop database users and run
 `db upgrade` explicitly. Migration `0004_source_widget` adds Source/Widget tables
-and preserves administrator/settings state. There is no Source management UI yet.
+and preserves administrator/settings state. Filesystem Sources can be managed
+through the authenticated Sources area described below.
 Ordinary Python callers use `postcardscene.domain` create/update/get/list/remove
 functions within the existing `Database.transaction()` context. Updates supply
 all fields and replace configuration as a whole; invalid input raises
@@ -282,7 +283,7 @@ request counters. Configure `MEDIA_ALLOWED_ROOTS = ["/absolute/media/root"]` in 
 same trusted Python file used by both processes. It defaults to an empty tuple
 (no filesystem authority), accepts only a list/tuple of absolute host roots via
 `PathPolicy`, and is never Source JSON or an ordinary web setting. #26 owns managed
-installation provisioning; #25 will add the authenticated management/refresh UI.
+installation provisioning; the Sources UI consumes this policy read-only.
 
 Ordinary Python callers can use
 `postcardscene.catalog_requests.request_catalog_reconciliation(database, source_id)`
@@ -311,6 +312,13 @@ Catalog state is regenerable. Whole-database backups may contain it, but restore
 catalog freshness must be re-established from external Sources by reconciliation.
 See [catalog architecture](docs/architecture.md#persistent-catalog-and-reconciliation-30)
 for API, failure and metadata limitations.
+
+### Sources control UI
+
+Open **Sources** after logging in to manage local and already-mounted NFS/SMB
+Sources, queue runtime refreshes, and inspect persisted catalog health/counts.
+See the [Media Sources guide](docs/sources.md) for allowed-root setup, editing,
+enabling/disabling, refresh and outage semantics, and deletion.
 
 ### Sequence domain
 
@@ -416,6 +424,7 @@ protection, broader headers and provider credential-at-rest architecture.
 
 ## Documentation
 
+- [Media Sources guide](docs/sources.md)
 - [Architecture](docs/architecture.md)
 - [Roadmap](docs/roadmap.md)
 - [UI design](docs/ui-design.md)
