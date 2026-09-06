@@ -466,6 +466,66 @@ A filesystem-backed `MediaItem` may hold normalized data such as:
 
 Original image/video bytes remain in the source filesystem.
 
+### Filesystem Source contract (#22)
+
+`postcardscene.filesystem_source` owns ordinary-Python semantic validation for
+both existing `local_directory` and `mounted_directory` Source kinds. Their whole
+configuration is exactly `{"path": "/absolute/media/path", "recursive": true}`.
+`validate_source(kind, configuration, policy)` returns normalized JSON. It requires
+a real boolean and a nonempty absolute Linux path, rejects extra/missing keys,
+NUL, `..`, tilde, shell/environment/glob/URI syntax, and normalizes redundant `/`
+and `.` components. Case and Unicode remain unchanged. Nonrecursive sources admit
+only direct regular-file children; recursive sources may traverse normal directories.
+
+`PathPolicy(allowed_roots)` comes exclusively from trusted host/application
+configuration. There are no default roots, Source JSON policy fields, database
+policy table, or ordinary UI authority to widen it. `/` is forbidden, including
+canonical aliases of `/`. #25 must use the same validator; #26 owns installation
+provisioning. Generic domain `create_source`/`update_source` still validate JSON
+structure only: operational adapters and Source forms must invoke semantic
+validation before filesystem use/persistence. Existing Source persistence and
+`SCHEMA_REVISION = 0006_sequence` remain unchanged.
+
+Both lexical containment and canonical containment beneath the corresponding
+allowed root are required. Existing ancestor symlink escapes fail closed even
+when the leaf is missing. Missing/unreadable storage does not invalidate semantic
+configuration; `source_status` returns only `available`, `unavailable`, or `invalid`
+without raw error text. An accessible non-directory is `unavailable`. Availability
+requires a readable/searchable directory within authority. A Source-root alias
+within allowed canonical authority is permitted; descendant symlinks are not.
+Host policy roots and their ancestors must remain under trusted host control.
+
+`resolve_item_path` rechecks current Source authority and every relative component:
+no symlink files/directories, no special files, only normal intermediate directories
+and a regular-file target. Its returned Path is a point-in-time check, not an open
+file capability: consumers must recheck at use and protect actual opens against
+concurrent replacement; never cache a checked absolute path as permanent authority.
+#23/#24 must likewise never follow or emit symlink descendants.
+
+Identity is `(Source ID, canonical source-relative path)`, using `/` separators,
+no absolute/empty/`.`/`..` components, and unchanged case/Unicode. Inodes/devices are
+not durable identity. Hard links at different paths are distinct occurrences;
+rename means removed old path plus added new path. The frozen `MediaEntry` carries
+only `relative_path`, broad `MediaType` (`image`/`video`), nonnegative integer
+`size_bytes`, and integer `mtime_ns` from `st_mtime_ns` (including pre-epoch times).
+#23 owns conservative candidate extensions; discovery is not proven playback
+support. #30 owns further metadata/indexing; no decoder or catalog is added here.
+
+Concrete enumerators yield entries incrementally. **Only normal iterator exhaustion
+means authoritative completion.** `InvalidSource`, `SourceUnavailable`,
+`ScanCancelled`, and `EnumerationFailed` all derive from `FilesystemSourceError`
+and mean incomplete traversal: #30 must never delete unseen entries on that basis.
+#23/#24 observe #17's stop event (or its `is_set` predicate) between filesystem
+operations/yields and raise `ScanCancelled`; cancellation must not be swallowed or
+converted to normal exhaustion. No database transaction spans traversal. This
+issue implements no scan loop or durable scan state.
+
+Synchronous path probes can block inside a kernel filesystem call. Cooperative
+cancellation cannot interrupt every NFS/SMB syscall. #24 owns isolation/time bounds
+and mount-outage detection, including preventing fallback to a local directory
+under a missing mount; an available directory alone is not proof of a live mount.
+No pool, mounting mechanism, or timeout framework is selected here.
+
 ### Reconciliation rules
 
 Cataloging must distinguish:
