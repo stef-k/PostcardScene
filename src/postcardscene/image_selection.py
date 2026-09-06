@@ -135,14 +135,20 @@ def list_selected_images(session, widget_id, *, after_id=0, limit=100):
     if type(after_id) is not int or after_id < 0:
         raise ImageSelectionError("Continuation must be a nonnegative integer.")
     context = resolve_image_context(session, widget_id)
-    rows = list(
-        session.scalars(
-            _eligible_images(context.source_id)
-            .where(MediaItem.id > after_id)
-            .order_by(MediaItem.id)
-            .limit(limit)
+    # The existing Source/type/orientation index ends in rowid. Page each of
+    # its three orientation ranges, then merge at most 3 * limit rows; a single
+    # IN query would sort the entire remaining Source selection in SQLite.
+    rows = []
+    for orientation in sorted(ORIENTATIONS):
+        rows.extend(
+            session.scalars(
+                _eligible_images(context.source_id)
+                .where(MediaItem.orientation == orientation, MediaItem.id > after_id)
+                .order_by(MediaItem.id)
+                .limit(limit)
+            )
         )
-    )
+    rows = sorted(rows, key=lambda item: item.id)[:limit]
     return tuple(_snapshot(item) for item in rows), rows[-1].id if rows else None
 
 

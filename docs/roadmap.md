@@ -52,16 +52,21 @@ Do not copy the user's original media into PostcardScene merely to index it.
 
 ### Image playback
 
-- landscape and portrait images
+- image-specific catalog eligibility and immutable Source-relative selection/freshness (#56)
+- automatic pairing of two consecutive distinct portraits, with landscape/square/unpaired single fallback (#56)
+- caller-owned first/lookahead grouping with consumed count; no image-owned stream
+- `fit=contain|cover`, default contain, with fixed black background and centered position
 - correct orientation/EXIF presentation behavior
-- consecutive portrait-image pairing in a landscape layout
-- deterministic fit/fill/cropping behavior
-- useful 1080p/4K quality without unnecessary source recompression
-- intentional color/profile behavior with documented limitations
-- configurable image duration
-- sequence order/shuffle basics using stable media identities
-- bounded loading/decode behavior for malformed, huge, or unreachable media
-- basic transitions
+- Chromium image presentation through trusted disposable delivery (#57) and the shared #31 controller (#58)
+- useful 1080p/validated-4K quality without unnecessary source recompression
+- intentional color/profile behavior and actual browser-format evidence (#59)
+- bounded loading/decode behavior for malformed, huge, unreachable or unsupported media
+- optional simple fixed image-local fade in #57, without Widget transition configuration
+
+#5 owns image eligibility/grouping/presentation/quality. Catalog metadata readiness
+does not establish Chromium format support. Scene/Sequence duration configuration
+belongs to #19/#20; runtime dwell, order/shuffle, history and global transport
+(Previous/Next/Play/Pause/common controls) belong to #8. Panel safety remains #10.
 
 ### Video and audio playback
 

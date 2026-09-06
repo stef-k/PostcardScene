@@ -271,3 +271,40 @@ def test_grouping_rejects_invalid_semantics():
         images.build_image_frame("video", "contain", selected())
     with pytest.raises(images.ImageSelectionError):
         images.build_image_frame("image", "fill", selected())
+
+
+def test_pages_merge_orientations_without_skips_or_duplicates(selection):
+    db, source_id, widget_id = selection
+    with db.transaction() as session:
+        expected = []
+        for index, orientation in enumerate(["portrait", "square", "landscape"] * 3):
+            snapshot = selected(f"{index}.jpg", orientation)
+            item = add_item(
+                session,
+                source_id,
+                snapshot.relative_path,
+                display_width=snapshot.display_width,
+                display_height=snapshot.display_height,
+                orientation=orientation,
+            )
+            expected.append(item.identity)
+        observed = []
+        continuation = 0
+        while True:
+            page, continuation = images.list_selected_images(
+                session, widget_id, after_id=continuation, limit=2
+            )
+            if not page:
+                break
+            assert len(page) <= 2
+            observed.extend(image.identity for image in page)
+        assert observed == expected
+
+
+def test_invalid_lookahead_remains_unconsumed():
+    first = selected()
+    frame, count = images.build_image_frame(
+        "portrait_image_pair", "contain", first, object()
+    )
+    assert frame.images == (first,)
+    assert count == 1
