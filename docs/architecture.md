@@ -524,7 +524,8 @@ Synchronous path probes can block inside a kernel filesystem call. Cooperative
 cancellation cannot interrupt every NFS/SMB syscall. #24 owns isolation/time bounds
 and mount-outage detection, including preventing fallback to a local directory
 under a missing mount; an available directory alone is not proof of a live mount.
-No pool, mounting mechanism, or timeout framework is selected here.
+Use the isolated mounted adapter below for mounted probes and enumeration; the
+synchronous #22 helpers themselves provide no mounted-operation time bound.
 
 ### Local directory enumeration (#23)
 
@@ -558,7 +559,55 @@ unavailability raises `SourceUnavailable`; invalid configuration/authority raise
 results, but finish with `EnumerationFailed`. Expected skips do not invalidate a
 scan. Only normal exhaustion permits #30's absence-based reconciliation. No DB
 transaction or runtime registration is part of enumeration, and schema revision
-remains `0006_sequence`. Mounted-storage isolation/time bounds remain #24.
+remains `0006_sequence`. Mounted sources use the isolated wrapper below.
+
+### Mounted directory isolation (#24)
+
+`postcardscene.mounted_source` exposes `mounted_source_status(configuration,
+policy, *, timeout_seconds=10.0)` and `enumerate_mounted_directory(configuration,
+policy, *, cancelled=None, timeout_seconds=10.0)`. Timeout is trusted call policy,
+a finite positive number, never Source JSON. Configuration remains exactly
+`path` and `recursive`; schema remains `0006_sequence`.
+
+Each probe/scan owns a disposable `multiprocessing` **spawn** child. All mounted
+path validation, resolution, directory access and shared #23 traversal run there.
+The parent checks cancellation while waiting on a bounded OS Pipe; it does no
+mounted-path filesystem work. Entries and small traversal-progress messages reset
+the idle timeout, so unsupported files/directories also count as progress and a
+healthy scan may exceed ten seconds overall. Consumer processing time does not
+count against worker progress. No library-wide result list is built.
+
+Inside the child, the resolved Source must be within the deepest component-covering
+mount in `/proc/self/mountinfo`, whose type must be `nfs`, `nfs4` or `cifs`.
+Linux whitespace/backslash escapes are decoded. Subdirectories within mounts are
+allowed; a deeper local mount overrides a network ancestor. A readable local
+mountpoint without network coverage is unavailable. The worker rechecks authority,
+readability and network coverage before explicit success, including after traversal.
+Mount server/export identity is not persisted; a different qualifying share at the
+same path is outside this detection guarantee. Linux mounting remains operator-owned.
+
+Invalid authority/configuration raises `InvalidSource`; not-mounted, unreadable,
+missing or idle-timed-out storage raises `SourceUnavailable`. Child crashes,
+protocol errors and shared traversal uncertainty raise `EnumerationFailed`.
+Status maps these to `invalid` or `unavailable`, and only success to `available`,
+without child diagnostics. Only explicit worker success permits normal iterator
+exhaustion. Entries preceding a failure remain observations, never authority to
+delete unseen catalog rows. Every subsequent call starts fresh, enabling recovery
+without application restart or sticky health state.
+
+The parent polls the caller cancellation predicate while waiting and raises
+`ScanCancelled` promptly. Timeout, cancellation, error and iterator close terminate
+and join the child, escalating to kill after a short bounded join. Consumers must
+close an iterator they stop consuming (for example with `contextlib.closing`).
+Linux cannot guarantee immediate reaping of a task in uninterruptible kernel sleep;
+if it survives both bounded joins, cleanup reports failure rather than success.
+Tests exercise spawn, blocked workers and kill escalation with controlled local
+substitutes; they do not claim physical NAS/kernel recovery evidence.
+
+This is an operation boundary only: no RuntimeHost service, retry loop, scheduler,
+Flask scan, mount command, credentials, catalog state or migration is introduced.
+#30/runtime owns scan timing and retry decisions and must hold no database
+transaction across the operation.
 
 ### Reconciliation rules
 

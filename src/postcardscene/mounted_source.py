@@ -3,6 +3,7 @@
 import math
 import multiprocessing
 import re
+import sys
 import time
 from collections.abc import Callable, Iterator
 from pathlib import Path
@@ -56,28 +57,36 @@ def _mounted_directory(configuration: object, policy: PathPolicy) -> Path:
     return root
 
 
+def _send(connection, kind, value=None):
+    try:
+        connection.send((kind, value))
+    except OSError:
+        # Early parent close is ordinary cancellation, not a child traceback.
+        raise SystemExit from None
+
+
 def _mounted_worker(connection, configuration, policy, enumerate_entries):
     """Only this child touches Source storage; IPC carries no raw diagnostics."""
     try:
         _mounted_directory(configuration, policy)
-        connection.send(("progress", None))
+        _send(connection, "progress")
         if enumerate_entries:
             for entry in _enumerate_directory(
                 "mounted_directory",
                 configuration,
                 policy,
-                progress=lambda: connection.send(("progress", None)),
+                progress=lambda: _send(connection, "progress"),
             ):
-                connection.send(("entry", entry))
+                _send(connection, "entry", entry)
         # An unmount during traversal must not authorize catalog deletion.
         _mounted_directory(configuration, policy)
-        connection.send(("success", None))
+        _send(connection, "success")
     except InvalidSource:
-        connection.send(("invalid", None))
+        _send(connection, "invalid")
     except (SourceUnavailable, OSError, RuntimeError):
-        connection.send(("unavailable", None))
+        _send(connection, "unavailable")
     except Exception:
-        connection.send(("failure", None))
+        _send(connection, "failure")
     finally:
         connection.close()
 
@@ -113,11 +122,11 @@ def _receive_entries(connection, cancelled, timeout_seconds, enumerate_entries):
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             raise SourceUnavailable("Mounted source stopped making progress.")
-        if not connection.poll(min(_POLL_SECONDS, remaining)):
-            continue
         try:
+            if not connection.poll(min(_POLL_SECONDS, remaining)):
+                continue
             message = connection.recv()
-        except (EOFError, OSError, ValueError):
+        except Exception:
             raise EnumerationFailed("Mounted worker ended without success.") from None
         _check_cancelled(cancelled)
         if not isinstance(message, tuple) or len(message) != 2:
@@ -162,7 +171,14 @@ def _mounted_operation(
     finally:
         receiver.close()
         sender.close()
-        _cleanup_worker(process)
+        primary_error = sys.exception()
+        try:
+            _cleanup_worker(process)
+        except SourceUnavailable as cleanup_error:
+            if primary_error is None:
+                raise
+            # Preserve cancellation/failure classification if kernel cleanup fails.
+            primary_error.add_note(str(cleanup_error))
 
 
 def mounted_source_status(

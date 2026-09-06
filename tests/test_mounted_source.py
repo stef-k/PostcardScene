@@ -241,3 +241,125 @@ def test_timeout_policy_is_finite_positive(source, timeout):
 def test_cancel_before_spawn(source):
     with pytest.raises(ScanCancelled):
         next(mounted.enumerate_mounted_directory(*source, cancelled=lambda: True))
+
+
+def test_progress_timeout_is_not_total_duration(monkeypatch):
+    clock = SimpleNamespace(now=0.0)
+    monkeypatch.setattr(mounted, "time", SimpleNamespace(monotonic=lambda: clock.now))
+
+    class ProgressStream:
+        count = 0
+
+        def poll(self, timeout):
+            clock.now += 0.01
+            return True
+
+        def recv(self):
+            self.count += 1
+            return ("progress" if self.count < 30 else "success", None)
+
+    assert list(mounted._receive_entries(ProgressStream(), None, 0.02, True)) == []
+    assert clock.now > 0.2
+
+
+def test_idle_timeout_with_real_wait():
+    context = multiprocessing.get_context("spawn")
+    receiver, sender = context.Pipe(duplex=False)
+    try:
+        with pytest.raises(SourceUnavailable):
+            list(mounted._receive_entries(receiver, None, 0.01, True))
+    finally:
+        receiver.close()
+        sender.close()
+
+
+def test_cancellation_while_waiting(source, monkeypatch, workers):
+    monkeypatch.setattr(mounted, "_mounted_worker", _stalled_worker)
+    waiting_checks = 0
+    waiting = False
+
+    def cancelled():
+        nonlocal waiting_checks
+        if waiting:
+            waiting_checks += 1
+        return waiting_checks >= 3
+
+    entries = mounted.enumerate_mounted_directory(*source, cancelled=cancelled)
+    assert next(entries) == _ENTRY
+    waiting = True
+    with pytest.raises(ScanCancelled):
+        next(entries)
+    assert waiting_checks == 3
+
+
+def test_sparse_shared_traversal_reports_progress(source, tmp_path):
+    from postcardscene.filesystem_source import _enumerate_directory
+
+    for index in range(20):
+        (tmp_path / f"{index}.txt").touch()
+    progress = []
+    assert (
+        list(
+            _enumerate_directory(
+                "mounted_directory", *source, progress=lambda: progress.append(1)
+            )
+        )
+        == []
+    )
+    assert len(progress) >= 20
+
+
+def _unreadable_worker(connection, configuration, policy, enumerate_entries):
+    with patch.object(os, "access", return_value=False):
+        _PRODUCTION_WORKER(connection, configuration, policy, enumerate_entries)
+
+
+@pytest.mark.parametrize("missing", [True, False])
+def test_missing_or_unreadable_source(source, monkeypatch, workers, missing):
+    config, policy = source
+    if missing:
+        config["path"] += "/missing"
+    else:
+        monkeypatch.setattr(mounted, "_mounted_worker", _unreadable_worker)
+    assert mounted.mounted_source_status(config, policy) == SourceStatus.UNAVAILABLE
+
+
+def test_crash_does_not_poison_next_scan(source, tmp_path, monkeypatch, workers):
+    monkeypatch.setattr(mounted, "_mounted_worker", _crashed_worker)
+    with pytest.raises(EnumerationFailed):
+        list(mounted.enumerate_mounted_directory(*source))
+    monkeypatch.setattr(mounted, "_mounted_worker", _healthy_worker)
+    (tmp_path / "recovered.jpg").touch()
+    assert [
+        entry.relative_path for entry in mounted.enumerate_mounted_directory(*source)
+    ] == ["recovered.jpg"]
+    assert len(workers) == 2
+
+
+def test_parent_never_resolves_mounted_path(source, monkeypatch, workers):
+    def forbidden(*args, **kwargs):
+        raise AssertionError("Mounted filesystem operation escaped child isolation")
+
+    with monkeypatch.context() as parent:
+        parent.setattr(Path, "resolve", forbidden)
+        parent.setattr(Path, "stat", forbidden)
+        parent.setattr(os, "listdir", forbidden)
+        assert mounted.mounted_source_status(*source) == SourceStatus.UNAVAILABLE
+
+
+def test_cleanup_failure_preserves_cancellation(source, monkeypatch):
+    cleanup = mounted._cleanup_worker
+
+    def failed_cleanup(process):
+        cleanup(process)
+        raise SourceUnavailable("Mounted worker could not be stopped.")
+
+    monkeypatch.setattr(mounted, "_cleanup_worker", failed_cleanup)
+    monkeypatch.setattr(mounted, "_mounted_worker", _stalled_worker)
+    cancelled = False
+    entries = mounted.enumerate_mounted_directory(*source, cancelled=lambda: cancelled)
+    assert next(entries) == _ENTRY
+    cancelled = True
+    with pytest.raises(ScanCancelled) as error:
+        next(entries)
+    assert error.value.__notes__ == ["Mounted worker could not be stopped."]
