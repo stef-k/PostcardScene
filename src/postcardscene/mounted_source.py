@@ -19,6 +19,7 @@ from postcardscene.filesystem_source import (
     _enumerate_directory,
     _source_directory,
 )
+from postcardscene.image_metadata import ImageMetadata, inspect_image
 
 DEFAULT_MOUNT_TIMEOUT = 10.0
 _POLL_SECONDS = 0.02
@@ -70,7 +71,16 @@ def _mounted_worker(connection, configuration, policy, enumerate_entries):
     try:
         _mounted_directory(configuration, policy)
         _send(connection, "progress")
-        if enumerate_entries:
+        if isinstance(enumerate_entries, tuple):
+            for entry in enumerate_entries:
+                _mounted_directory(configuration, policy)
+                _send(connection, "progress")
+                result = inspect_image(
+                    "mounted_directory", configuration, policy, entry
+                )
+                _mounted_directory(configuration, policy)
+                _send(connection, "metadata", result)
+        elif enumerate_entries:
             for entry in _enumerate_directory(
                 "mounted_directory",
                 configuration,
@@ -133,6 +143,12 @@ def _receive_entries(connection, cancelled, timeout_seconds, enumerate_entries):
             raise EnumerationFailed("Mounted worker protocol failed.")
         kind, value = message
         if kind == "entry" and enumerate_entries and isinstance(value, MediaEntry):
+            yield value
+        elif (
+            kind == "metadata"
+            and isinstance(enumerate_entries, tuple)
+            and isinstance(value, ImageMetadata)
+        ):
             yield value
         elif value is not None:
             raise EnumerationFailed("Mounted worker protocol failed.")
@@ -214,4 +230,25 @@ def enumerate_mounted_directory(
     """
     yield from _mounted_operation(
         configuration, policy, cancelled, timeout_seconds, True
+    )
+
+
+def inspect_mounted_images(
+    configuration,
+    policy,
+    entries,
+    *,
+    cancelled=None,
+    timeout_seconds=DEFAULT_MOUNT_TIMEOUT,
+):
+    """Inspect at most 64 pending images through the existing spawn lifecycle."""
+    if not isinstance(entries, (list, tuple)) or not 1 <= len(entries) <= 64:
+        raise ValueError("Image metadata batch must contain 1 to 64 entries.")
+    if any(
+        not isinstance(entry, MediaEntry) or entry.media_type != "image"
+        for entry in entries
+    ):
+        raise ValueError("Image metadata batches require image MediaEntries.")
+    yield from _mounted_operation(
+        configuration, policy, cancelled, timeout_seconds, tuple(entries)
     )
