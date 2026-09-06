@@ -526,6 +526,40 @@ and mount-outage detection, including preventing fallback to a local directory
 under a missing mount; an available directory alone is not proof of a live mount.
 No pool, mounting mechanism, or timeout framework is selected here.
 
+### Local directory enumeration (#23)
+
+`enumerate_local_directory(configuration, policy, *, cancelled=None)` in
+`postcardscene.filesystem_source` validates/resolves through the #22 helpers and
+yields one immutable `MediaEntry` at a time. It needs only ordinary Python and
+local filesystem access. Consumers that stop early must close the iterator to
+release active directory descriptors; an abandoned scan is not complete.
+
+With `recursive=false`, only direct children are inspected. With `recursive=true`,
+normal directories are traversed depth-first. Each directory's immediate names
+are sorted by exact Linux filename string, preserving case and Unicode without
+normalization. Hidden names are included normally. Memory holds active directory
+listings along the descent, never a collected/sorted library of media entries.
+Directory opens and descriptor-relative file stats use no-follow semantics;
+symlink descendants and special files are skipped. File bodies are never read.
+
+Candidate suffix matching is case-insensitive, preserving the original relative
+path. Image suffixes are `.jpg`, `.jpeg`, `.png`, `.webp`, `.gif`, `.bmp`, `.tif`,
+`.tiff`, `.heic`, `.heif`, `.avif`; video suffixes are `.mp4`, `.m4v`, `.mov`, `.mkv`,
+`.webm`, `.avi`, `.mpg`, `.mpeg`, `.mts`, `.m2ts`. Unknown suffixes, including camera
+RAW formats, are ignored. This is discovery, not a renderer/platform support
+promise. Size and nanosecond modification time come from the no-follow stat;
+metadata decoding remains #30's responsibility.
+
+Cancellation accepts a predicate such as `stop_event.is_set`, checked before
+traversal, around listings, while processing children, before descent and before
+yields. It raises `ScanCancelled` immediately at the next check. Root storage
+unavailability raises `SourceUnavailable`; invalid configuration/authority raises
+`InvalidSource`. Child/subtree operational failures permit safely reachable sibling
+results, but finish with `EnumerationFailed`. Expected skips do not invalidate a
+scan. Only normal exhaustion permits #30's absence-based reconciliation. No DB
+transaction or runtime registration is part of enumeration, and schema revision
+remains `0006_sequence`. Mounted-storage isolation/time bounds remain #24.
+
 ### Reconciliation rules
 
 Cataloging must distinguish:

@@ -1,6 +1,9 @@
 """Local candidate traversal through the filesystem Source contract."""
 
 import os
+import subprocess
+import sys
+from pathlib import Path
 
 import pytest
 
@@ -154,6 +157,43 @@ def test_unavailable_root(source, tmp_path, root_kind):
         (tmp_path / "root").touch()
     with pytest.raises(SourceUnavailable):
         next(enumerate_local_directory(config, policy))
+
+
+def test_unreadable_root_listing(source, monkeypatch):
+    def denied(directory):
+        raise PermissionError("private host details")
+
+    monkeypatch.setattr(os, "listdir", denied)
+    with pytest.raises(SourceUnavailable) as error:
+        next(enumerate_local_directory(*source))
+    assert "private" not in str(error.value)
+
+
+def test_enumeration_without_site_packages(source, tmp_path):
+    (tmp_path / "photo.jpg").write_bytes(b"not an image")
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-I",
+            "-S",
+            "-c",
+            "import sys; sys.path.insert(0, sys.argv[1]); "
+            "from postcardscene.filesystem_source import PathPolicy, enumerate_local_directory; "
+            "entries = list(enumerate_local_directory("
+            "{'path': sys.argv[2], 'recursive': True}, PathPolicy([sys.argv[2]]))); "
+            "assert len(entries) == 1; assert entries[0].relative_path == 'photo.jpg'; "
+            "assert not any(name in sys.modules for name in "
+            "('flask', 'sqlalchemy', 'sqlite3', 'PIL', 'mpv', 'postcardscene.domain', "
+            "'postcardscene.persistence'))",
+            str(Path(__file__).resolve().parents[1] / "src"),
+            str(tmp_path),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=10,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
 
 
 @pytest.mark.parametrize("invalid", ["outside", "recursive", "escape"])

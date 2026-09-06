@@ -309,19 +309,20 @@ def enumerate_local_directory(
     Individual kernel calls are synchronous and may block; #24 owns isolation.
     """
     _check_cancelled(cancelled)
+    started = False
     try:
         root = _source_directory("local_directory", configuration, policy)
         with _open_directory(root) as directory:
             _check_cancelled(cancelled)
             names = sorted(os.listdir(directory))
             _check_cancelled(cancelled)
-            try:
-                incomplete = yield from _walk_directory(
-                    directory, names, "", configuration["recursive"], cancelled
-                )
-                if incomplete:
-                    raise EnumerationFailed("Source enumeration was incomplete.")
-            except (OSError, RuntimeError) as error:
-                raise EnumerationFailed("Source enumeration was incomplete.") from error
+            started = True
+            incomplete = yield from _walk_directory(
+                directory, names, "", configuration["recursive"], cancelled
+            )
+            if incomplete:
+                raise EnumerationFailed("Source enumeration was incomplete.")
     except (OSError, RuntimeError) as error:
+        if started:
+            raise EnumerationFailed("Source enumeration was incomplete.") from error
         raise SourceUnavailable("Source storage is unavailable.") from error
