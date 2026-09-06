@@ -59,7 +59,7 @@ def test_cli_initialization_identity_and_idempotent_upgrade(tmp_path):
     with sqlite3.connect(path) as connection:
         assert connection.execute(
             "SELECT name FROM sqlite_master WHERE type='table'"
-        ).fetchall() == [("alembic_version",)]
+        ).fetchall() == [("alembic_version",), ("administrator",)]
     other = create_app({"DATABASE_PATH": tmp_path / "other.sqlite3"})
     assert other.test_cli_runner().invoke(args=["db", "check"]).exit_code != 0
     assert not (tmp_path / "other.sqlite3").exists()

@@ -12,7 +12,7 @@ def test_factory_configuration_is_explicit_and_isolated(tmp_path, monkeypatch):
     app = create_app({"TESTING": True})
     assert app.config["TRUSTED_HOSTS"] == ["control.example"]
     assert (
-        app.test_client().get("/", base_url="http://control.example").status_code == 200
+        app.test_client().get("/", base_url="http://control.example").status_code == 302
     )
     assert (
         app.test_client().get("/", base_url="http://untrusted.example").status_code
@@ -22,7 +22,7 @@ def test_factory_configuration_is_explicit_and_isolated(tmp_path, monkeypatch):
     fresh = create_app()
     assert not fresh.debug
     assert not fresh.testing
-    assert fresh.secret_key is None
+    assert len(fresh.secret_key) == 32
     assert fresh.config["TRUSTED_HOSTS"] is None
 
 
@@ -47,7 +47,7 @@ class AssetParser(HTMLParser):
 
 def test_home_and_packaged_assets():
     client = create_app({"TESTING": True}).test_client()
-    response = client.get("/")
+    response = client.get("/login")
     assert response.status_code == 200
     assert b"PostcardScene" in response.data
     assert b'aria-label="Main navigation"' in response.data

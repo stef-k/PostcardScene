@@ -676,7 +676,7 @@ The base settings/status UI should be responsive and preserve normal accessible 
 The Flask development server/debug mode is not the production appliance serving contract.
 
 Issue #13 provides `postcardscene.web.create_app(config=None)`, a `control`
-blueprint for the overview, and shared Jinja templates/local CSS. Future auth,
+blueprint for the overview, and shared Jinja templates/local CSS. Future
 settings, status, source, scene and sequence features should add focused blueprints
 under `web` when their owning issues implement them, rather than populate empty
 feature modules now. Importing the package or constructing the app starts no
@@ -687,8 +687,9 @@ secret, optional operator-owned Python file via `POSTCARDSCENE_CONFIG`, then
 explicit mapping overrides. A specified invalid file fails startup. This permits
 Flask Host configuration without choosing a production bind or proxy policy;
 server binding remains outside the factory and no forwarded-header middleware is
-installed. #29/#26 retain production serving ownership. The shell has a lazy shared database handle and explicit migration CLI, but no
-authentication, settings behavior or runtime IPC. See README for local startup.
+installed. #29/#26 retain production serving ownership. The shell has a lazy shared
+database handle and explicit migration CLI; #15 adds authentication, without settings
+behavior or runtime IPC. See README for local startup.
 
 ## 21. Authentication, network exposure, and secrets
 
@@ -699,9 +700,9 @@ Expected initial authority:
 - administrator
 - optional viewer/operator only when a concrete need appears
 
-Use secure password hashing, session protection, CSRF protection, and a persistent installation-owned application/session secret.
+Issue #15 uses a single SQLAlchemy administrator (explicit `0002_administrator` migration), Werkzeug scrypt hashes, Flask-Login strong session protection and Flask-WTF CSRF. Logout/reset rotate its revocable login identity; all sessions are revoked.
 
-A host-authorized local administrator password-reset path must exist without requiring manual database editing or an unauthenticated email-reset service.
+Host CLI commands provision a protected persistent signing file and bootstrap/reset the administrator without database editing. Cookies are HttpOnly/SameSite=Lax, age-bounded to 12 hours; Secure is configurable (false for loopback HTTP development). README owns setup/recovery details; #29 retains production transport and credential-at-rest decisions.
 
 Before V0 release, the project must explicitly define:
 

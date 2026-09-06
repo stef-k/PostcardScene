@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Log in{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-md-8 col-lg-6">
+    <section class="card" aria-labelledby="login-title">
+      <div class="card-body p-4 p-md-5">
+        <p class="eyebrow">Your ambient display</p>
+        <h1 id="login-title" class="h2 mb-4">Log in to PostcardScene</h1>
+        {% if failed %}<p class="alert alert-danger" role="alert">Incorrect username or password.</p>{% endif %}
+        <form method="post" action="{{ url_for('auth.login') }}">
+          {{ form.hidden_tag() }}
+          {% for field in [form.username, form.password] %}
+          <div class="mb-3">
+            {{ field.label(class="form-label") }}
+            {{ field(class="form-control", autocomplete="username" if field.name == "username" else "current-password", aria_describedby=field.name ~ '-error', aria_invalid='true' if field.errors else 'false') }}
+            <div id="{{ field.name }}-error" class="text-danger" role="alert">{% for error in field.errors %}{{ error }}{% endfor %}</div>
+          </div>
+          {% endfor %}
+          <button class="btn btn-primary" type="submit">Log in</button>
+        </form>
+        <p class="text-body-secondary mt-4 mb-0">For first-time setup or a forgotten password, use the local administrator commands on the host.</p>
+      </div>
+    </section>
+  </div>
+</div>
+{% endblock %}
