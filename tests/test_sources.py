@@ -160,6 +160,7 @@ def test_structured_accessible_form_and_sources_navigation(sources_ui):
         "enabled",
         "csrf_token",
     }
+    assert html.count('id="csrf_token"') == 1
     assert 'href="/sources" aria-current="page"' in html
     assert 'href="/sources"' in client.get("/").text
     assert client.get(f"/sources/{source_id}/delete").status_code == 405
@@ -241,3 +242,25 @@ def test_database_failure_is_sanitized_even_during_login_lookup(
         response = source_post(path)
         assert response.status_code == 503
         assert "private SQL" not in response.text
+
+
+def test_failed_source_transaction_rolls_back_without_queuing(
+    sources_ui, source_post, monkeypatch
+):
+    _, _, db, _, _ = sources_ui
+
+    def fail_after_insert(session, **fields):
+        domain.create_source(session, **fields)
+        raise SQLAlchemyError("private insert failure")
+
+    def forbidden(*args):
+        pytest.fail("Queued refresh before a successful Source commit")
+
+    monkeypatch.setattr(sources_web, "create_source", fail_after_insert)
+    monkeypatch.setattr(sources_web, "request_catalog_reconciliation", forbidden)
+    response = source_post()
+    assert response.status_code == 503
+    assert "private insert failure" not in response.text
+    with db.transaction() as session:
+        assert len(domain.list_sources(session)) == 1
+        assert session.scalars(select(MediaCatalogState)).all() == []

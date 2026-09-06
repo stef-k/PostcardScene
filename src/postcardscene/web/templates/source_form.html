@@ -34,7 +34,7 @@
   <h2 class="h4">Delete Source</h2>
   <p id="delete-warning">Deletion removes this Source and its derived catalog. Original media files are untouched. Widgets, Scenes and Sequences are never deleted here. A Source referenced by a Widget cannot be deleted.</p>
   <form method="post" action="{{ url_for('sources.delete', source_id=source_id) }}">
-    {{ form.hidden_tag() }}
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <button class="btn btn-outline-danger" type="submit" aria-describedby="delete-warning">Delete Source</button>
   </form>
 </div></section>
