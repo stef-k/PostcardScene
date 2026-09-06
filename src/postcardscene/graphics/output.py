@@ -102,8 +102,15 @@ def _mode_arguments(mode: Mode, modes: tuple[Mode, ...]) -> list[str]:
 
 def _matches(output: Output, desired: Mode, preferred_selector: bool) -> bool:
     current = output.current
+    if preferred_selector:
+        controllable = sum(mode.preferred for mode in output.modes) == 1
+    else:
+        controllable = (
+            sum(mode.selector == desired.selector for mode in output.modes) == 1
+        )
     return (
-        output.enabled
+        controllable
+        and output.enabled
         and current is not None
         and current.selector == desired.selector
         and (not preferred_selector or current.preferred)
@@ -173,7 +180,11 @@ def reconcile_display(
                 stop_event,
             )
             # A successful command is not evidence of accepted output state.
-            output = _selected_output(read_outputs(environment, stop_event), connector)
+            post_outputs = read_outputs(environment, stop_event)
+            if not any(item.name == connector.name for item in post_outputs):
+                status = replace(status, current_mode=None, current_scale=None)
+                raise ProbeError("apply_failed")
+            output = _selected_output(post_outputs, connector)
             status = replace(
                 status, current_mode=output.current, current_scale=output.scale
             )

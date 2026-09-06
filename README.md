@@ -101,8 +101,10 @@ The shared session foundation targets Raspberry Pi 4/5 ARM64 on **both Ubuntu
 Server LTS and Raspberry Pi OS 64-bit**, using native Wayland/labwc. Versioned
 appliance configuration, service/PAM templates and a bounded Python readiness
 probe are implemented in #62. See [appliance operations](docs/operations.md) for
-provisioning ownership and validation limits. Managed installation, renderers,
-output/hotplug policy and physical support evidence remain with their owning issues.
+provisioning ownership and validation limits. #63 implements the shared one-HDMI
+mode policy, bounded hotplug polling seam and safe diagnostics; the runtime does
+not yet start that monitor. Managed installation, renderers and physical support
+evidence remain with their owning issues.
 
 ## V0 operational boundary
 

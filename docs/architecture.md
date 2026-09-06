@@ -1059,12 +1059,55 @@ RuntimeHost remains application lifecycle authority. Renderers must be runtime
 children, never labwc autostart jobs. No generic supervisor is added.
 
 [Operations](operations.md#linux-graphical-session-62) owns the service/PAM/seat
-provisioning contract, readiness semantics and evidence limits. #63 still owns
-connector/EDID/mode/hotplug policy, #64 Chromium isolation/control, #65 shared
+provisioning contract, readiness semantics and evidence limits. #63 implements
+connector/EDID/mode/hotplug policy below; #64 owns Chromium isolation/control, #65 shared
 surfaces/overlay/input capability, and #66 representative physical validation on
 both primary distro paths. Package availability and headless Linux smoke do not
 prove Pi/HDMI/4K, non-root seat permissions, acceleration or audio support. #31
 remains open until those children and its umbrella acceptance contract are met.
+
+### One-display output policy (#63)
+
+`postcardscene.graphics.output.reconcile_display(session, connector_override=...)`
+consumes the existing `WaylandSession` readiness and explicit client environment.
+Both primary distro paths use the same Linux DRM/wlr-randr code. Only connected
+`card*-HDMI-A-*` sysfs connectors are eligible. Zero is normal `no_display`; one
+is selected; multiple are `ambiguous` unless a trusted host override names one
+exact `HDMI-A-N`. Invalid/disconnected overrides and duplicate card identities
+fail closed. The selected name must match a current Wayland output.
+
+Bounded DRM status/EDID reads supply physical presence and manufacturer/product
+codes only. `/usr/bin/wlr-randr --json` supplies advertised modes and current
+output state. Description, model text, serials and raw EDID are discarded.
+JSON/schema/tool failures become fixed degraded reasons, with no X11 fallback.
+The command schema and millihertz selector follow
+[upstream wlr-randr](https://gitlab.freedesktop.org/emersion/wlr-randr/-/blob/master/main.c).
+
+Policy selects advertised 3840x2160 at 59.8–60.2 Hz, then 1920x1080 in that
+class, then preferred/current modes at <=60.2 Hz; otherwise `no_safe_mode`.
+Candidates sort by distance to 60, preferred, current, descending width/height,
+then refresh. Numeric selectors use millihertz; indistinguishable timings fail
+closed unless a unique preferred mode can be controlled with `--preferred`.
+Scale is exactly 1, position 0,0, transform normal. No custom timing, high-refresh,
+HDR or VRR selection is introduced. Unselected outputs are not reconfigured.
+
+Reconciliation applies at most once, only if needed, using shell-free argv and
+a two-second command deadline with capped 256 KiB stdout and discarded stderr.
+Fresh JSON must verify the mode identity, enabled state and layout. A command
+exit code alone cannot establish readiness. Immutable `DisplayStatus` snapshots
+expose selected connector, EDID codes, current/desired mode, scale and fixed
+state/reason; no raw environment, tool output or display serial is public.
+
+`monitor_display(session, stop_event, connector_override=...)` is a blocking
+snapshot iterator with an interruptible one-second wait after each reconcile.
+The later runtime owner consumes it and supplies its existing shutdown Event;
+this change starts no runtime thread/service. Tool waits observe cancellation
+at most every 50 ms, with a 250 ms kill/reap allowance. Repeated polls recover
+from no-display/connect/disconnect/reconnect and failures without busy retry.
+No-display skips the unnecessary Wayland output command and leaves labwc alive.
+These are software contracts; #66 owns physical HDMI/4K/hotplug evidence and
+#10 owns panel standby/wake. Future power coordination must suspend output
+reconciliation while intentionally disabling an output so it is not re-enabled.
 
 ## 18. Display power management
 
@@ -1321,7 +1364,7 @@ The following are intentionally unresolved until the owning issue has enough evi
 6. **Provider/plugin registration** — whether a formal plugin mechanism ever becomes worthwhile.
 7. **Frontend enhancement** — whether HTMX or another small enhancement is justified after the basic Flask/Jinja UI exists.
 8. **Scheduling implementation primitive** — exact library/timer implementation behind the frozen scheduling semantics.
-9. **Graphics output and renderer integration** — Wayland/labwc session is frozen by #62; output/hotplug, Chromium control and overlay/input details remain with #63–#65, physically validated by #66.
+9. **Graphics output and renderer integration** — Wayland/labwc session and output/hotplug policy are frozen by #62/#63; Chromium control and overlay/input details remain with #64/#65, physically validated by #66.
 10. **Kiosk authenticated-session persistence** — whether V0 persists third-party web-session cookies and how that state is isolated/recovered.
 11. **Release artifact format** — wheel/archive/other small managed-native distribution shape, owned by #26.
 12. **Production web serving/network boundary** — exact WSGI server and HTTP/HTTPS/reverse-proxy model, owned by #29/#26.

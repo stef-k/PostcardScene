@@ -132,7 +132,7 @@ XWayland is outside the application contract. Older labwc builds may initialize
 lazy X sockets internally; `WLR_XWAYLAND=/usr/bin/false` refuses an attempted X
 server launch, and application clients receive no X display. Both distro paths
 must use native Wayland clients. #64 owns Chromium controls/isolation; #65 owns
-mpv/surface/overlay proof; #63 owns output selection and hotplug. None is added here.
+mpv/surface/overlay proof. #63 output selection and hotplug are described below.
 
 A controlled Ubuntu 24.04 x86-64/WSL smoke used distro labwc 0.7.1 and wlroots
 0.17.1, extracted into a temporary directory, with headless/pixman backends and
@@ -143,3 +143,65 @@ pointer; pointer visibility/overlay behavior remains #65. This is software/sessi
 evidence only; headless backends are not
 production launch options. Pi ARM64, unattended boot/logind/seatd authority,
 HDMI/4K, input behavior and both-distro physical evidence remain with #66.
+
+
+## HDMI output reconciliation (#63)
+
+The graphical/runtime user calls
+`postcardscene.graphics.output.reconcile_display(WaylandSession())` to inspect
+and, when necessary, configure the one HDMI output. This is a mutating Python
+operation, not a read-only doctor command. Its frozen `DisplayStatus` has
+`public_diagnostics()` for safe serialization; the existing session CLI remains
+session-only. The runtime executable does not yet start output monitoring.
+
+#26 must provision `/usr/bin/wlr-randr` with working `--json` support and the
+wlr-output-management protocol on labwc. The same executable path, session
+capability and DRM sysfs policy apply on Ubuntu Server and Raspberry Pi OS.
+An older tool lacking JSON support reports `tool_failed`/`malformed_output`;
+there is no text-output or desktop-session fallback. Verify the installed tool
+and compositor combination during #26/#66 provisioning.
+
+V0 selects one connected HDMI-A connector. With multiple, the trusted Python
+caller can pass `connector_override="HDMI-A-1"`; this is host configuration,
+not a database/UI/Scene setting. A missing/disconnected override never selects a
+different connector. Conflicting DRM card names or absent Wayland identity fail
+closed. Non-HDMI outputs are ignored and no output is switched off by this policy.
+
+The preference is advertised 4K60-class, then 1080p60-class, then safe preferred
+or current <=60.2 Hz. Scale 1, position 0,0 and normal transform are enforced.
+Unsupported high-refresh-only/ambiguous timings remain degraded. Successful
+application requires fresh matching Wayland state. This does not prove physical
+panel power, visible pixels, cable bandwidth or validated 4K operation.
+
+A runtime-owned consumer can iterate `monitor_display(session, stop_event)`.
+It reconciles immediately and waits interruptibly for one second between calls,
+including after failures. Connect/disconnect/reconnect converge on later polls;
+no-display is normal and skips tool execution. The owner must consume snapshots
+promptly, share its shutdown Event and stop consuming when appropriate. Commands
+are capped at two seconds and 256 KiB of stdout; cancellation is checked every
+50 ms during command waits, with up to 250 ms for kill/reap. The session probe
+retains its 250 ms bound. Sysfs enumeration is capped at 256 entries, status at
+32 bytes per connector and EDID at the 128-byte base block. As with other local
+kernel I/O, a driver stuck in uninterruptible sleep cannot be given a Python
+wall-clock guarantee; #66 must exercise the actual hardware/driver path.
+
+| State/reason | Meaning and operator action |
+| --- | --- |
+| `no_display` | No connected eligible HDMI connector; compositor remains alive. |
+| `ready` | Selected output matches software mode/layout policy. |
+| `ambiguous` | Multiple connected HDMI connectors; provide an exact host override. |
+| `session_unavailable` | Check the #62 session capability and service/seat provisioning. |
+| `drm_failed`, `connector_mismatch`, `invalid_connector_override` | Check connector presence, host override and DRM/Wayland identity; retry on a later poll. |
+| `tool_missing`, `tool_failed`, `tool_timeout`, `oversized_output`, `malformed_output` | Check installed wlr-randr/JSON support and compositor responsiveness. Raw command output is never published. |
+| `no_safe_mode`, `ambiguous_mode`, `apply_failed` | No proven selectable safe mode or fresh post-state disagrees; inspect the provisioned tool/display combination. |
+| `cancelled` | Cooperative runtime shutdown interrupted a command. |
+
+Diagnostics retain only manufacturer letters and hexadecimal product code from
+a checksum-valid EDID base block; missing/malformed EDID is optional diagnostic
+loss. No monitor serial, model/description text, raw EDID, environment or command
+output is retained. Snapshots and this policy have no durable state to back up.
+
+Unit/process tests prove software decisions and bounded tool behavior. Physical
+Pi/HDMI/4K/hotplug claims remain #66. Panel standby/wake stays with #10; its later
+runtime integration must suspend this reconciliation while intentionally disabling
+outputs. Renderer lifecycle and shared surfaces remain #64/#65.

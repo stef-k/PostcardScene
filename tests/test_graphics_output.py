@@ -292,13 +292,54 @@ def test_failed_monitor_waits_before_retry(display, monkeypatch):
     connector(root)
     monkeypatch.setattr(probe, "run_command", lambda *args: b"bad")
     stop = Event()
+    first_snapshot = Event()
     snapshots = []
-    thread = Thread(
-        target=lambda: snapshots.extend(policy.monitor_display(WaylandSession(), stop))
-    )
+
+    def consume():
+        for status in policy.monitor_display(WaylandSession(), stop):
+            snapshots.append(status)
+            first_snapshot.set()
+
+    thread = Thread(target=consume)
     thread.start()
-    time.sleep(0.1)
-    stop.set()
-    thread.join(0.5)
+    try:
+        assert first_snapshot.wait(2)
+        time.sleep(0.1)
+    finally:
+        stop.set()
+        thread.join(0.5)
     assert not thread.is_alive()
     assert [status.reason for status in snapshots] == ["malformed_output"]
+
+
+@pytest.mark.parametrize(
+    "post_state", [[], [output(modes=[mode(), mode(preferred=False, current=False)])]]
+)
+def test_post_apply_disappearance_or_new_timing_ambiguity_is_failure(
+    display, post_state
+):
+    root, _, states = display
+    connector(root)
+    states[:] = [[output() | {"scale": 2}], [], post_state]
+    assert policy.reconcile_display(WaylandSession()).reason == "apply_failed"
+
+
+def test_drm_read_failure_is_degraded_and_missing_edid_is_optional(display):
+    root, _, _ = display
+    connector(root)
+    (root / "card1-HDMI-A-1" / "edid").unlink()
+    assert policy.reconcile_display(WaylandSession()).state == "ready"
+    (root / "card1-HDMI-A-1" / "status").unlink()
+    assert policy.reconcile_display(WaylandSession()).reason == "drm_failed"
+
+
+@pytest.mark.parametrize("refresh", [59.799999, 60.200001])
+def test_json_float_rounding_preserves_60hz_class_boundaries(display, refresh):
+    root, calls, states = display
+    connector(root)
+    states[:] = [
+        [output(modes=[mode(3840, 2160, refresh, False, True), mode(current=False)])]
+    ]
+    status = policy.reconcile_display(WaylandSession())
+    assert status.state == "ready" and status.desired_mode.width == 3840
+    assert calls == [["--json"]]

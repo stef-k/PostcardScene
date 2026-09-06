@@ -127,16 +127,22 @@ def run_command(
         raise ProbeError("tool_missing") from error
     except OSError as error:
         raise ProbeError("tool_failed") from error
+    failed = True
     try:
-        return _capture(process, stop_event)
+        captured = _capture(process, stop_event)
+        failed = False
+    except OSError as error:
+        raise ProbeError("tool_failed") from error
     finally:
-        if process.poll() is None:
-            process.kill()
-        process.stdout.close()
         try:
+            if process.poll() is None:
+                process.kill()
+            process.stdout.close()
             process.wait(timeout=0.25)
-        except subprocess.TimeoutExpired as error:
-            raise ProbeError("tool_failed") from error
+        except (OSError, subprocess.TimeoutExpired) as error:
+            if not failed:  # Preserve the primary failure when cleanup also fails.
+                raise ProbeError("tool_failed") from error
+    return captured
 
 
 def _capture(process: subprocess.Popen, stop_event: Event | None) -> bytes:
@@ -192,7 +198,10 @@ def _mode(value) -> Mode:
         raise ValueError
     if type(value["preferred"]) is not bool or type(value["current"]) is not bool:
         raise ValueError
-    return Mode(width, height, float(refresh), value["preferred"], value["current"])
+    # JSON prints a float converted from protocol integer mHz (e.g. 59.799999).
+    # Recover that precision before applying inclusive 59.8/60.2 Hz boundaries.
+    refresh = math.floor(refresh * 1000 + 0.5) / 1000
+    return Mode(width, height, refresh, value["preferred"], value["current"])
 
 
 def _output(value) -> Output:
