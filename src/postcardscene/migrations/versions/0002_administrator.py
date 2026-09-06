@@ -16,7 +16,9 @@ def upgrade():
         sa.Column("username", sa.String(64), nullable=False),
         sa.Column("password_hash", sa.String(256), nullable=False),
         sa.Column("session_id", sa.String(64), nullable=False),
-        sa.CheckConstraint("id = 1", name="ck_administrator_single_administrator"),
+        sa.CheckConstraint(
+            "id = 1", name=op.f("ck_administrator_single_administrator")
+        ),
         sa.PrimaryKeyConstraint("id", name="pk_administrator"),
         sa.UniqueConstraint("username", name="uq_administrator_username"),
         sa.UniqueConstraint("session_id", name="uq_administrator_session_id"),
