@@ -64,3 +64,33 @@ def test_safe_open_refuses_unsafe_or_stale(tmp_path, case):
             info.st_mtime_ns + (case == "stale_time"),
         ):
             pytest.fail("unsafe open succeeded")
+
+
+@pytest.mark.parametrize("component", ["child", "photo.jpg"])
+def test_symlink_replacement_at_actual_open(tmp_path, monkeypatch, component):
+    child = tmp_path / "child"
+    child.mkdir()
+    path = child / "photo.jpg"
+    path.write_bytes(b"original")
+    info = path.stat()
+    original_open = os.open
+
+    def replace_at_open(name, flags, **kwargs):
+        if name == component:
+            target = tmp_path / "child" if component == "child" else path
+            moved = target.with_name(target.name + "-moved")
+            target.rename(moved)
+            target.symlink_to(moved)
+        return original_open(name, flags, **kwargs)
+
+    monkeypatch.setattr(os, "open", replace_at_open)
+    with pytest.raises(InvalidSource):
+        with open_image_item(
+            "local_directory",
+            {"path": str(tmp_path), "recursive": True},
+            PathPolicy([tmp_path]),
+            "child/photo.jpg",
+            info.st_size,
+            info.st_mtime_ns,
+        ):
+            pytest.fail("replacement followed")

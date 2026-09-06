@@ -351,7 +351,16 @@ def _enumerate_directory(
 
 
 @contextmanager
-def open_image_item(kind, configuration, policy, relative_path, size_bytes, mtime_ns):
+def open_image_item(
+    kind,
+    configuration,
+    policy,
+    relative_path,
+    size_bytes,
+    mtime_ns,
+    *,
+    progress=lambda: None,
+):
     """Pin a regular, fresh asset using no-follow descriptor-relative opens.
 
     Canonical Source roots retain #22 semantics. Walk even their ancestors with
@@ -362,6 +371,7 @@ def open_image_item(kind, configuration, policy, relative_path, size_bytes, mtim
     parts = relative_path.split("/")
     try:
         root = _source_directory(kind, configuration, policy)
+        progress()
     except (OSError, RuntimeError) as error:
         raise SourceUnavailable("Source storage is unavailable.") from error
     if not configuration["recursive"] and len(parts) != 1:
@@ -371,12 +381,14 @@ def open_image_item(kind, configuration, policy, relative_path, size_bytes, mtim
             directory = stack.enter_context(_open_directory("/"))
             for part in (*root.parts[1:], *parts[:-1]):
                 directory = stack.enter_context(_open_directory(part, parent=directory))
+                progress()
             descriptor = os.open(
                 parts[-1],
                 os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
                 dir_fd=directory,
             )
             stack.callback(os.close, descriptor)
+            progress()
             info = os.fstat(descriptor)
             if not stat.S_ISREG(info.st_mode) or (info.st_size, info.st_mtime_ns) != (
                 size_bytes,

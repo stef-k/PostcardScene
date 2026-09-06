@@ -125,6 +125,7 @@ class FrameRequest(BaseHTTPRequestHandler):
                 image.relative_path,
                 image.size_bytes,
                 image.mtime_ns,
+                progress=self.server.progress,
             ) as stream:
                 if source.kind == "mounted_directory":
                     _check_open_mount(stream)

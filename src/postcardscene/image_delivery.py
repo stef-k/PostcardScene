@@ -50,8 +50,10 @@ class ImageFrameHandle:
                 if not self._receiver.poll(min(0.02, remaining)):
                     continue
                 message = self._receiver.recv()
-            except (OSError, EOFError):
+            except Exception:
                 raise ImageDeliveryError(FrameFailure.HELPER) from None
+            if self._cancelled is not None and self._cancelled():
+                raise ImageDeliveryError(FrameFailure.CANCELLED)
             if type(message) is not tuple or len(message) != 2:
                 raise ImageDeliveryError(FrameFailure.HELPER)
             kind, value = message
