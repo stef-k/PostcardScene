@@ -1,19 +1,27 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-bs-theme="dark">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% block title %}Overview{% endblock %} · PostcardScene</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='vendor/bootstrap-5.3.8/bootstrap.min.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='control.css') }}">
+    <script type="module" src="{{ url_for('static', filename='control.js') }}"></script>
+    <script defer src="{{ url_for('static', filename='vendor/bootstrap-5.3.8/bootstrap.bundle.min.js') }}"></script>
   </head>
   <body>
-    <a class="skip-link" href="#main">Skip to content</a>
-    <header>
-      <a class="brand" href="{{ url_for('control.index') }}">PostcardScene</a>
-      <nav aria-label="Main navigation">
-        <a href="{{ url_for('control.index') }}"{% if request.endpoint == 'control.index' %} aria-current="page"{% endif %}>Overview</a>
-      </nav>
+    <a class="skip-link visually-hidden-focusable" href="#main">Skip to content</a>
+    <header class="control-header border-bottom">
+      <div class="container py-3">
+        <nav class="navbar p-0 gap-3" aria-label="Main navigation">
+          <a class="navbar-brand m-0" href="{{ url_for('control.index') }}">PostcardScene<span class="brand-dot" aria-hidden="true">.</span></a>
+          <div class="d-flex align-items-center flex-wrap gap-3">
+            <a class="nav-link py-2" href="{{ url_for('control.index') }}"{% if request.endpoint == 'control.index' %} aria-current="page"{% endif %}>Overview</a>
+            <button id="theme-toggle" class="btn btn-theme" type="button" aria-pressed="false" hidden>Light theme</button>
+          </div>
+        </nav>
+      </div>
     </header>
-    <main id="main" tabindex="-1">{% block content %}{% endblock %}</main>
+    <main id="main" class="container py-5" tabindex="-1">{% block content %}{% endblock %}</main>
   </body>
 </html>
