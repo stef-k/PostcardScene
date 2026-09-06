@@ -102,8 +102,7 @@ uv and the committed `uv.lock` own project environments and dependency resolutio
 `uv_build` owns builds. Ruff is the sole project-local formatter/linter and pytest
 the test runner. The bootstrap CI gate checks locked sync, formatting, lint,
 tests, and builds on Python 3.11. No mandatory static type checker is introduced;
-revisit typing when substantive contracts warrant it. Code Guard remains an
-agent-supplied capability without repository-local copies or configuration.
+revisit typing when substantive contracts warrant it.
 
 ### Why Flask
 

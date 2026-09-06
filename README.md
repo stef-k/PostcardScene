@@ -113,28 +113,10 @@ External media libraries themselves are not copied into PostcardScene backups.
 
 ## Development
 
-Install [uv](https://docs.astral.sh/uv/getting-started/installation/) and use
-Python 3.11 or newer. From the repository root:
-
-```bash
-uv sync --locked
-uv run pytest
-uv run ruff format .
-uv run ruff format --check .
-uv run ruff check .
-uv build
-uv run python -c "import postcardscene; import postcardscene.web; import postcardscene.runtime"
-```
-
-uv manages the local `.venv`; commit dependency changes in `pyproject.toml` together
-with the regenerated `uv.lock`. CI runs the quality checks on Python 3.11.
-Ruff owns formatting/linting and pytest owns tests; no static type-check gate is
-required at bootstrap.
-
-The installable package lives in `src/postcardscene`, with separate `web` and
-`runtime` namespaces. These currently provide side-effect-free imports only.
-Version `0.0.0` is a bootstrap placeholder; executable services and production
-installation/release support belong to later issues.
+Development requires Python >=3.11 and
+[uv](https://docs.astral.sh/uv/getting-started/installation/).
+See [AGENTS.md](AGENTS.md#project-local-development-tooling) for the canonical
+development commands and tooling workflow.
 
 ## Documentation
 
