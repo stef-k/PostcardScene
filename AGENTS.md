@@ -87,7 +87,7 @@ The web interface is the control plane. The long-running runtime/player is the d
 - Use Python as the application language.
 - Flask is the initial web/control framework.
 - Use SQLAlchemy with SQLite initially.
-- Use Alembic/Flask-Migrate for schema migrations.
+- Use Alembic directly for schema migrations, with a thin Flask CLI adapter over the shared persistence layer.
 - Use Flask-Login for authentication and Flask-WTF or equivalent framework support for forms/CSRF where needed.
 - Keep authorization simple initially; do not build enterprise-style permission machinery without a concrete requirement.
 - Keep core source, catalog, player, scene, layout, scheduling, media, and hardware decision logic in ordinary Python modules that do not depend unnecessarily on Flask.
@@ -138,7 +138,7 @@ SQLite is shared application state, not a distributed coordination service.
 - Keep write transactions short.
 - Use the journaling/timeout/connection policy frozen by the persistence issue.
 - Avoid designs requiring multiple processes to hold long concurrent write transactions.
-- Apply schema changes through Alembic/Flask-Migrate.
+- Apply schema changes through the shared persistence layer’s explicit Alembic migration workflow.
 - Application startup must not silently rewrite an unexpected production schema.
 - Preserve application/schema identity needed by release and backup/restore workflows.
 - Background/catalog concurrency tests should exercise representative locking behavior at a stable seam.

@@ -70,7 +70,7 @@ Python
 Flask
 SQLAlchemy
 SQLite
-Alembic / Flask-Migrate
+Alembic (direct integration with a thin Flask CLI adapter)
 Flask-Login
 Flask-WTF
 Pillow
@@ -119,7 +119,63 @@ Users, settings, schedules, source definitions, scene definitions, media catalog
 
 SQLite keeps installation and recovery simple. Original media remains in filesystems or external services rather than in the database.
 
-Because the web process and runtime/background work may access the same database, V0 must explicitly choose suitable SQLite journaling, timeout, connection, and transaction conventions. Long write transactions should be avoided. Database schema changes are owned by migrations rather than silent application-startup mutation.
+Issue #14 freezes the shared persistence foundation in `postcardscene.persistence`:
+ordinary SQLAlchemy 2.x models/metadata and explicit unit-of-work sessions, usable
+without Flask. Alembic owns all schema changes through packaged online migrations;
+a thin Flask CLI adapter exposes upgrade/check/revision commands. No extension
+owns a separate Flask-only model or session layer.
+
+The database is an absolute host-local file, defaulting to
+`/var/lib/postcardscene/postcardscene.sqlite3`, configurable with `DATABASE_PATH`.
+The operator/installer provisions its private parent directory; network storage
+is suitable for external media, not this database. Normal access opens an existing
+file only. App construction is lazy and performs no schema work; transactions
+reject missing/unrecognized/incompatible databases before application use.
+
+Connection policy is SQLite WAL, `foreign_keys=ON`, `synchronous=FULL`, a five-second
+busy timeout, and automatic WAL checkpoints at 1000 pages. Only explicit migration
+enables WAL; ordinary access validates it. Use SQLAlchemy `NullPool` so each unit
+of work gets a fresh connection, closed on completion. Each process constructs
+its own engine after process creation; never pass connections/sessions across
+process boundaries. SQLAlchemy emits explicit deferred `BEGIN` for consistent
+transactional reads and DDL on Python 3.11 and later, overriding sqlite3 legacy
+transaction handling. Do not override isolation level on these connections.
+
+WAL permits readers alongside one writer, not concurrent writers. All owners use
+short transactions; prepare network/media work outside them and commit catalog
+batches between cancellation checks. Reads hold snapshots until completion;
+long readers can delay checkpointing and grow the WAL. A competing write can fail
+with SQLite BUSY/LOCKED after the timeout, or immediately for a stale read snapshot.
+Roll back and surface the failure. Later owning features may retry the entire
+idempotent unit with a bounded policy, never just a statement or a tight loop.
+The foundation does not retry automatically or use SQLite as a work queue.
+Independent-engine tests exercise reader visibility, writer contention and
+recovery on a real local SQLite file; they do not claim network-filesystem support.
+
+`Database.transaction()` owns commit/rollback/close, with autoflush disabled and
+normal expire-on-commit behavior. No implicit Flask teardown commits or persistent
+runtime sessions are allowed. Future models inherit the common `Base`, including
+stable constraint naming for migration generation. No domain tables are needed
+for the baseline.
+
+Identity combines the installed `postcardscene` distribution version (from the
+single `pyproject.toml` version), SQLite `application_id=0x5053434E` (`PSCN`), and
+the exact Alembic revision (`0001_baseline` initially). Application access accepts
+only the packaged expected revision. Migration accepts an empty file or a known
+single revision with matching file identity; it refuses unknown/unversioned
+nonempty databases. Revisions are immutable once shipped. Future schema changes
+update the expected revision and must demonstrate preservation across upgrade.
+Identity supports comparison/recording for #26/#27 but is not by itself proof of
+backup or cross-version restore compatibility.
+
+`Database.check()` validates identity/WAL, SQLite quick integrity and foreign-key
+integrity without repair. Compatibility/integrity failures raise `DatabaseError`;
+SQLAlchemy storage/constraint/locking exceptions remain distinguishable to callers.
+SQL parameter values are hidden in SQLAlchemy exception formatting; raw exceptions
+still belong only in protected diagnostics. This is a primitive for later
+operator/backup checks, not a status UI or recovery implementation. Migrations
+require all database users stopped; production backup/update orchestration stays
+with #26/#27. See README for initialization and development commands.
 
 ## 4. High-level architecture
 
@@ -631,7 +687,7 @@ secret, optional operator-owned Python file via `POSTCARDSCENE_CONFIG`, then
 explicit mapping overrides. A specified invalid file fails startup. This permits
 Flask Host configuration without choosing a production bind or proxy policy;
 server binding remains outside the factory and no forwarded-header middleware is
-installed. #29/#26 retain production serving ownership. The shell has no database,
+installed. #29/#26 retain production serving ownership. The shell has a lazy shared database handle and explicit migration CLI, but no
 authentication, settings behavior or runtime IPC. See README for local startup.
 
 ## 21. Authentication, network exposure, and secrets
