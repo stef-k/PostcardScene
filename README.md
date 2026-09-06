@@ -315,32 +315,10 @@ for API, failure and metadata limitations.
 
 ### Sources control UI
 
-Open **Sources** after logging in to add or edit a local directory or an
-already-mounted Linux NFS/SMB directory. The form contains name, kind, path,
-recursive and enabled fields. Allowed roots appear as read-only host guidance;
-empty or invalid `MEDIA_ALLOWED_ROOTS` keeps the list usable but prevents saving
-Sources. V0 does not mount shares, collect NAS credentials here, or run
-mount/unmount commands. There is no filesystem browser or `web_url` management.
-
-Enabled creation, authority changes (kind/normalized path/recursive), and re-enable
-queue a refresh after saving. Rename preserves catalog/request state; disable
-preserves catalog knowledge while superseding pending work. Authority changes
-invalidate old derived media. If saving succeeds but queuing fails, the Source
-remains saved; retry with **Refresh**. Manual refresh writes a durable request and
-returns immediately without scanning; it stays queued while the runtime is down.
-
-The database-only list shows persisted health, last attempt/success in the
-application timezone, and grouped image/video/metadata counts. **Ready** means
-the last presence reconciliation was authoritative. **Source unavailable**,
-**Needs attention** and **Cancelled** are non-authoritative outcomes, not proof
-of deletion or current file availability. **Refreshing / interrupted** cannot
-distinguish running work from an interrupted attempt. Older results and catalog
-freshness remain visible beneath queued/interrupted/disabled status.
-
-Delete is available on the edit page and blocked while a Widget references the
-Source. Permitted deletion removes only the Source and its derived catalog;
-original files and composition objects are untouched. No additional migration
-is needed beyond `0008_catalog_requests`.
+Open **Sources** after logging in to manage local and already-mounted NFS/SMB
+Sources, queue runtime refreshes, and inspect persisted catalog health/counts.
+See the [Media Sources guide](docs/sources.md) for allowed-root setup, editing,
+enabling/disabling, refresh and outage semantics, and deletion.
 
 ### Sequence domain
 
@@ -446,6 +424,7 @@ protection, broader headers and provider credential-at-rest architecture.
 
 ## Documentation
 
+- [Media Sources guide](docs/sources.md)
 - [Architecture](docs/architecture.md)
 - [Roadmap](docs/roadmap.md)
 - [UI design](docs/ui-design.md)
