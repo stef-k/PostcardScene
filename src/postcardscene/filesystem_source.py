@@ -10,6 +10,8 @@ mounted-storage operations outside this synchronous path-checking seam.
 
 import os
 import stat
+from collections.abc import Callable, Generator, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -199,3 +201,127 @@ class MediaEntry:
             raise InvalidSource("Size must be a nonnegative integer.")
         if type(self.mtime_ns) is not int:
             raise InvalidSource("Modification freshness must be an integer.")
+
+
+_IMAGE_EXTENSIONS = frozenset(
+    (
+        ".jpg",
+        ".jpeg",
+        ".png",
+        ".webp",
+        ".gif",
+        ".bmp",
+        ".tif",
+        ".tiff",
+        ".heic",
+        ".heif",
+        ".avif",
+    )
+)
+_VIDEO_EXTENSIONS = frozenset(
+    (".mp4", ".m4v", ".mov", ".mkv", ".webm", ".avi", ".mpg", ".mpeg", ".mts", ".m2ts")
+)
+
+
+def classify_media_candidate(name: str) -> MediaType | None:
+    """Classify the suffix only; this is not a decoder/support probe."""
+    suffix = Path(name).suffix.lower()
+    if suffix in _IMAGE_EXTENSIONS:
+        return MediaType.IMAGE
+    if suffix in _VIDEO_EXTENSIONS:
+        return MediaType.VIDEO
+    return None
+
+
+def _check_cancelled(cancelled: Callable[[], bool] | None) -> None:
+    if cancelled is not None and cancelled():
+        raise ScanCancelled("Source enumeration was cancelled.")
+
+
+@contextmanager
+def _open_directory(path: Path | str, *, parent: int | None = None):
+    descriptor = os.open(
+        path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent
+    )
+    try:
+        yield descriptor
+    except BaseException:
+        # Cleanup must not replace cancellation or the primary traversal failure.
+        try:
+            os.close(descriptor)
+        except OSError:
+            pass
+        raise
+    else:
+        os.close(descriptor)
+
+
+def _walk_directory(
+    descriptor: int,
+    names: list[str],
+    relative: str,
+    recursive: bool,
+    cancelled: Callable[[], bool] | None,
+) -> Generator[MediaEntry, None, bool]:
+    """Yield sorted depth-first candidates; return whether any work failed.
+
+    Hold only active directory listings/descriptors, never accumulated media.
+    Descriptor-relative inspection prevents following replacement child symlinks.
+    """
+    incomplete = False
+    for name in names:
+        _check_cancelled(cancelled)
+        child = f"{relative}/{name}" if relative else name
+        try:
+            info = os.stat(name, dir_fd=descriptor, follow_symlinks=False)
+            if stat.S_ISDIR(info.st_mode) and recursive:
+                _check_cancelled(cancelled)
+                with _open_directory(name, parent=descriptor) as directory:
+                    children = sorted(os.listdir(directory))
+                    _check_cancelled(cancelled)
+                    failed = yield from _walk_directory(
+                        directory, children, child, recursive, cancelled
+                    )
+                    incomplete = incomplete or failed
+            elif stat.S_ISREG(info.st_mode):
+                media_type = classify_media_candidate(name)
+                if media_type is not None:
+                    _check_cancelled(cancelled)
+                    yield MediaEntry(child, media_type, info.st_size, info.st_mtime_ns)
+        except OSError:
+            incomplete = True
+    _check_cancelled(cancelled)
+    return incomplete
+
+
+def enumerate_local_directory(
+    configuration: object,
+    policy: PathPolicy,
+    *,
+    cancelled: Callable[[], bool] | None = None,
+) -> Iterator[MediaEntry]:
+    """Enumerate local candidates; only normal exhaustion means a complete scan.
+
+    InvalidSource and SourceUnavailable distinguish invalid authority from root
+    unavailability. Child I/O failures allow sibling progress, then raise
+    EnumerationFailed. Cancellation raises ScanCancelled immediately at the next
+    cooperative check. Close the iterator when abandoning consumption early.
+    Individual kernel calls are synchronous and may block; #24 owns isolation.
+    """
+    _check_cancelled(cancelled)
+    try:
+        root = _source_directory("local_directory", configuration, policy)
+        with _open_directory(root) as directory:
+            _check_cancelled(cancelled)
+            names = sorted(os.listdir(directory))
+            _check_cancelled(cancelled)
+            try:
+                incomplete = yield from _walk_directory(
+                    directory, names, "", configuration["recursive"], cancelled
+                )
+                if incomplete:
+                    raise EnumerationFailed("Source enumeration was incomplete.")
+            except (OSError, RuntimeError) as error:
+                raise EnumerationFailed("Source enumeration was incomplete.") from error
+    except (OSError, RuntimeError) as error:
+        raise SourceUnavailable("Source storage is unavailable.") from error
