@@ -300,7 +300,8 @@ A Widget has at most one nullable `source_id`. Independent inputs belong primari
 in separate Widgets composed by a Scene. The foreign key restricts Source deletion;
 the domain reports a referenced Source explicitly. Widget deletion never deletes
 its Source. Disable preserves both records and never changes the other's flag.
-Scene relationships and final cross-kind/lifecycle invariants remain with #19/#21.
+Scene references restrict Widget deletion as defined below; #21 owns the final
+cross-kind/lifecycle review.
 
 Ordinary application writes use the explicit create/update/remove functions in
 `postcardscene.domain` inside `Database.transaction()`; get/list functions return
@@ -350,9 +351,47 @@ or composed:
 +------------------------------------------+
 ```
 
-A scene defines layout, widgets, visual presentation, duration/default dwell behavior, and only the V0 safety/presentation hints that are concretely required.
+The rich composition above is a later capability. Issue #19 freezes V0 persistence
+in `postcardscene.domain`, through migration `0005_scene` after
+`0004_source_widget`, preserving administrator/settings/Source/Widget state.
+`Scene` stores a generated integer ID, trimmed 1–128 character name, ordinary
+bounded string layout, nullable `duration_seconds`, and boolean enabled state.
+Duration is `None` (no fixed Scene dwell) or an integer 1–86400; booleans are
+rejected. Runtime/content completion, timers, Sequence overrides (#20), and
+operating hours (#9) remain separate concerns.
 
-Ordinary source-driven scenes should not permanently store whichever media item happened to be selected at runtime. Explicitly pinned-media scenes may do so when that is the intended user configuration.
+The complete V0 layout vocabulary and canonical region positions are:
+
+| Layout | Regions in position order (starting at 0) |
+| --- | --- |
+| `single` | `main` |
+| `split_vertical` | `left`, `right` |
+| `split_horizontal` | `top`, `bottom` |
+
+`ScenePlacement` owns a generated integer ID, `scene_id`, `widget_id`, position,
+and bounded region string. Every required region appears exactly once, with
+canonical contiguous positions derived by the domain. A Widget can be reused
+across Scenes but only once within each Scene. Any current Widget kind may occupy
+any region, including disabled Widgets. A portrait pair is one
+`portrait_image_pair` Widget in a `single` Scene's `main` region; Scene has no
+second pairing mechanism or runtime-selected media identities.
+
+`create_scene` and `update_scene` accept a complete list of `(region, widget_id)`
+pairs in any order. Update replaces all Scene fields and placements. All domain
+validation, including Widget existence, precedes mutation, so catching a
+`DomainError` inside a committing transaction preserves the prior Scene and
+placement identities. `get_scene`, `list_scenes`, `list_scene_placements`, and
+`remove_scene` complete the ordinary Python seam; placement reads order by position.
+Use the existing `Database.transaction()` with no Flask initialization.
+
+Widget deletion fails clearly while referenced, backed by a restrictive FK.
+Deleting a Scene cascades only to its owned placements; replacement never deletes
+Widgets or Sources. Disabling either object preserves the other's state and all
+references. #20 may restrict Scene deletion when Sequence references exist.
+
+No generic Scene JSON, coordinates, nested layouts, rendering, selected MediaItem
+IDs, or speculative panel-safety fields are persisted. #8/#10 must establish an
+exact semantic need before adding safety state; never infer it from name/layout.
 
 ### Sequence
 
@@ -895,15 +934,14 @@ The following are intentionally unresolved until the owning issue has enough evi
 3. **General cached-provider storage** — exact V1 cache implementation/invalidation strategy.
 4. **Credential-at-rest mechanism** — exact protection/master-key approach and recovery behavior.
 5. **Wayfarer native integration** — API endpoints/authentication and whether Wayfarer provides a dedicated display-oriented page.
-6. **Scene-layout persistence** — normalized database models, JSON scene definitions, or a hybrid.
-7. **Provider/plugin registration** — whether a formal plugin mechanism ever becomes worthwhile.
-8. **Frontend enhancement** — whether HTMX or another small enhancement is justified after the basic Flask/Jinja UI exists.
-9. **Scheduling implementation primitive** — exact library/timer implementation behind the frozen scheduling semantics.
-10. **Linux graphics/session model** — exact Wayland/X11/KMS/compositor path, owned by #31.
-11. **Kiosk authenticated-session persistence** — whether V0 persists third-party web-session cookies and how that state is isolated/recovered.
-12. **Media catalog backup classification** — useful durable state vs regenerable optimization, owned by #30/#27.
-13. **Release artifact format** — wheel/archive/other small managed-native distribution shape, owned by #26.
-14. **Production web serving/network boundary** — exact WSGI server and HTTP/HTTPS/reverse-proxy model, owned by #29/#26.
-15. **Renderer live-update transport** — ordinary HTTP polling is preferred where adequate; SSE, WebSockets, or another server-push mechanism is selected only if a concrete V1/V2 requirement proves it useful.
+6. **Provider/plugin registration** — whether a formal plugin mechanism ever becomes worthwhile.
+7. **Frontend enhancement** — whether HTMX or another small enhancement is justified after the basic Flask/Jinja UI exists.
+8. **Scheduling implementation primitive** — exact library/timer implementation behind the frozen scheduling semantics.
+9. **Linux graphics/session model** — exact Wayland/X11/KMS/compositor path, owned by #31.
+10. **Kiosk authenticated-session persistence** — whether V0 persists third-party web-session cookies and how that state is isolated/recovered.
+11. **Media catalog backup classification** — useful durable state vs regenerable optimization, owned by #30/#27.
+12. **Release artifact format** — wheel/archive/other small managed-native distribution shape, owned by #26.
+13. **Production web serving/network boundary** — exact WSGI server and HTTP/HTTPS/reverse-proxy model, owned by #29/#26.
+14. **Renderer live-update transport** — ordinary HTTP polling is preferred where adequate; SSE, WebSockets, or another server-push mechanism is selected only if a concrete V1/V2 requirement proves it useful.
 
 These are deliberate implementation decisions, not reasons to invent answers early. When one is resolved, update this document in the same change that relies on the decision.
