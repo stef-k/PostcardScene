@@ -1,0 +1,4 @@
+# Host-authorized service session only; never an interactive authentication path.
+auth required pam_deny.so
+account required pam_permit.so
+session required pam_systemd.so

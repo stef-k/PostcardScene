@@ -140,7 +140,8 @@ The scene representation should leave room for multiple widgets without requirin
 - separate `postcardscene-web` and runtime/player systemd services
 - service ordering and restart behavior
 - standard runtime user/group and durable-state/cache/log/device ownership expectations
-- choose the smallest production graphics/session model; do not require a full desktop/login environment without evidence
+- shared native Wayland/labwc session on Raspberry Pi 4/5 ARM64 with Ubuntu Server LTS and Raspberry Pi OS 64-bit as primary V0 targets (#62)
+- dedicated non-root user, distro-appropriate logind/libseat or seatd authority, no full desktop/display manager; provisioning remains #26
 - Chromium and mpv target the same intended HDMI display/session
 - safe blank/background state during boot/renderer restart
 - EDID/display discovery and deterministic mode selection

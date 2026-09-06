@@ -97,6 +97,13 @@ The host remains running while the panel sleeps so the web interface, scheduler,
 
 Panel protection also includes bounded static-content dwell, renderer/player watchdogs, safe blanking, and eventual standby behavior where appropriate.
 
+The shared session foundation targets Raspberry Pi 4/5 ARM64 on **both Ubuntu
+Server LTS and Raspberry Pi OS 64-bit**, using native Wayland/labwc. Versioned
+appliance configuration, service/PAM templates and a bounded Python readiness
+probe are implemented in #62. See [appliance operations](docs/operations.md) for
+provisioning ownership and validation limits. Managed installation, renderers,
+output/hotplug policy and physical support evidence remain with their owning issues.
+
 ## V0 operational boundary
 
 The Foundation milestone is not complete merely when source code can display media. It also includes:
@@ -424,6 +431,7 @@ protection, broader headers and provider credential-at-rest architecture.
 
 ## Documentation
 
+- [Appliance operations](docs/operations.md)
 - [Media Sources guide](docs/sources.md)
 - [Architecture](docs/architecture.md)
 - [Roadmap](docs/roadmap.md)
@@ -431,7 +439,7 @@ protection, broader headers and provider credential-at-rest architecture.
 - [Display hardware guidance](docs/display-hardware.md)
 - [Agent/development guidance](AGENTS.md)
 
-A single `docs/operations.md` is expected when implementation reaches stable installation/operation workflows; it should not be split prematurely.
+The operations guide grows with implemented operating contracts; managed installation remains planned.
 
 ## License
 

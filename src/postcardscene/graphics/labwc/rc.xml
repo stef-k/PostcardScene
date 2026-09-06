@@ -1,0 +1,17 @@
+<?xml version="1.0"?>
+<labwc_config>
+  <!-- Empty binding lists restore desktop defaults in labwc 0.7.1.
+       Explicit None bindings suppress that fallback without a shell action. -->
+  <keyboard>
+    <keybind key="W-Return"><action name="None" /></keybind>
+  </keyboard>
+  <mouse>
+    <context name="Root">
+      <mousebind button="Right" action="Press"><action name="None" /></mousebind>
+    </context>
+  </mouse>
+  <desktops number="1"><popupTime>0</popupTime></desktops>
+  <windowRules>
+    <windowRule identifier="*" serverDecoration="no" />
+  </windowRules>
+</labwc_config>

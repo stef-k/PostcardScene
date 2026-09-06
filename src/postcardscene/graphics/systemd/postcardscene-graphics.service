@@ -1,0 +1,35 @@
+[Unit]
+Description=PostcardScene Wayland/labwc appliance session
+After=systemd-logind.service systemd-user-sessions.service
+Wants=systemd-logind.service
+Conflicts=getty@tty1.service
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=exec
+User=postcardscene
+Group=postcardscene
+PAMName=postcardscene-graphics
+TTYPath=/dev/tty1
+StandardInput=tty
+StandardOutput=journal
+StandardError=journal
+TTYReset=yes
+TTYVHangup=yes
+TTYVTDisallocate=yes
+UtmpIdentifier=tty1
+Environment=XDG_SESSION_TYPE=wayland XDG_SESSION_DESKTOP=labwc LIBSEAT_BACKEND=logind
+RuntimeDirectory=postcardscene-wayland
+RuntimeDirectoryMode=0700
+UMask=0077
+ExecStart=/opt/postcardscene/venv/bin/python -m postcardscene.graphics.cli launch
+Restart=on-failure
+RestartSec=5
+TimeoutStartSec=15
+TimeoutStopSec=5
+KillMode=control-group
+SendSIGKILL=yes
+
+[Install]
+WantedBy=multi-user.target

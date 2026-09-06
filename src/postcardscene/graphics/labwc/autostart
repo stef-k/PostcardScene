@@ -1,0 +1,2 @@
+# No desktop shell, wallpaper, panel, terminal or activation-environment imports.
+# labwc/wlroots clears an empty scene to opaque black without a wallpaper client.
