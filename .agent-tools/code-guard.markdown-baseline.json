@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "markdownDocumentSize": {
+    "files": [
+      {
+        "path": "docs/architecture.md",
+        "allowedLines": 1116
+      }
+    ]
+  }
+}
