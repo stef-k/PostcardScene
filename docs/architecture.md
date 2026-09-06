@@ -70,7 +70,7 @@ Python
 Flask
 SQLAlchemy
 SQLite
-Alembic / Flask-Migrate
+Alembic (direct integration with a thin Flask CLI adapter)
 Flask-Login
 Flask-WTF
 Pillow

@@ -47,7 +47,7 @@ The current design direction is deliberately lightweight on the control side whi
 - Flask
 - SQLAlchemy
 - SQLite
-- Alembic / Flask-Migrate
+- Alembic (direct integration with a thin Flask CLI adapter)
 - Flask-Login
 - Flask-WTF
 - `requests`
