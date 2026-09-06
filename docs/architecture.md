@@ -1109,6 +1109,58 @@ These are software contracts; #66 owns physical HDMI/4K/hotplug evidence and
 #10 owns panel standby/wake. Future power coordination must suspend output
 reconciliation while intentionally disabling an output so it is not re-enabled.
 
+### Supervised Chromium controller (#64)
+
+`postcardscene.graphics.chromium.ChromiumController` is the single ordinary-Python
+browser capability for both distro paths. Its serialized synchronous API is
+`ensure_started`, `navigate`, `blank`, `restart` and `stop`, with bounded operations
+and caller cancellation predicates. It consumes `WaylandSession.inspect()` and
+`client_environment()` directly; browser/control readiness requires no physical
+display. No runtime loop, output monitor or renderer adapter is started here.
+
+`ChromiumLaunchSpec` supplies a trusted absolute package launcher and optional
+package invocation words, private profile root and small non-secret environment
+overlay. Browser options are code-owned: native Wayland/Ozone, kiosk, suppressed
+first-run/restore UI, disabled extensions/plugins, no sandbox weakening or broad
+file access, and one fixed black data page. There is no default Chromium path,
+distro branch or parent-environment inheritance. #26 provisions actual launchers;
+#66 must validate each launcher against this same contract.
+
+`BrowserContext.TRUSTED_IMAGE` accepts only explicit-port `http://127.0.0.1/`
+caller URLs with an absolute path and no userinfo/fragment. `UNTRUSTED_WEB` accepts
+ordinary HTTP/HTTPS URLs without userinfo; #7 retains full remote-network and
+authenticated-session policy. Caller data/file/script/browser URLs are rejected.
+Each root is private, non-root-owned, non-symlinked and context-marked; an existing
+personal profile is never adopted. Nested roots and cross-context reuse are
+rejected. A profile lock prevents simultaneous owners. The two contexts use
+independent process groups, user-data directories and CDP connections. Trusted
+state is replaceable, not backup authority; #7 still decides web-session retention.
+
+V0 uses loopback CDP with OS-selected ephemeral port, discovered only from fresh,
+bounded `DevToolsActivePort` metadata under the dedicated profile. Endpoint host
+is constructed as `127.0.0.1`, with proxies disabled and no public control API.
+The locked `websockets` synchronous client supplies framing, bounded messages and
+queues; the private controller limits commands to version/target discovery,
+attachment, page lifecycle/navigation and denying downloads. It selects one
+initial black page and fails closed on extra/replaced page targets. No generic
+CDP, DOM automation or GPU diagnostic API is exposed.
+
+Navigation follows the [CDP Page contract](https://chromedevtools.github.io/devtools-protocol/tot/Page/):
+command acceptance alone is insufficient. A matching main-frame/loader load event
+(or same-document event) and fresh frame state must agree. Browser error pages,
+downloads, dialogs, timeouts and cancellations cannot count as loaded content.
+`blank` verifies the fixed black document. Failures retire the browser to expose
+labwc's black background; #57 image decode readiness remains a separate assertion
+for #58 to compose. Operations expose only `ChromiumError.reason` and a separate
+`cleanup_failed` flag, never URLs/tokens, CDP endpoints, stderr or profile data.
+
+Launch uses `start_new_session=True`, never `preexec_fn`. Cleanup retains the
+unreaped leader until the final process-group signal, preventing PID reuse even
+when a wrapper exits before its children. TERM receives 250 ms, then group KILL
+and bounded leader reaping complete cleanup; failed cleanup retains ownership and
+prevents replacement. Systemd remains outer supervision. #65 owns shared surfaces,
+#66 real package/Wayland/hardware evidence, and #8 later runtime integration.
+
 ## 18. Display power management
 
 Stopping playback is not sufficient. During configured sleep periods PostcardScene should attempt to put the physical panel into standby so it is neither a night-time light source nor needlessly active.
@@ -1364,7 +1416,7 @@ The following are intentionally unresolved until the owning issue has enough evi
 6. **Provider/plugin registration** — whether a formal plugin mechanism ever becomes worthwhile.
 7. **Frontend enhancement** — whether HTMX or another small enhancement is justified after the basic Flask/Jinja UI exists.
 8. **Scheduling implementation primitive** — exact library/timer implementation behind the frozen scheduling semantics.
-9. **Graphics output and renderer integration** — Wayland/labwc session and output/hotplug policy are frozen by #62/#63; Chromium control and overlay/input details remain with #64/#65, physically validated by #66.
+9. **Graphics output and renderer integration** — Wayland/labwc session, output/hotplug policy and shared Chromium control are frozen by #62/#63/#64; overlay/input details remain with #65, physically validated by #66.
 10. **Kiosk authenticated-session persistence** — whether V0 persists third-party web-session cookies and how that state is isolated/recovered.
 11. **Release artifact format** — wheel/archive/other small managed-native distribution shape, owned by #26.
 12. **Production web serving/network boundary** — exact WSGI server and HTTP/HTTPS/reverse-proxy model, owned by #29/#26.

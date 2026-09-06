@@ -41,10 +41,10 @@ class Deadline:
         self.end = time.monotonic() + seconds
         self.cancelled = cancelled
 
-    def check(self, failure: Failure) -> float:
+    def check(self, failure: Failure, *, interval: float = 0.05) -> float:
         if self.cancelled is not None and self.cancelled():
             raise ChromiumError(Failure.CANCELLED)
         remaining = self.end - time.monotonic()
         if remaining <= 0:
             raise ChromiumError(failure)
-        return min(0.05, remaining)
+        return min(interval, remaining)

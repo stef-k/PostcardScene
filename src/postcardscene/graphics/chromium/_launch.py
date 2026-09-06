@@ -113,12 +113,17 @@ class Profile:
 
     def __init__(self, root: Path, context: BrowserContext):
         self.root = root
+        self.context = context
         self.path = root / "profile"
         self.metadata = self.path / "DevToolsActivePort"
         self._lock = None
         marker = root / ".postcardscene-chromium"
         try:
             private_directory(root)
+            if any(
+                (parent / ".postcardscene-chromium").exists() for parent in root.parents
+            ):
+                raise ChromiumError(Failure.INVALID_SPEC)
             if not marker.exists():
                 if any(root.iterdir()):
                     raise ChromiumError(Failure.INVALID_SPEC)
@@ -139,7 +144,8 @@ class Profile:
             private_directory(self.root)
             private_directory(self.path)
             marker = self.root / ".postcardscene-chromium"
-            owned_file(marker, 32)
+            if owned_file(marker, 32) != self.context.value.encode("ascii"):
+                raise ChromiumError(Failure.INVALID_SPEC)
             self._lock = os.open(marker, os.O_RDONLY | os.O_NOFOLLOW)
             fcntl.flock(self._lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
             self.clear_metadata()

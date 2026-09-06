@@ -36,12 +36,16 @@ def connect_browser(profile: Profile, process: OwnedProcess, deadline: Deadline)
             r"([0-9]{1,5})\n(/devtools/browser/[a-zA-Z0-9-]{1,128})\n?", raw
         )
         if match is None or not 1 <= int(match[1]) <= 65535:
-            raise ChromiumError(Failure.CDP_STARTUP)
+            # Chromium creates then writes this file; never accept a partial
+            # record, but allow it to complete within the startup deadline.
+            time.sleep(pause)
+            continue
         # Construct, rather than trust, endpoint host/scheme. No HTTP discovery,
         # redirect, DNS, proxy or inherited proxy environment participates.
         endpoint = f"ws://127.0.0.1:{match[1]}{match[2]}"
         transport = None
         try:
+            pause = deadline.check(Failure.CDP_STARTUP, interval=0.25)
             transport = socket.create_connection(
                 ("127.0.0.1", int(match[1])), timeout=pause
             )
@@ -50,11 +54,12 @@ def connect_browser(profile: Profile, process: OwnedProcess, deadline: Deadline)
             transport.setsockopt(
                 socket.SOL_SOCKET, socket.SO_SNDTIMEO, struct.pack("ll", 0, 50000)
             )
+            transport.settimeout(None)  # The library owns receive deadlines.
             return connect(
                 endpoint,
                 sock=transport,
                 proxy=None,
-                open_timeout=pause,
+                open_timeout=deadline.check(Failure.CDP_STARTUP, interval=0.25),
                 close_timeout=0.1,
                 compression=None,
                 ping_interval=None,
@@ -66,6 +71,10 @@ def connect_browser(profile: Profile, process: OwnedProcess, deadline: Deadline)
             if transport is not None:
                 transport.close()
             raise ChromiumError(Failure.CDP_STARTUP) from None
+        except ChromiumError:
+            if transport is not None:
+                transport.close()
+            raise
 
 
 def _identifier(value) -> str:
@@ -80,25 +89,22 @@ class PageControl:
         self.process = process
         self._sequence = 0
         self._session = None
+        self._target = None
 
     def attach(self, deadline: Deadline):
         version, _ = self._call("Browser.getVersion", {}, deadline, Failure.CDP_STARTUP)
         _identifier(version.get("product"))
-        result, _ = self._call("Target.getTargets", {}, deadline, Failure.CDP_STARTUP)
-        targets = result.get("targetInfos")
-        if (
-            not isinstance(targets, list)
-            or len(targets) > 64
-            or any(not isinstance(target, dict) for target in targets)
-        ):
-            raise ChromiumError(Failure.CDP_FAILED)
-        pages = [target for target in targets if target.get("type") == "page"]
-        if len(pages) != 1 or pages[0].get("url") != BLACK_PAGE:
-            raise ChromiumError(Failure.CDP_FAILED)
-        target = _identifier(pages[0].get("targetId"))
+        while True:
+            pages = self._pages(deadline, Failure.CDP_STARTUP)
+            if len(pages) == 1 and pages[0].get("url") == BLACK_PAGE:
+                break
+            if len(pages) > 1:
+                raise ChromiumError(Failure.CDP_FAILED)
+            time.sleep(deadline.check(Failure.CDP_STARTUP))
+        self._target = _identifier(pages[0].get("targetId"))
         result, _ = self._call(
             "Target.attachToTarget",
-            {"targetId": target, "flatten": True},
+            {"targetId": self._target, "flatten": True},
             deadline,
             Failure.CDP_STARTUP,
         )
@@ -119,6 +125,22 @@ class PageControl:
             Failure.CDP_STARTUP,
             browser=True,
         )
+
+    def _pages(self, deadline, failure):
+        result, _ = self._call("Target.getTargets", {}, deadline, failure, browser=True)
+        targets = result.get("targetInfos")
+        if (
+            not isinstance(targets, list)
+            or len(targets) > 64
+            or any(not isinstance(target, dict) for target in targets)
+        ):
+            raise ChromiumError(Failure.CDP_FAILED)
+        return [target for target in targets if target.get("type") == "page"]
+
+    def check(self, deadline, failure=Failure.CDP_FAILED):
+        pages = self._pages(deadline, failure)
+        if len(pages) != 1 or pages[0].get("targetId") != self._target:
+            raise ChromiumError(Failure.CDP_FAILED)
 
     def _check(self, deadline: Deadline, failure: Failure) -> float:
         if self.process.exited():
@@ -220,10 +242,15 @@ class PageControl:
         if loader is not None and current.get("loaderId") != loader:
             raise ChromiumError(Failure.NAVIGATION_FAILED)
         final_url = current.get("url")
-        if not isinstance(final_url, str) or (
+        fragment = current.get("urlFragment", "")
+        if not isinstance(final_url, str) or not isinstance(fragment, str):
+            raise ChromiumError(Failure.CDP_FAILED)
+        final_url += fragment
+        if (loader is None and final_url != url) or (
             url == BLACK_PAGE and final_url != BLACK_PAGE
         ):
             raise ChromiumError(Failure.NAVIGATION_FAILED)
+        self.check(deadline, failure)
         return final_url
 
     @staticmethod

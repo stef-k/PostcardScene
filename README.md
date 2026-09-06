@@ -103,8 +103,10 @@ appliance configuration, service/PAM templates and a bounded Python readiness
 probe are implemented in #62. See [appliance operations](docs/operations.md) for
 provisioning ownership and validation limits. #63 implements the shared one-HDMI
 mode policy, bounded hotplug polling seam and safe diagnostics; the runtime does
-not yet start that monitor. Managed installation, renderers and physical support
-evidence remain with their owning issues.
+not yet start that monitor. #64 provides one packaging-neutral isolated Chromium
+lifecycle/navigation controller; image/web adapters and runtime playback are not
+yet connected. Managed installation and physical support evidence remain with
+their owning issues.
 
 ## V0 operational boundary
 

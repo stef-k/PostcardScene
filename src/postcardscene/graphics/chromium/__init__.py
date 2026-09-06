@@ -88,16 +88,17 @@ class ChromiumController:
 
     def _start(self, deadline: Deadline):
         deadline.check(Failure.CDP_STARTUP)
+        if not self.session.inspect().available:
+            raise ChromiumError(Failure.SESSION_UNAVAILABLE)
         if self._process is not None:
             if self._process.exited():
                 raise ChromiumError(Failure.BROWSER_EXITED)
             if self._control is not None:
-                self._control._call(
-                    "Browser.getVersion", {}, deadline, Failure.CDP_FAILED, browser=True
-                )
+                self._control.check(deadline)
                 return
-        if not self.session.inspect().available:
-            raise ChromiumError(Failure.SESSION_UNAVAILABLE)
+            # A prior cleanup failure still owns this process group. A new
+            # launch must never overwrite that remaining cleanup authority.
+            raise ChromiumError(Failure.CLEANUP_FAILED)
         try:
             environment = self.session.client_environment()
         except (OSError, ValueError):
