@@ -56,6 +56,14 @@ def require_schema(connection):
         )
 
 
+def check_integrity(connection):
+    """Read-only physical and referential checks; also used before migration."""
+    if connection.exec_driver_sql("PRAGMA quick_check").scalars().all() != ["ok"]:
+        raise DatabaseError("SQLite integrity check failed.")
+    if connection.exec_driver_sql("PRAGMA foreign_key_check").first() is not None:
+        raise DatabaseError("SQLite foreign-key integrity check failed.")
+
+
 class Database:
     """One engine per process; one connection/session per unit of work."""
 
@@ -111,15 +119,7 @@ class Database:
         """Check identity and SQLite integrity without repairing or migrating."""
         with self.engine.connect() as connection:
             require_schema(connection)
-            if connection.exec_driver_sql("PRAGMA quick_check").scalars().all() != [
-                "ok"
-            ]:
-                raise DatabaseError("SQLite integrity check failed.")
-            if (
-                connection.exec_driver_sql("PRAGMA foreign_key_check").first()
-                is not None
-            ):
-                raise DatabaseError("SQLite foreign-key integrity check failed.")
+            check_integrity(connection)
         return DatabaseIdentity(
             "postcardscene", version("postcardscene"), APPLICATION_ID, SCHEMA_REVISION
         )

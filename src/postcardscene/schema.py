@@ -7,7 +7,12 @@ from alembic.config import Config
 from alembic.migration import MigrationContext
 from alembic.script import ScriptDirectory
 
-from postcardscene.persistence import APPLICATION_ID, Database, DatabaseError
+from postcardscene.persistence import (
+    APPLICATION_ID,
+    Database,
+    DatabaseError,
+    check_integrity,
+)
 
 
 def migration_config(connection=None):
@@ -29,7 +34,7 @@ def upgrade_database(path):
                 "PRAGMA application_id"
             ).scalar_one()
             objects = connection.exec_driver_sql(
-                "SELECT name FROM sqlite_master WHERE name NOT LIKE 'sqlite_%'"
+                "SELECT name FROM sqlite_master WHERE name NOT GLOB 'sqlite_*'"
             ).all()
             revisions = MigrationContext.configure(connection).get_current_heads()
             known = {
@@ -46,6 +51,7 @@ def upgrade_database(path):
             )
             if not (empty or recognized):
                 raise DatabaseError("Refusing to migrate an unrecognized database.")
+            check_integrity(connection)
         # journal_mode cannot change inside a transaction. Only migration owns this.
         raw = database.engine.raw_connection()
         try:

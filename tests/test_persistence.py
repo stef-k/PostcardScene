@@ -72,7 +72,7 @@ def test_unknown_database_is_never_repaired(tmp_path, kind):
         path.write_bytes(b"this is not a SQLite database")
     else:
         with sqlite3.connect(path) as connection:
-            connection.execute("CREATE TABLE unrelated (id INTEGER)")
+            connection.execute("CREATE TABLE sqliteX (id INTEGER)")
             if kind == "foreign":
                 connection.execute("PRAGMA application_id=123")
             if kind == "future":
@@ -115,6 +115,8 @@ def test_transactions_commit_rollback_constraints_and_integrity(database):
         )
     with pytest.raises(DatabaseError, match="foreign-key"):
         database.check()
+    with pytest.raises(DatabaseError, match="foreign-key"):
+        upgrade_database(database.path)
 
 
 def test_independent_connections_read_during_write_and_fail_bounded_contention(
