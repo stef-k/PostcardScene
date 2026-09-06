@@ -221,6 +221,27 @@ A Chromium, mpv, cataloging, source, or media failure must be recoverable withou
 
 The precise control-plane/runtime IPC mechanism remains intentionally open.
 
+Issue #17 provides the packaged `postcardscene-runtime` executable and ordinary
+Python `RuntimeHost`, independent of Flask, database setup and display hardware.
+It starts no renderers, scans, schedules or workers. `host.status` returns a frozen
+`RuntimeStatus` with lifecycle state and fixed safe summary; control callers can
+inspect it and call `request_shutdown()`. No transport or serialization is added.
+
+Lifecycle states are `starting`, `running`, `degraded`, `stopping`, `stopped`, and
+`error`. A host runs once: normal execution advances from starting through running,
+stopping and stopped. Host-thread `mark_degraded()` represents optional impairment
+while remaining alive; fatal failures set error, request cancellation and propagate.
+The executable returns nonzero on fatal failure without publishing raw exceptions.
+Physical panel sleep/off remains separate: runtime stays running or degraded.
+
+One host-owned `threading.Event` is the process cancellation boundary. SIGTERM and
+SIGINT request the same shutdown path; the host waits interruptibly on that event.
+Future source reconciliation, scheduling, provider refresh and renderer supervision
+belong here, outside Flask requests, and must observe the shared event without
+clearing it and bound their work and cleanup. This freezes ownership/cancellation,
+not the future concurrency primitive; no job framework or third service is added.
+Managed systemd installation remains owned by #11/#26.
+
 ## 5. Core composition model
 
 The foundational composition model is:
@@ -698,7 +719,7 @@ durable appliance configuration; #9 retains scheduling/DST ownership. Status
 composition lives in a small explicit `postcardscene.status` view model using
 `Database.check()`, with sanitized failure rows. Later owning issues add concrete
 contributors that contain their own failures, without a registry. Runtime is only
-unavailable/not yet connected until #17 defines IPC. Authentication still depends
+unavailable/not yet connected until a later issue selects and wires IPC. Authentication still depends
 on a compatible readable database; status does not bypass that boundary.
 
 ## 21. Authentication, network exposure, and secrets

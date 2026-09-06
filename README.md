@@ -153,6 +153,18 @@ proxy middleware by default; #29 must define trusted proxy topology before addin
 such middleware. Keep debug/testing disabled in deployment configuration. Normal
 error responses omit exception details; protected server logs remain diagnostic.
 
+### Runtime development
+
+After `uv sync --locked`, run `uv run postcardscene-runtime`. The packaged
+`postcardscene-runtime` executable starts only the runtime host and waits until
+Ctrl-C (SIGINT) or SIGTERM requests cooperative shutdown. Normal exit is zero;
+fatal failure exits nonzero with a safe diagnostic.
+
+No database setup, Flask configuration, display, browser or hardware is required.
+The skeleton performs no playback, scans, scheduling or display-power operations.
+Web and runtime restart independently; Overview still reports runtime unavailable
+until a later issue chooses and connects IPC.
+
 ### Persistence development
 
 The shared `postcardscene.persistence` module uses SQLAlchemy without Flask
