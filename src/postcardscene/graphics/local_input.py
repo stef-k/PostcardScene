@@ -87,7 +87,7 @@ def emit(session, event):
     """Fixed emitter destination under validated application runtime authority."""
     import os
 
-    if not isinstance(event, str) or event.encode("utf-8") not in EVENTS:
+    if not isinstance(event, str) or event not in {"activity", "probe_action"}:
         raise CapabilityError("invalid_event")
     try:
         session.validate_directory()

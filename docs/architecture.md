@@ -1161,6 +1161,46 @@ and bounded leader reaping complete cleanup; failed cleanup retains ownership an
 prevents replacement. Systemd remains outer supervision. #65 owns shared surfaces,
 #66 real package/Wayland/hardware evidence, and #8 later runtime integration.
 
+### Shared surfaces and transient overlay/input (#65)
+
+`graphics.surfaces.ContentSurfaces` is the serialized content-class ownership
+seam. It consumes the existing trusted/untrusted `ChromiumController` instances
+and `MpvSurfaceProbe` on the same `WaylandSession`; it duplicates neither browser
+nor output policy. V0 permits **one active content surface at a time**. Switching
+classes stops the previous process group before starting the replacement; labwc's
+black background is the intentional interstitial and failure fallback. Failed
+cleanup retains ownership and blocks replacement. Same-class use may reuse its
+controller. The later runtime owner polls `reconcile` and owns shutdown; this
+capability adds no Scene, scheduling, history or automatic restart loop.
+
+`graphics.mpv_probe.MpvSurfaceProbe` creates only an inert fullscreen native
+Wayland GPU window, with audio, default bindings, OSC and scripts disabled. Its
+trusted absolute host launcher has code-owned flags and bounded process cleanup.
+Readiness requires a configured, buffer-backed Wayland surface commit, not merely
+a live process. Probe-only Wayland trace is capped, consumed and discarded. No
+media loading, JSON IPC, codec/hwdec or playback controls are implemented.
+
+`graphics.overlay.Overlay` launches a self-contained system-Python GTK3 helper
+using distro `python3-gi`, GTK3 and `gtk-layer-shell` introspection. GI stays out
+of the main application imports and uv dependency graph. A small layer-shell
+OVERLAY window with zero exclusive zone presents a probe button above ordinary
+content without DOM cooperation. Private bounded stdio provides ready/show/hide/
+stop and typed probe actions. Hide genuinely unmaps the panel. No edge hotspot
+is implemented, and no transparent fullscreen input surface remains mapped.
+
+`graphics.local_input.InputChannel` receives only `activity` or `probe_action`
+over a private runtime-directory datagram socket. A test-only labwc keybinding
+executes the fixed absolute input-emitter directly, independently of content
+focus. Production keybindings remain inert; #8 owns final key choices and control
+semantics. Arbitrary pointer movement over third-party content cannot reveal
+hidden controls globally. Visible controls accept GTK pointer/touch activation;
+a future explicitly bounded edge hotspot remains optional.
+
+[Operations](operations.md#shared-surface-and-overlay-capability-65) records the
+protocol, software smoke and limits. #8 owns runtime/control UI integration, #6
+real mpv playback, #7 web policy, #10 panel protection, #26 system provisioning,
+and #66 representative physical/package evidence on both distro paths.
+
 ## 18. Display power management
 
 Stopping playback is not sufficient. During configured sleep periods PostcardScene should attempt to put the physical panel into standby so it is neither a night-time light source nor needlessly active.
@@ -1416,7 +1456,7 @@ The following are intentionally unresolved until the owning issue has enough evi
 6. **Provider/plugin registration** — whether a formal plugin mechanism ever becomes worthwhile.
 7. **Frontend enhancement** — whether HTMX or another small enhancement is justified after the basic Flask/Jinja UI exists.
 8. **Scheduling implementation primitive** — exact library/timer implementation behind the frozen scheduling semantics.
-9. **Graphics output and renderer integration** — Wayland/labwc session, output/hotplug policy and shared Chromium control are frozen by #62/#63/#64; overlay/input details remain with #65, physically validated by #66.
+9. **Graphics output and renderer integration** — Wayland/labwc session, output/hotplug policy and shared Chromium control and surface/overlay/input capability are frozen by #62–#65; physical validation remains with #66.
 10. **Kiosk authenticated-session persistence** — whether V0 persists third-party web-session cookies and how that state is isolated/recovered.
 11. **Release artifact format** — wheel/archive/other small managed-native distribution shape, owned by #26.
 12. **Production web serving/network boundary** — exact WSGI server and HTTP/HTTPS/reverse-proxy model, owned by #29/#26.

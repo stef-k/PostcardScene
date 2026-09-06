@@ -118,6 +118,8 @@ class HelperProcess:
             if b"\n" in self.buffer:
                 line, _, rest = self.buffer.partition(b"\n")
                 self.buffer = bytearray(rest)
+                if len(line) > 4096:
+                    raise CapabilityError("protocol_failed")
                 return bytes(line)
             if len(self.buffer) > 4096:
                 raise CapabilityError("protocol_failed")

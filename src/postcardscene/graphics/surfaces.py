@@ -2,7 +2,7 @@
 
 from enum import StrEnum
 
-from ._capability import CapabilityError
+from ._capability import CapabilityError, CapabilityStatus
 from .chromium import BrowserContext, ChromiumError
 
 
@@ -40,6 +40,9 @@ class ContentSurfaces:
         self.active = ContentClass.NONE
         self._retiring = False
         self.reason = "ready"
+        self.capabilities = {
+            content: CapabilityStatus(False, "not_probed") for content in self._owners
+        }
 
     def select(self, content, *, timeout_seconds=10, cancelled=None):
         if not isinstance(content, ContentClass):
@@ -53,8 +56,10 @@ class ContentSurfaces:
         try:
             owner.ensure_started(timeout_seconds=timeout_seconds, cancelled=cancelled)
             self.reason = "ready"
+            self.capabilities[content] = CapabilityStatus(True, "ready")
         except (ChromiumError, CapabilityError):
             error = CapabilityError("content_unavailable")
+            self.capabilities[content] = CapabilityStatus(False, error.reason)
             try:
                 self.stop()
             except CapabilityError:
@@ -80,4 +85,11 @@ class ContentSurfaces:
         self.reason = "ready"
 
     def public_diagnostics(self):
-        return {"active_content": self.active.value, "reason": self.reason}
+        return {
+            "active_content": self.active.value,
+            "reason": self.reason,
+            "capabilities": {
+                content.value: status.public_diagnostics()
+                for content, status in self.capabilities.items()
+            },
+        }

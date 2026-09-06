@@ -92,7 +92,11 @@ class Overlay:
 
     def stop(self):
         if self._process is not None:
-            # EOF normally stops GTK; TERM/KILL also bounds hung or broken peers.
+            # Ask the helper to unmap/exit; TERM/KILL bounds a hung peer.
+            try:
+                self._process.send("stop", Deadline(0.1))
+            except CapabilityError:
+                pass
             self._process.stop()
             self._process = None
         self.visible = False

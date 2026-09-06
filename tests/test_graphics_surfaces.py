@@ -58,10 +58,11 @@ def test_switches_retire_before_replacement_and_reuse_same_class(monkeypatch):
         ("video", "start"),
         ("video", "stop"),
     ]
-    assert surfaces.public_diagnostics() == {
-        "active_content": "none",
-        "reason": "ready",
-    }
+    assert surfaces.public_diagnostics()["active_content"] == "none"
+    assert all(
+        status["available"]
+        for status in surfaces.public_diagnostics()["capabilities"].values()
+    )
     surfaces.select(ContentClass.TRUSTED_IMAGE)
     calls.clear()
     surfaces.reconcile()

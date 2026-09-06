@@ -275,3 +275,118 @@ for #64's optional browser smoke. Actual packaged Chromium plus private native
 Wayland, sandboxing, profile permissions and process-group behavior must still be
 validated on both Ubuntu Server and Raspberry Pi OS under #66. This is not a
 physical Pi/GPU/HDMI/4K support claim.
+
+
+## Shared surface and overlay capability (#65)
+
+The ordinary-Python APIs are `ContentSurfaces.select/reconcile/stop`,
+`MpvSurfaceProbe.ensure_started/stop`, `Overlay.start/show/hide/receive/stop`,
+and `InputChannel.start/receive/stop` under `postcardscene.graphics`. They are
+serialized capabilities for the later runtime owner, not an installed player
+loop or end-user controls. Use one `WaylandSession` and the existing #63 output
+policy. Supply the two #64 Chromium contexts and the inert mpv probe to one
+`ContentSurfaces`; do not independently start those owners thereafter. Consumers
+may navigate the selected browser through #64's existing API.
+
+Selection stops the old group before starting another class. `none` leaves
+labwc's black background. A crash check retires the failed owner without
+restarting it or revealing an older surface. A stop failure retains authority
+and blocks a replacement until cleanup succeeds. The runtime must poll
+`reconcile` and call `stop` on shutdown/cancellation; systemd remains outer
+process-tree supervision. Do not launch helpers through labwc autostart.
+
+### Host launch and toolkit boundary
+
+#26 provisions absolute, trusted host launchers. `MpvSurfaceProbe(session,
+command=(absolute_mpv_launcher, ...))` accepts package invocation words, never a
+shell command or caller-provided mpv options. Launchers must exec or wait and
+keep descendants in the owned process group. The probe uses `--no-config`,
+`--gpu-context=wayland`, `--vo=gpu`, immediate force-window/idle/fullscreen,
+no border, no audio, no default bindings/OSC and no scripts. It loads no media
+and opens no mpv IPC. The [mpv windowing options](https://mpv.io/manual/stable/)
+provide a surface proof, not video/codec/hardware-decode support.
+
+`Overlay(session, system_python=absolute_system_python)` executes the packaged
+`overlay_helper.py` directly with the provisioned system Python. Ubuntu 24.04's
+GTK3 baseline is sufficient: `python3-gi`, `gir1.2-gtk-3.0`,
+`gir1.2-gtklayershell-0.1` and their system libraries. Raspberry Pi OS uses the
+same helper. Do not install PyGObject through uv or require GTK4-layer-shell.
+Package/launcher provisioning remains #26; no system installation command is
+introduced here. All children receive #62's explicit native-Wayland environment,
+not inherited application secrets or X11 state.
+
+### Overlay and local input protocol
+
+The helper writes `ready` after toolkit/layer-shell initialization and a Wayland
+round trip, initially with no mapped panel. Parent commands are newline-terminated
+ASCII `show`, `hide`, `stop`; show/hide replies are `shown`/`hidden` after the
+Wayland round trip. Show/hide are idempotent. The small bottom-centered GTK button
+emits `probe_action` on activation. The layer is OVERLAY, exclusive zone is zero,
+and keyboard interactivity is NONE. The [GTK layer-shell API](https://wmww.github.io/gtk-layer-shell/)
+keeps this surface above ordinary toplevels without reserving layout space.
+
+The helper limits pending commands to 256 bytes and uses nonblocking output;
+a disconnected/non-consuming parent or invalid command ends the helper. The
+parent caps lines at 4096 bytes and pending typed events at 16 (oldest activity
+is discarded when full). Startup defaults to five seconds; commands to two;
+cancellation is checked at most every 50 ms. Stop requests helper exit and then
+uses bounded group TERM/KILL/reap. EOF also ends the GTK loop on normal parent
+death. A stuck helper remains bounded by group cleanup and outer systemd policy.
+
+Hide calls GTK hide/unmap, not opacity or an off-screen move. There is **no edge
+hotspot** in this proof. Hidden controls intercept no pointer/touch region.
+Arbitrary pointer movement over Chromium/mpv is not globally observable by this
+helper. Keyboard reveal is available through the compositor; #8 must work within
+that boundary or deliberately add an optional small edge hotspot later.
+
+`InputChannel` binds `postcardscene-input.sock` with mode 0600 inside #62's
+validated non-root-owned 0700 runtime directory. It rejects an existing endpoint,
+never adopts/removes a stale or foreign socket, and removes only its own socket
+inode on stop. `receive` accepts only `activity` and `probe_action`; unknown or
+oversized datagrams become `protocol_failed`. There is no raw keyboard stream.
+`postcardscene-input-emitter probe_action` sends to that fixed runtime authority
+with a 100 ms bound. An unavailable channel fails without printing diagnostics.
+
+`probe_keybinding(Path(absolute_emitter))` returns a **test-only** W-F12 binding
+fragment. Add it only to an isolated smoke copy of labwc's rc.xml. It invokes
+one absolute emitter command plus the fixed `probe_action` argument via labwc's
+[direct Execute action](https://labwc.github.io/labwc-actions.5.html), with no
+shell, terminal, path expansion or configured command text. Production rc.xml
+remains unchanged. #8 decides eventual transport keys and behavior.
+
+### Diagnostics and evidence limits
+
+`CapabilityError.reason` and `CapabilityStatus.public_diagnostics()` expose
+fixed reasons only: readiness/stopped, invalid specification, unavailable
+session/input/content, startup failure, helper exit, protocol failure, timeout,
+cancellation or cleanup failure. `cleanup_failed` preserves a primary failure
+when retirement also fails. Content diagnostics include `active_content` and
+per-class last-probe availability; these are capability observations, not live
+physical-display health. Overlay status describes helper availability, while
+`visible` records the acknowledged panel state. No window lists, URLs, titles,
+raw input, subprocess output, GTK objects or environment dumps are exposed.
+
+A controlled Ubuntu 24.04 x86-64/WSL software smoke used labwc 0.7.1/wlroots
+0.17.1 with the headless pixman backend, GTK3 3.24.41 and gtk-layer-shell 0.8.2,
+mpv 0.37.0, and cached Chrome for Testing 151.0.7922.34 through the unchanged
+#64 launcher/controller (including its sandbox policy).
+System packages were unpacked privately for this test, not installed as an
+appliance. Both isolated browser contexts and mpv created surfaces on the same
+session; retirement restored the black compositor background. Overlay show/hide
+was checked with compositor screenshots. Both browser contexts rendered a
+controlled local HTTP page. A compositor virtual-pointer click activated the
+visible probe above each content class; W-F12 injected by wtype exercised the
+actual labwc Execute -> fixed emitter -> private channel path with each content
+owner focused. Test input injection was confined to the disposable compositor;
+none of that machinery is shipped in the application. This proves software
+pointer/button routing, not a physical touchscreen. The cached testing browser
+shows its own testing banner; it is not a production package recommendation.
+This is software evidence only.
+
+Deterministic tests cover stop-before-start ordering, retained cleanup authority,
+crash-to-none behavior, same-class reuse, native launcher flags/environment,
+configured buffer-backed mpv readiness, capped malformed/timeout helper protocol,
+cancellation, process-group descendant cleanup and private typed input/config.
+No tests claim physical touch, Pi/HDMI/4K, acceleration, audio or packaged-distro
+installation support. #66 must supply that evidence; #8 owns real controls,
+#6 video, #7 web policy and #10 panel power/protection.

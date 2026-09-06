@@ -214,3 +214,39 @@ def test_pinned_group_kills_descendant_after_launcher_exits(tmp_path):
 def test_invalid_probe_launcher(session, command):
     with pytest.raises(CapabilityError, match="invalid_spec"):
         MpvSurfaceProbe(session, command)
+
+
+def test_failed_overlay_cleanup_preserves_primary_and_blocks_relaunch(
+    overlay, helper, monkeypatch
+):
+    helper.write_text("import time\nprint('ready', flush=True)\ntime.sleep(60)\n")
+    overlay.start()
+    process = overlay._process
+
+    def fail_stop():
+        raise CapabilityError("cleanup_failed")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(process, "stop", fail_stop)
+        with pytest.raises(CapabilityError, match="timeout") as caught:
+            overlay.show(timeout_seconds=0.05)
+        assert caught.value.cleanup_failed
+        assert overlay._process is process
+        with pytest.raises(CapabilityError):
+            overlay.start()
+        assert overlay._process is process
+    overlay.stop()
+    assert overlay._process is None
+
+
+def test_unavailable_session_and_missing_helper_are_typed(session):
+    overlay = Overlay(session, "/missing-postcardscene-system-python")
+    with pytest.raises(CapabilityError, match="startup_failed"):
+        overlay.start()
+    session.inspect = lambda: SimpleNamespace(available=False)
+    with pytest.raises(CapabilityError, match="session_unavailable"):
+        overlay.start()
+    probe = MpvSurfaceProbe(session, ("/missing-mpv",))
+    with pytest.raises(CapabilityError, match="session_unavailable"):
+        probe.ensure_started()
+    assert overlay._process is None and probe._process is None
