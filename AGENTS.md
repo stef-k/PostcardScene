@@ -1,6 +1,6 @@
 # AGENTS.md
 
-This file defines the working rules for coding agents contributing to PostcardScene.
+This file defines PostcardScene-specific rules for coding agents. General development workflow, Git safety, review discipline, and globally supplied agent capabilities come from the agent bootstrap and are intentionally not duplicated here.
 
 ## Repository authority
 
@@ -25,14 +25,14 @@ For V0, start from tracker issue `#1` and use this algorithm:
 3. Cross-issue `Depends on`, `Blocks`, explicit prerequisite text, and authoritative architecture dependencies override display/list order. An item is **dependency-ready** only when every required prerequisite is complete or the owning issue explicitly permits parallel work.
 4. Select the first incomplete dependency-ready epic in tracker order.
 5. If that epic already has implementation children, follow its explicit `Suggested execution` order when present. Otherwise use the child checklist order. Select the first incomplete dependency-ready child.
-6. If the selected epic has not yet been decomposed, **harden/decompose the epic first**: reread repository authority, resolve only decisions needed to make the work executable, create bounded child issues with parent/dependency links and acceptance criteria, and update the epic checklist/execution order. Do not treat an undecomposed epic as permission to implement the entire epic in one oversized change.
-7. Implement one bounded child issue at a time unless the owning issue explicitly authorizes a cohesive combined slice. Run the required tests/checks and update affected documentation in the same PR/change.
+6. If the selected epic has not yet been decomposed, harden/decompose the epic first: reread repository authority, resolve only decisions needed to make the work executable, create bounded child issues with parent/dependency links and acceptance criteria, and update the epic checklist/execution order. Do not treat an undecomposed epic as permission to implement the entire epic in one oversized change.
+7. Implement one bounded child issue at a time unless the owning issue explicitly authorizes a cohesive combined slice. Run the required checks and update affected documentation in the same change.
 8. Close a child only when its acceptance criteria and required evidence are satisfied. Keep the parent epic checklist accurate; do not rely on issue closure automatically updating every Markdown task list.
-9. Close an epic only after every owned child is complete **and** the epic-level completion contract has been reread against the resulting repository. A completed child checklist alone is not sufficient if an epic requirement is still unmet.
+9. Close an epic only after every owned child is complete and the epic-level completion contract has been reread against the resulting repository.
 10. Return to `#1` after each child/epic completion and resolve the next dependency-ready item using the same algorithm.
 11. Close `#1` only after all V0 epics and the explicit V0 closure gates are satisfied for the exact release candidate.
 
-Canonical precedence is therefore:
+Canonical precedence:
 
 ```text
 explicit dependency / prerequisite
@@ -46,29 +46,27 @@ epic child checklist order
 issue number
 ```
 
-Issue number by itself is never scheduling authority.
-
-A cross-epic dependency can make a later-listed epic or child runnable before an earlier-listed epic is complete. In that case the dependency-ready rule wins; however, do not skip an earlier ready item merely for convenience.
+Issue number by itself is never scheduling authority. A cross-epic dependency can make a later-listed epic or child runnable before an earlier-listed epic is complete; dependency readiness wins.
 
 ### Parallel and blocked work
 
-Parallel work is allowed only when the graph makes it independent. If the next branch is blocked by unavailable physical hardware, an external prerequisite, or other genuine evidence dependency:
+Parallel work is allowed only when the graph makes it independent. If a branch is blocked by unavailable physical hardware, an external prerequisite, or another genuine evidence dependency:
 
-- record/report the blocker truthfully;
+- report the blocker truthfully;
 - do not mark the blocked issue complete;
 - do not manufacture mock evidence for a physical/external requirement;
-- continue with the next dependency-ready independent child/epic only when doing so does not violate an explicit prerequisite or architecture boundary;
+- continue only with a dependency-ready independent item that does not violate an explicit prerequisite or architecture boundary;
 - return to the blocked gate when the required evidence becomes available.
 
 For example, software decision logic around display hardware may proceed in CI, but the physical 4K/HDMI claims in `#31` remain open until representative hardware evidence exists.
 
 ### Milestone progression
 
-V1 and V2 milestones intentionally exist without speculative implementation backlogs. Do not begin them merely because no V0 child is immediately convenient.
+V1 and V2 intentionally exist without speculative implementation backlogs.
 
 - Finish the current V0 capability boundary and closure gates first unless the user explicitly reprioritizes the roadmap.
-- When V1 or V2 becomes active, use its roadmap section to create the milestone tracker/epics just in time, then apply the same deterministic tracker -> epic -> child protocol.
-- Do not pre-create large future backlogs solely to make the milestone look populated.
+- When V1 or V2 becomes active, use its roadmap section to create the milestone tracker/epics just in time, then apply the same tracker -> epic -> child protocol.
+- Do not pre-create large future backlogs solely to make a milestone look populated.
 
 ## Product boundary
 
@@ -104,28 +102,19 @@ The web interface is the control plane. The long-running runtime/player is the d
 
 Do not put scans, reconciliation, schedules, renderer supervision, or future provider refresh loops inside Flask request handlers.
 
-V0's default owner for long-running application work is the runtime/player process or a narrowly factored runtime component it hosts.
+V0's default owner for long-running application work is the runtime/player process or a narrowly factored runtime component it hosts. This includes operating schedule evaluation, filesystem media reconciliation, renderer/player supervision, and later provider cache refresh.
 
-Examples include:
-
-- operating schedule evaluation;
-- filesystem media reconciliation;
-- renderer/player supervision;
-- later provider cache refresh.
-
-Long-running work must have bounded/cancellable shutdown behavior. A service restart must not abandon uncontrolled work or require a distributed job framework merely for convenience.
-
-The runtime remains alive while the physical display is asleep so required schedules/reconciliation can continue.
+Long-running work must have bounded/cancellable shutdown behavior. The runtime remains alive while the physical display is asleep so required schedules/reconciliation can continue.
 
 ## Composition model vs media catalog
 
-The filesystem media catalog does **not** replace or extend the universal composition model.
+The filesystem media catalog is a source/runtime data layer, not a fifth universal composition concept:
 
 ```text
 Filesystem Source -> MediaItem catalog -> Widget selection
 ```
 
-remains beneath:
+beneath:
 
 ```text
 Source -> Widget -> Scene -> Sequence
@@ -133,7 +122,7 @@ Source -> Widget -> Scene -> Sequence
 
 Rules:
 
-- `MediaItem` is normalized source/runtime data, not a fifth universal composition concept.
+- `MediaItem` is normalized source/runtime data.
 - Original photo/video bytes remain in their source filesystem.
 - Do not copy media into SQLite merely to index it.
 - Playback should consume the common catalog/source boundary rather than repeatedly walking entire filesystem sources.
@@ -152,7 +141,7 @@ SQLite is shared application state, not a distributed coordination service.
 - Apply schema changes through Alembic/Flask-Migrate.
 - Application startup must not silently rewrite an unexpected production schema.
 - Preserve application/schema identity needed by release and backup/restore workflows.
-- Tests that introduce background/catalog writes should exercise representative concurrency/locking behavior at a stable seam.
+- Background/catalog concurrency tests should exercise representative locking behavior at a stable seam.
 
 ## Media behavior
 
@@ -208,13 +197,7 @@ power_off()
 get_power_state()
 ```
 
-Expected backend families are:
-
-1. HDMI-CEC
-2. DDC/CI
-3. DRM/KMS or HDMI signal control fallback
-
-Rules:
+Expected backend families are HDMI-CEC, DDC/CI, and DRM/KMS or HDMI signal control fallback.
 
 - A failed power command must surface degraded/unknown state rather than claim success without evidence.
 - Scheduled display sleep must also stop/silence media playback.
@@ -229,7 +212,7 @@ Scheduling must be timezone-aware and deterministic across real clock transition
 - Define DST skipped/repeated-time behavior.
 - Treat temporary/manual overrides as explicit state with persistence/expiry semantics.
 - After reboot, long downtime, NTP correction, manual clock jump, or timezone change, converge to the state that should be active now rather than replay every missed transition.
-- Test midnight, week boundaries, DST forward/back, and large forward/backward clock changes.
+- Cover midnight, week boundaries, DST forward/back, and large forward/backward clock changes.
 - Scheduling belongs to the long-running runtime, not Flask requests.
 
 ## Network storage
@@ -281,12 +264,10 @@ Follow the trust boundary owned by the security epic.
 
 ## Release, installation, and update
 
-Release/install lifecycle is a first-class V0 concern.
-
 - Use one authoritative application version identity.
 - Use deterministic dependency resolution/locking for release builds/production installs.
 - Release artifacts must correspond to immutable source/tag identity and have checksums of the final published bytes.
-- Rebuilding/repackaging different bytes creates a new artifact-specific candidate; do not reuse an earlier checksum as authority.
+- Rebuilding/repackaging different bytes creates a new artifact-specific candidate.
 - Normal production installation should use an isolated project-owned Python environment or another approved mechanism, not unsafe privileged modification of distro-owned Python.
 - Separate application payload, configuration/secrets, durable state, replaceable caches/runtime state, logs, and backups.
 - Apply production schema changes explicitly through migrations.
@@ -315,36 +296,21 @@ PostcardScene backup owns PostcardScene durable state, not the user's original m
 
 Important user-facing behavior should be configurable through the authenticated web settings UI where practical.
 
-Defaults should make the system useful without requiring constant administration.
-
 Do not expose raw internal database structures as the normal product UI merely because they are easy to generate.
 
-Control UI changes should preserve the project's normal responsive/accessibility baseline:
+Control UI changes should preserve the project's responsive/accessibility baseline:
 
-- visible labels
-- keyboard operation
-- focus/error feedback
-- sufficient contrast through the chosen CSS system
-- usable desktop/mobile containment
+- visible labels;
+- keyboard operation;
+- focus/error feedback;
+- sufficient contrast through the chosen CSS system;
+- usable desktop/mobile containment.
 
 Do not create a large frontend framework or browser-test matrix merely for these basics.
 
 ## Reliability and observability
 
-The display is intended to run unattended for long periods.
-
-Design for:
-
-- process crashes and restarts
-- host reboot/power loss
-- display absent at boot and hotplug/reconnect
-- temporary NAS unavailability/hangs
-- malformed/unreachable media
-- Chromium/mpv failure
-- renderer stalls
-- background/catalog interruption
-- future internet/API failures
-- low disk space and cache/log growth
+The display is intended to run unattended for long periods. Design for process crashes/restarts, host reboot/power loss, display hotplug, temporary NAS outages/hangs, malformed media, Chromium/mpv failure, renderer stalls, background/catalog interruption, future provider outages, and low disk space/cache/log growth.
 
 Observability is shared by owning layers:
 
@@ -354,54 +320,57 @@ Observability is shared by owning layers:
 
 Do not create a metrics/telemetry platform in V0 merely because diagnostics are required.
 
-## Documentation and definition of done
+## Documentation requirements
 
-Documentation is part of feature completion.
-
-When a change alters user-visible behavior, configuration, installation, security, recovery, hardware support, or a consequential architectural boundary, update the smallest relevant authority document in the same PR.
+When a change alters user-visible behavior, configuration, installation, security, recovery, hardware support, or a consequential architectural boundary, update the smallest relevant authority document.
 
 Keep documentation lean. Prefer the current authority documents and a future cohesive `docs/operations.md` over many one-topic files until size/audience justifies splitting.
 
-Before a public distributable release, select an explicit project software license and include required third-party notices/attributions.
+Before a public distributable release, include the project license and required third-party notices/attributions. Hardware/support claims must distinguish physically tested evidence from intended but unverified configurations.
 
-Hardware/support claims must distinguish physically tested evidence from intended but unverified configurations.
+## Project validation targets
 
-## Testing expectations
+In addition to the globally supplied testing/review workflow, PostcardScene changes should cover the relevant product-specific seams:
 
-Add tests with new behavior at the lowest stable seam. Prioritize:
-
-- source/path safety and symlinks
-- source/catalog reconciliation and outage recovery
-- media selection and portrait pairing
-- image orientation/pathological media bounds
-- video failure/audio lifecycle
-- scheduling/timezone/DST transitions
-- scene/sequence fallback behavior
-- SQLite migration/concurrency assumptions
-- authentication/session/CSRF
-- web-scene URL/profile isolation
-- display-power state decisions
-- backup integrity/retention/restore compatibility
-- security-sensitive validation/redaction
+- source/path safety and symlinks;
+- source/catalog reconciliation and outage recovery;
+- media selection and portrait pairing;
+- image orientation/pathological media bounds;
+- video failure/audio lifecycle;
+- scheduling/timezone/DST transitions;
+- scene/sequence fallback behavior;
+- SQLite migration/concurrency assumptions;
+- authentication/session/CSRF;
+- web-scene URL/profile isolation;
+- display-power state decisions;
+- backup integrity/retention/restore compatibility;
+- security-sensitive validation/redaction.
 
 Hardware-dependent decision logic should be testable without physical equipment, but actual HDMI/GPU/CEC/DDC/4K support claims require representative physical evidence rather than mocks alone.
 
-## Development tooling
+## Project-local development tooling
 
-Issue #12 owns the initial development toolchain.
+Issue #12 establishes the initial project-local toolchain. Its target commands are:
 
-- Prefer one clear formatter/linter authority rather than overlapping tools.
-- Add static type checking only if it provides proportionate value and has one documented command/CI owner.
-- Agent Code Guard may be evaluated because this repository is coding-agent driven, but it is not mandatory merely because Wayfarer uses it.
-- Tooling complements tests/review; it must not become a separate architecture project.
+```bash
+uv sync --locked
+uv run pytest
+uv run ruff format .
+uv run ruff format --check .
+uv run ruff check .
+uv build
+uv run python -c "import postcardscene; import postcardscene.web; import postcardscene.runtime"
+```
 
-## Scope discipline
+For #12 itself these commands define the bootstrap contract to make valid. After #12 lands, they are the canonical project-local commands unless a later issue deliberately changes the toolchain.
 
-Follow `docs/roadmap.md` and implement the smallest coherent milestone first.
+Do not add repository-specific copies, wrappers, or configuration for capabilities already supplied by the global agent bootstrap unless PostcardScene develops a concrete project-specific need.
+
+## Scope constraints
 
 Do not build speculative plugin systems, multi-tenant authorization, distributed workers, generalized event buses, configuration-management systems, browser automation frameworks, media-analysis pipelines, auto-update systems, or deployment/package-manager machinery solely because they may be useful someday.
 
-Preserve the foundational boundaries that avoid later rewrites:
+Preserve these foundational PostcardScene boundaries:
 
 - `Source -> Widget -> Scene -> Sequence` composition;
 - source-owned filesystem catalog beneath `Source`;
