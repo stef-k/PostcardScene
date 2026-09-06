@@ -76,10 +76,18 @@ belongs to #19/#20; runtime dwell, order/shuffle, history and global transport
 - controlled skip/failure/load-timeout behavior
 - recovery from player/media failure
 - hardware decode where supported by the validated runtime
-- explicit configurable audio enabled/muted/volume policy
+- default-silent Widget audio (`audio_enabled=false`, integer `volume=50`, bounded 0–100); mute stays transient
 - intended HDMI/audio-output behavior where supported
 - no orphan audio after scene change, skip, sleep, or player restart
 - honest supported codec/container boundary rather than universal-format claims
+
+#71 implements only DB-backed video configuration/selection: immutable Source-relative
+identity and size/mtime snapshots, bounded catalog lookup/pages, no filesystem
+scan/open or decoder-support promise. Image metadata and catalog `duration_ms` are
+not prerequisites; active duration is a later player concern. Intended audio-device
+selection remains a trusted runtime input. #8 owns order/shuffle/history and global
+transport UI. File authority/player/audio work remains #72–#75; physical support
+claims remain gated by #66/#76. End-user video playback is not implemented yet.
 
 ### Basic web scenes
 
