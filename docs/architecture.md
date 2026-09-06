@@ -459,7 +459,7 @@ Widget selection
 `MediaItem` persists Source-relative identity, type, size/mtime freshness, scan
 generation and image presentation dimensions/orientation/status. Integer row IDs
 serve storage/pagination, not stronger identity across removal/reappearance.
-Video `duration_ms` remains nullable and unpopulated until a concrete #6 need;
+Video `duration_ms` remains nullable and unpopulated; active playback supplies duration;
 capture timestamps, media bytes, thumbnails and broad EXIF are not indexed.
 Original image/video bytes remain in the source filesystem.
 
@@ -830,6 +830,40 @@ before claiming supported playback. No speculative user-facing playback guide is
 created ahead of that evidence.
 
 ## 8. Video and audio behavior
+
+Issue #71 implements `postcardscene.video_selection`, an ordinary-Python,
+DB-only semantic/query seam. Generic `domain.create_widget` JSON validation stays
+structural. `validate_video_configuration` accepts only kind `video` and an object
+with optional `audio_enabled` (real boolean, default `false`) and `volume`
+(integer 0–100, default 50; booleans rejected). Unknown keys are invalid. Volume
+may remain configured while audio is disabled without implying sound. Mute is
+transient active-player state; intended audio-device selection is a trusted
+host/runtime concern, not Widget JSON. Duration, seek increments, codec/hwdec
+policy, Scene dwell, Sequence state and panel safety are not Widget options.
+
+`resolve_video_context` requires an enabled video Widget referencing an existing
+enabled local or mounted filesystem Source. `get_selected_video` looks up canonical
+`(source_id, relative_path)` identity; `list_selected_videos` returns a tuple of
+snapshots and a row-ID keyset continuation, with default 100 and maximum 500 items.
+Both use the common catalog, exclude other Sources and non-video items, and need
+no image metadata or `duration_ms`. Missing/disabled/invalid context raises
+`VideoSelectionError`; absent/ineligible media returns `None`. Malformed paths
+retain the shared filesystem validator's typed `InvalidSource` error; pagination
+bounds raise `ValueError` as in the catalog.
+
+Immutable `SelectedVideo` carries only `source_id`, canonical `relative_path`,
+nonnegative integer `size_bytes` and integer `mtime_ns` (including pre-epoch values).
+It carries no ORM/session, absolute path, file descriptor, bytes or playback state.
+Selection does no filesystem scan/open, reconciliation, decoder probe or catalog
+mutation. Later #72 must revalidate and pin current file authority before playback.
+Catalog video classification identifies candidates, not actual mpv/container/codec
+support; unsupported media remains catalog knowledge. Progress/duration comes
+from the active player without catalog-wide duration indexing.
+
+#8 owns order/shuffle/history, Previous/Next, global Play/Pause and transport UI;
+row-ID pagination here defines none of those behaviors. #72–#75 own file authority,
+mpv and active-player controls/audio. End-user playback is not implemented by #71;
+physical format/HDMI/hwdec claims remain gated by #66/#76.
 
 Video playback should use mpv where practical because codec support, hardware acceleration, control, and failure isolation benefit from a dedicated player.
 
