@@ -185,7 +185,7 @@ V0 should provide:
 - database/archive integrity verification
 - application/schema/archive version identity
 - required installation-owned secret/key state where credentials must remain recoverable, or explicit credential-reentry classification
-- explicit classification of filesystem media catalog state as durable or regenerable
+- filesystem media catalog classified as regenerable derived state; require fresh reconciliation after restore
 - local or administrator-provided already-mounted backup destination
 - manual and scheduled backup
 - integrity checksums

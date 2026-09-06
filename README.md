@@ -257,6 +257,27 @@ Referenced Widgets cannot be deleted. Unreferenced Scene removal deletes only pl
 preserving Widgets and Sources; disable preserves references. See
 [Scene architecture](docs/architecture.md#scene) for the complete contract.
 
+### Filesystem media catalog
+
+Stop database users and run the explicit `db upgrade` command to apply
+`0007_media_catalog`; existing configuration is preserved. The catalog remains
+beneath Source, storing relative identity and basic image/video freshness without
+copying originals. Pillow supplies header-only presentation dimensions/orientation;
+video duration is reserved for later playback work.
+
+`postcardscene.catalog_reconciliation.reconcile_filesystem_source` performs one
+bounded local/mounted reconciliation outside Flask requests. Only a complete
+presence scan removes missing items; outages/partial scans preserve unseen rows.
+Mounted metadata reads run in disposable child processes. Bad images remain present
+with metadata errors, and unchanged ready images are not reopened. Source disable
+preserves the catalog. Scan generations/results and bounded query/count functions
+are available for later runtime/UI work; no automatic scan scheduling is added.
+
+Catalog state is regenerable. Whole-database backups may contain it, but restored
+catalog freshness must be re-established from external Sources by reconciliation.
+See [catalog architecture](docs/architecture.md#persistent-catalog-and-reconciliation-30)
+for API, failure and metadata limitations.
+
 ### Sequence domain
 
 Stop database users and explicitly run `db upgrade` to apply `0006_sequence`.

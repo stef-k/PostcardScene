@@ -453,17 +453,11 @@ MediaItem catalog
 Widget selection
 ```
 
-A filesystem-backed `MediaItem` may hold normalized data such as:
-
-- stable source-relative/canonical identity
-- media type
-- locator/path identity
-- image dimensions/orientation
-- video duration where proportionately obtainable
-- freshness/modification identity
-- capture timestamp where safely and usefully obtainable
-- availability/stale/error state
-
+`MediaItem` persists Source-relative identity, type, size/mtime freshness, scan
+generation and image presentation dimensions/orientation/status. Integer row IDs
+serve storage/pagination, not stronger identity across removal/reappearance.
+Video `duration_ms` remains nullable and unpopulated until a concrete #6 need;
+capture timestamps, media bytes, thumbnails and broad EXIF are not indexed.
 Original image/video bytes remain in the source filesystem.
 
 ### Filesystem Source contract (#22)
@@ -606,26 +600,60 @@ substitutes; they do not claim physical NAS/kernel recovery evidence.
 
 This is an operation boundary only: no RuntimeHost service, retry loop, scheduler,
 Flask scan, mount command, credentials, catalog state or migration is introduced.
-#30/runtime owns scan timing and retry decisions and must hold no database
+Later runtime work owns scan timing and retry decisions and must hold no database
 transaction across the operation.
 
-### Reconciliation rules
+### Persistent catalog and reconciliation (#30)
 
-Cataloging must distinguish:
+`postcardscene.catalog` owns `MediaItem` and per-Source `MediaCatalogState` in the
+existing application SQLite database. Explicit migration `0007_media_catalog`
+preserves administrator/settings and all composition configuration. Source deletion
+cascades its derived rows/state; disable preserves them and reconciliation rejects
+it without mutation. Source-to-Widget deletion restrictions remain unchanged.
 
-- newly discovered item
-- changed item requiring metadata refresh
-- confirmed removed item
-- source temporarily unavailable
-- item temporarily unreadable
+`catalog_reconciliation.reconcile_filesystem_source(database, source_id, policy,
+*, cancelled=None, batch_size=100, metadata_batch_size=32,
+mounted_timeout_seconds=10.0)` performs one operation outside Flask requests.
+Later runtime work serializes ordinary per-Source scans and owns cadence/retries;
+#30 adds no scheduling, service or queue. Presence batches accept 1–500 entries;
+metadata batches accept 1–64. All filesystem work and mounted waits occur outside
+short database transactions, consuming exactly the #23/#24 enumeration stream.
 
-A NAS outage must never be interpreted as authoritative deletion of the entire catalog.
+Every observation carries the current per-Source generation. Only normal enumerator
+exhaustion authorizes deletion of unseen rows, in bounded ID batches. Partial,
+unavailable, invalid or cancelled enumeration preserves unseen rows. Batch writes,
+cleanup and metadata commits verify the generation; superseded attempts stop with
+`ScanSuperseded` and cannot overwrite newer state. Runtime still owns serialization.
+Handled presence results are `never_scanned`, `ready`, `unavailable`, `error`,
+`cancelled`; `scan_generation != completed_generation` signals interruption.
+`last_attempt_ns` and `last_success_ns` are UTC Unix epoch nanoseconds. Typed scan
+failures propagate after recording state where possible.
 
-Large scans must be bounded/cancellable and use short database transactions. Reconciliation is owned by the long-running runtime/background-work boundary, not synchronous Flask requests.
+After authoritative presence completion, pending/error images are queried in bounded
+pages. Pillow reads headers and header EXIF only, swapping presentation dimensions
+for orientations 5/6/7/8 before portrait/landscape/square classification. PNG trailing
+EXIF is not sought by decoding pixels. Ready unchanged images are not reopened;
+changed freshness clears derived fields. Bad images retain presence with metadata
+`error`; freshness races leave metadata pending for a later reconciliation. Reads
+use #22 safe resolution and recheck size/mtime afterward, retaining its documented
+point-in-time race limitation rather than claiming an atomic filesystem snapshot.
 
-V0 does not require thumbnails, computer vision, face recognition, broad EXIF indexing, or a generic catalog for future provider assets.
+Mounted image batches reuse #24's disposable spawn operation, mount guard, streamed
+per-item results/progress, idle timeout and bounded cleanup. The parent never opens
+mounted images. Metadata timeout/cancellation/worker failure propagates while leaving
+the successful presence result `ready`; unresolved images remain retryable. Metadata
+failure never changes presence authority or blocks confirmed-removal cleanup.
 
-Whether catalog state is backed up as useful durable state or treated as a regenerable optimization must be decided by #30/#27 and recorded in the backup contract.
+Within a short `Database.transaction()`, `get_media_item` looks up canonical
+`(source_id, relative_path)` identity; `list_media_items` uses bounded `limit` and
+`after_id` pagination with Source/type/ready-image-orientation filters. Counts and
+`catalog_health_counts` provide bounded result summaries. There is no full-library
+listing default, shuffle/history policy, or unrestricted persisted absolute path.
+
+Catalog rows/state are **regenerable derived state** for #27. Whole-database backups
+may incidentally include them, but restore must require fresh reconciliation before
+treating catalog freshness as authoritative. Original media remain external/unowned;
+no second catalog database or catalog-dependent recovery authority is introduced.
 
 ## 7. Image behavior
 
@@ -1057,7 +1085,7 @@ The V0 recovery contract must classify:
 - SQLite database
 - installation-owned secret/key material required for protected state, or credentials explicitly requiring re-entry
 - any application-owned durable assets
-- media catalog as durable or regenerable
+- media catalog as regenerable derived state; restore requires fresh Source reconciliation
 - manifest with application/schema/archive identity
 - checksums
 
@@ -1108,9 +1136,8 @@ The following are intentionally unresolved until the owning issue has enough evi
 8. **Scheduling implementation primitive** — exact library/timer implementation behind the frozen scheduling semantics.
 9. **Linux graphics/session model** — exact Wayland/X11/KMS/compositor path, owned by #31.
 10. **Kiosk authenticated-session persistence** — whether V0 persists third-party web-session cookies and how that state is isolated/recovered.
-11. **Media catalog backup classification** — useful durable state vs regenerable optimization, owned by #30/#27.
-12. **Release artifact format** — wheel/archive/other small managed-native distribution shape, owned by #26.
-13. **Production web serving/network boundary** — exact WSGI server and HTTP/HTTPS/reverse-proxy model, owned by #29/#26.
-14. **Renderer live-update transport** — ordinary HTTP polling is preferred where adequate; SSE, WebSockets, or another server-push mechanism is selected only if a concrete V1/V2 requirement proves it useful.
+11. **Release artifact format** — wheel/archive/other small managed-native distribution shape, owned by #26.
+12. **Production web serving/network boundary** — exact WSGI server and HTTP/HTTPS/reverse-proxy model, owned by #29/#26.
+13. **Renderer live-update transport** — ordinary HTTP polling is preferred where adequate; SSE, WebSockets, or another server-push mechanism is selected only if a concrete V1/V2 requirement proves it useful.
 
 These are deliberate implementation decisions, not reasons to invent answers early. When one is resolved, update this document in the same change that relies on the decision.
