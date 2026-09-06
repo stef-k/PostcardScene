@@ -34,8 +34,8 @@ class ScanSuperseded(ScanCancelled):
     """A newer attempt owns this Source; the old attempt must stop writing."""
 
 
-def _start(database, source_id):
-    with database.transaction() as session:
+def _start(database, source_id, request_generation=None):
+    with database.transaction(write=True) as session:
         source = session.get(Source, source_id)
         if source is None or source.kind not in (
             "local_directory",
@@ -45,6 +45,12 @@ def _start(database, source_id):
         if not source.enabled:
             raise InvalidSource("Disabled Sources are not reconciled.")
         state = session.get(MediaCatalogState, source_id)
+        if request_generation is not None and (
+            state is None
+            or state.handled_request_generation >= request_generation
+            or state.requested_generation < request_generation
+        ):
+            raise ScanSuperseded("Refresh request was superseded before execution.")
         if state is None:
             state = MediaCatalogState(source_id=source_id, scan_generation=0)
             session.add(state)
@@ -61,7 +67,7 @@ def _current(session, source_id, generation):
 
 
 def _observe(database, source_id, generation, entries):
-    with database.transaction() as session:
+    with database.transaction(write=True) as session:
         _current(session, source_id, generation)
         for entry in entries:
             if len(entry.relative_path.encode("utf-8")) > 4096:
@@ -89,7 +95,7 @@ def _observe(database, source_id, generation, entries):
 
 
 def _finish(database, source_id, generation, result):
-    with database.transaction() as session:
+    with database.transaction(write=True) as session:
         state = _current(session, source_id, generation)
         state.completed_generation = generation
         state.last_result = result
@@ -100,7 +106,7 @@ def _finish(database, source_id, generation, result):
 def _remove_absent(database, source_id, generation, batch_size, cancelled):
     while True:
         _check_cancelled(cancelled)
-        with database.transaction() as session:
+        with database.transaction(write=True) as session:
             _current(session, source_id, generation)
             ids = list(
                 session.scalars(
@@ -160,7 +166,7 @@ def _pending(database, source_id, generation, after_id, batch_size):
 
 
 def _save_metadata(database, source_id, generation, result):
-    with database.transaction() as session:
+    with database.transaction(write=True) as session:
         _current(session, source_id, generation)
         row = get_media_item(session, source_id, result.entry.relative_path)
         if row is None or (row.media_type, row.size_bytes, row.mtime_ns) != (
@@ -222,12 +228,15 @@ def reconcile_filesystem_source(
     policy,
     *,
     cancelled=None,
+    request_generation=None,
     batch_size=100,
     metadata_batch_size=32,
     mounted_timeout_seconds=DEFAULT_MOUNT_TIMEOUT,
 ):
     """Reconcile once; caller owns cadence and serializes normal per-Source work.
 
+    request_generation optionally gates runtime work against request supersession
+    in the same transaction that captures Source authority and starts the scan.
     Disabled/missing/non-filesystem Sources raise InvalidSource without mutation.
     Presence failures record handled state then propagate. Metadata worker failures
     propagate too, but retain the already committed ready presence result. Abrupt
@@ -237,7 +246,8 @@ def reconcile_filesystem_source(
     validate_limit(metadata_batch_size)
     if metadata_batch_size > 64:
         raise ValueError("Metadata batch size cannot exceed 64.")
-    generation, kind, configuration = _start(database, source_id)
+    _check_cancelled(cancelled)
+    generation, kind, configuration = _start(database, source_id, request_generation)
     try:
         if kind == "local_directory":
             entries = enumerate_local_directory(

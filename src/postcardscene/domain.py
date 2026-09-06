@@ -19,6 +19,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
+from postcardscene.catalog import supersede_catalog
 from postcardscene.persistence import Base
 
 SOURCE_KINDS = frozenset({"local_directory", "mounted_directory", "web_url"})
@@ -149,6 +150,12 @@ def create_source(session, *, name, kind, configuration, enabled=True):
 def update_source(session, source_id, *, name, kind, configuration, enabled):
     fields = _validated_fields(name, kind, configuration, enabled, SOURCE_KINDS)
     source = get_source(session, source_id)
+    authority_changed = source.kind != kind or any(
+        source.configuration.get(key) != fields["configuration"].get(key)
+        for key in ("path", "recursive")
+    )
+    if authority_changed or (source.enabled and not enabled):
+        supersede_catalog(session, source_id, invalidate=authority_changed)
     for key, value in fields.items():
         setattr(source, key, value)
     session.flush()

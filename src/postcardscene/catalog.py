@@ -2,10 +2,12 @@
 
 from sqlalchemy import (
     BigInteger,
+    CheckConstraint,
     ForeignKey,
     Index,
     String,
     UniqueConstraint,
+    delete,
     func,
     select,
 )
@@ -50,11 +52,32 @@ class MediaCatalogState(Base):
     source_id: Mapped[int] = mapped_column(
         ForeignKey("source.id", ondelete="CASCADE"), primary_key=True
     )
+    requested_generation: Mapped[int] = mapped_column(
+        BigInteger,
+        CheckConstraint(
+            "requested_generation >= 0", name="requested_generation_nonnegative"
+        ),
+        default=0,
+        server_default="0",
+    )
+    handled_request_generation: Mapped[int] = mapped_column(
+        BigInteger,
+        CheckConstraint(
+            "handled_request_generation >= 0",
+            name="handled_request_generation_nonnegative",
+        ),
+        default=0,
+        server_default="0",
+    )
     scan_generation: Mapped[int] = mapped_column(BigInteger, default=0)
     completed_generation: Mapped[int] = mapped_column(BigInteger, default=0)
     last_result: Mapped[str] = mapped_column(String(16), default="never_scanned")
     last_attempt_ns: Mapped[int | None] = mapped_column(BigInteger)
     last_success_ns: Mapped[int | None] = mapped_column(BigInteger)
+
+    @property
+    def refresh_pending(self):
+        return self.requested_generation > self.handled_request_generation
 
     @property
     def interrupted(self):
@@ -129,3 +152,17 @@ def catalog_health_counts(session, source_id):
             .group_by(MediaItem.media_type, MediaItem.metadata_status)
         )
     }
+
+
+def supersede_catalog(session, source_id, *, invalidate=False):
+    """Call in the Source edit transaction; keep tokens monotonic across edits."""
+    state = session.get(MediaCatalogState, source_id)
+    if state is not None:
+        state.scan_generation += 1
+        state.completed_generation = state.scan_generation
+        state.handled_request_generation = state.requested_generation
+        if invalidate:
+            state.last_result = "never_scanned"
+            state.last_attempt_ns = state.last_success_ns = None
+    if invalidate:
+        session.execute(delete(MediaItem).where(MediaItem.source_id == source_id))
