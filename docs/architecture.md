@@ -96,7 +96,8 @@ Linux DRM/KMS display control
 Issue #12 establishes one `postcardscene` distribution under `src/postcardscene`,
 with side-effect-free `web` and `runtime` namespaces. Python 3.11 is the bootstrap
 compatibility floor; #26 owns the supported release matrix and version identity.
-The initial package version is `0.0.0` and runtime dependencies are empty.
+The initial package version is `0.0.0`. Issue #13 adds Flask as the control-plane
+dependency; the core and runtime namespaces remain independent of Flask.
 
 uv and the committed `uv.lock` own project environments and dependency resolution;
 `uv_build` owns builds. Ruff is the sole project-local formatter/linter and pytest
@@ -607,6 +608,21 @@ The frontend should remain simple initially. Server-rendered Flask/Jinja pages w
 The base settings/status UI should be responsive and preserve normal accessible labels, keyboard operation, focus/error feedback, and reasonable contrast.
 
 The Flask development server/debug mode is not the production appliance serving contract.
+
+Issue #13 provides `postcardscene.web.create_app(config=None)`, a `control`
+blueprint for the overview, and shared Jinja templates/local CSS. Future auth,
+settings, status, source, scene and sequence features should add focused blueprints
+under `web` when their owning issues implement them, rather than populate empty
+feature modules now. Importing the package or constructing the app starts no
+runtime work, background threads or servers.
+
+Configuration precedence is Flask defaults with debug/testing disabled and no
+secret, optional operator-owned Python file via `POSTCARDSCENE_CONFIG`, then
+explicit mapping overrides. A specified invalid file fails startup. This permits
+Flask Host configuration without choosing a production bind or proxy policy;
+server binding remains outside the factory and no forwarded-header middleware is
+installed. #29/#26 retain production serving ownership. The shell has no database,
+authentication, settings behavior or runtime IPC. See README for local startup.
 
 ## 21. Authentication, network exposure, and secrets
 
