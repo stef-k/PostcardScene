@@ -105,7 +105,10 @@ def _receive_fd(channel, cancelled, timeout):
 
 def pin_mounted_video(selected, source, policy, cancelled, timeout):
     """No mount/path/open/fstat work on the owner; no resource-sharer service."""
-    receiver, sender = socket.socketpair(socket.AF_UNIX, socket.SOCK_SEQPACKET)
+    try:
+        receiver, sender = socket.socketpair(socket.AF_UNIX, socket.SOCK_SEQPACKET)
+    except OSError:
+        raise VideoFileError(VideoFileFailure.HELPER) from None
     process = multiprocessing.get_context("spawn").Process(
         target=_video_worker, args=(sender, selected, source, policy)
     )

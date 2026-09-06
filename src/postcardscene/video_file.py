@@ -1,7 +1,7 @@
 """Fresh Source authority and context-owned video FD; no player or media decoding."""
 
 import os
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
 from enum import StrEnum
 
@@ -14,7 +14,7 @@ from postcardscene.filesystem_source import (
     _open_media_item,
 )
 from postcardscene.mounted_source import _validate_timeout
-from postcardscene.video_selection import SelectedVideo, VideoSelectionError
+from postcardscene.video_selection import SelectedVideo
 
 
 class VideoFileFailure(StrEnum):
@@ -59,7 +59,7 @@ def _validate_context(selected, source):
         ):
             raise ValueError
         _absolute_path(source.path)  # Lexical only; mounted I/O belongs to the child.
-    except (ValueError, InvalidSource, VideoSelectionError):
+    except (ValueError, InvalidSource):
         raise VideoFileError(VideoFileFailure.INVALID) from None
 
 
@@ -85,21 +85,24 @@ def _check_cancelled(cancelled):
 
 @contextmanager
 def _open_selected(selected, source, policy, progress):
-    try:
-        with _open_media_item(
-            source.kind,
-            source.configuration,
-            policy,
-            selected.relative_path,
-            selected.size_bytes,
-            selected.mtime_ns,
-            progress=progress,
-        ) as stream:
-            yield stream
-    except InvalidSource:
-        raise VideoFileError(VideoFileFailure.INVALID) from None
-    except (SourceUnavailable, OSError, RuntimeError):
-        raise VideoFileError(VideoFileFailure.UNAVAILABLE) from None
+    with ExitStack() as stack:
+        try:
+            stream = stack.enter_context(
+                _open_media_item(
+                    source.kind,
+                    source.configuration,
+                    policy,
+                    selected.relative_path,
+                    selected.size_bytes,
+                    selected.mtime_ns,
+                    progress=progress,
+                )
+            )
+        except InvalidSource:
+            raise VideoFileError(VideoFileFailure.INVALID) from None
+        except (SourceUnavailable, OSError, RuntimeError):
+            raise VideoFileError(VideoFileFailure.UNAVAILABLE) from None
+        yield stream
 
 
 @contextmanager

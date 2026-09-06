@@ -3,6 +3,8 @@
 import fcntl
 import os
 import signal
+import subprocess
+import sys
 import time
 from dataclasses import replace
 from pathlib import Path
@@ -37,7 +39,19 @@ def test_local_capability_and_lifetime(item, tmp_path):
         assert not os.get_inheritable(fd)
         (tmp_path / "movie.mp4").rename(tmp_path / "old")
         (tmp_path / "movie.mp4").write_bytes(b"replaced")
-        assert os.read(fd, 99) == b"original"
+        child = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                "import os,sys; os.write(1, os.read(int(sys.argv[1]), 99))",
+                str(fd),
+            ],
+            pass_fds=(fd,),
+            capture_output=True,
+            check=True,
+            timeout=5,
+        )
+        assert child.stdout == b"original"
     with pytest.raises(OSError):
         os.fstat(fd)
 
@@ -86,11 +100,13 @@ def test_invalid_authority(item, tmp_path, case):
             os.mkfifo(path)
         else:
             path.mkdir()
+    before = set(os.listdir("/proc/self/fd"))
     with pytest.raises(video.VideoFileError) as error:
         with video.open_video_item(selected, source, policy):
             pytest.fail("unsafe capability")
     assert error.value.reason == video.VideoFileFailure.INVALID
     assert str(tmp_path) not in str(error.value)
+    assert set(os.listdir("/proc/self/fd")) == before
 
 
 def test_capture_current_source(item, catalog):
@@ -250,8 +266,55 @@ def test_local_error_and_cancel_close(item, monkeypatch):
     for fd in opened:
         with pytest.raises(OSError):
             os.fstat(fd)
-    with pytest.raises(LookupError):
+    with pytest.raises(OSError, match="consumer failure"):
         with video.open_video_item(*item) as fd:
-            raise LookupError("consumer failure")
+            raise OSError("consumer failure")
     with pytest.raises(OSError):
         os.fstat(fd)
+
+
+@pytest.mark.parametrize("cancel", [False, True])
+def test_cleanup_failure_closes_received_fd_preserves_primary(
+    mounted_item, monkeypatch, cancel
+):
+    monkeypatch.setattr(worker, "_video_worker", _healthy_worker)
+    received = []
+    receive = worker._receive_fd
+    cleanup = worker._cleanup_worker
+
+    def capture(*args):
+        fd = receive(*args)
+        received.append(fd)
+        return fd
+
+    def failed_cleanup(process):
+        cleanup(process)
+        raise SourceUnavailable("private diagnostic")
+
+    monkeypatch.setattr(worker, "_receive_fd", capture)
+    monkeypatch.setattr(worker, "_cleanup_worker", failed_cleanup)
+    with pytest.raises(video.VideoFileError) as error:
+        with video.open_video_item(
+            *mounted_item, cancelled=lambda: cancel and bool(received)
+        ):
+            pytest.fail("cleanup failure must not yield")
+    assert error.value.reason == ("cancelled" if cancel else "helper")
+    if cancel:
+        assert error.value.__notes__ == ["Video file authority failed: helper."]
+    with pytest.raises(OSError):
+        os.fstat(received[0])
+
+
+def test_mounted_start_failure(item, monkeypatch):
+    from multiprocessing.process import BaseProcess
+
+    def fail_start(process):
+        raise OSError("private startup details")
+
+    monkeypatch.setattr(BaseProcess, "start", fail_start)
+    with pytest.raises(video.VideoFileError) as error:
+        with video.open_video_item(
+            item[0], replace(item[1], kind="mounted_directory"), item[2]
+        ):
+            pytest.fail("failed start")
+    assert error.value.reason == "helper"

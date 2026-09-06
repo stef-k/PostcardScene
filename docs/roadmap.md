@@ -86,7 +86,7 @@ identity and size/mtime snapshots, bounded catalog lookup/pages, no filesystem
 scan/open or decoder-support promise. Image metadata and catalog `duration_ms` are
 not prerequisites; active duration is a later player concern. Intended audio-device
 selection remains a trusted runtime input. #8 owns order/shuffle/history and global
-transport UI. File authority/player/audio work remains #72–#75; physical support
+transport UI. Player/control/audio work remains #73–#75; physical support
 claims remain gated by #66/#76. #72 adds fresh pinned read-only FD authority,
 including bounded spawned mounted safe-open and private opened-FD transfer.
 #73 still owns mpv inheritance/playback; end-user video playback is not implemented yet.
