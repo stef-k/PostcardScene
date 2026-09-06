@@ -250,6 +250,10 @@ The foundational composition model is:
 Source -> Widget -> Scene -> Sequence
 ```
 
+`ScenePlacement` and `SequenceMembership` are owned relationship/occurrence
+records, not additional universal composition concepts. None of the four models
+persists runtime-selected MediaItem identities; #30 owns the later Source catalog.
+
 ### Source
 
 A `Source` defines authority for content or data.
@@ -300,8 +304,9 @@ A Widget has at most one nullable `source_id`. Independent inputs belong primari
 in separate Widgets composed by a Scene. The foreign key restricts Source deletion;
 the domain reports a referenced Source explicitly. Widget deletion never deletes
 its Source. Disable preserves both records and never changes the other's flag.
-Scene references restrict Widget deletion as defined below; #21 owns the final
-cross-kind/lifecycle review.
+Scene references restrict Widget deletion as defined below. Deliberate removal
+proceeds Sequence -> Scene -> Widget -> Source; only owned membership/placement
+rows cascade. Disabled objects remain structurally valid references at every layer.
 
 Ordinary application writes use the explicit create/update/remove functions in
 `postcardscene.domain` inside `Database.transaction()`; get/list functions return
