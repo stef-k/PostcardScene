@@ -127,7 +127,8 @@ uv run flask --app postcardscene.web:create_app run --host 127.0.0.1 --no-debug
 ```
 
 Open <http://127.0.0.1:5000/>. This is a read-only navigation shell; authentication,
-settings, persistence, runtime status and playback controls are not implemented.
+settings, runtime status and playback controls are not implemented. Persistence
+is available through the explicit database commands below.
 The command starts only the web process. Stop it with Ctrl-C.
 
 The Flask development server is for local development only. It is not the managed
@@ -149,6 +150,67 @@ application and does not bind a socket. Forwarded headers are not trusted throug
 proxy middleware by default; #29 must define trusted proxy topology before adding
 such middleware. Keep debug/testing disabled in deployment configuration. Normal
 error responses omit exception details; protected server logs remain diagnostic.
+
+### Persistence development
+
+The shared `postcardscene.persistence` module uses SQLAlchemy without Flask
+contexts. Alembic migrations are packaged with the application; the thin Flask
+`db` command group uses that same persistence layer (no Flask-SQLAlchemy or
+Flask-Migrate extension is needed).
+
+`DATABASE_PATH` defaults to `/var/lib/postcardscene/postcardscene.sqlite3`. It must
+be an absolute file path on local storage, never an SMB/NFS filesystem or an
+in-memory database. The installer/operator owns directory creation, permissions
+and selection of the shared path for both services. Keep the parent directory
+private to the service account; SQLite also needs permission to create WAL/SHM
+sidecars there. Neither app construction nor normal database access creates a
+missing file or directory. Tests supply isolated temporary paths.
+
+For development, provision a private directory outside the checkout and put
+`DATABASE_PATH = "/absolute/path/to/state/postcardscene.sqlite3"` in the trusted
+Python configuration file selected by `POSTCARDSCENE_CONFIG`. Then run:
+
+```bash
+uv run flask --app postcardscene.web:create_app db upgrade
+uv run flask --app postcardscene.web:create_app db check
+```
+
+`upgrade` explicitly creates an empty database or migrates a recognized revision
+to the packaged head; repeated upgrades are safe. Stop all database users before
+migration. It refuses unrelated, unversioned nonempty, corrupt and unknown-revision
+databases. There is no automatic startup migration, `create_all`, stamping,
+downgrade or repair path. App construction remains lazy so the read-only control
+shell and migration CLI are available before initialization; each application
+transaction checks schema compatibility before yielding a session.
+
+`check` performs schema/WAL, SQLite `quick_check` and foreign-key checks and emits
+JSON application/version/file/schema identity only on success. It is a diagnostic
+primitive, not a backup or proof of semantic correctness. Failures exit nonzero;
+no check attempts repair. Python callers receive `DatabaseError` for compatibility
+or integrity failures and SQLAlchemy exceptions for storage/locking failures.
+CLI errors omit raw database details. Keep underlying exceptions in protected
+operator diagnostics, not web responses.
+
+Future models inherit `postcardscene.persistence.Base`. Use
+`with database.transaction() as session:` for a short unit of work: success
+commits, exceptions roll back, and the session always closes. Autoflush is off;
+flush explicitly before queries that need pending changes. Commit still flushes,
+and objects expire on commit. Do not share sessions across requests, threads or
+processes, or retain them during network/media work. There is no request-teardown
+commit or global scoped session. Flask callers obtain the process-local database
+from `app.extensions["postcardscene.database"]`; runtime callers instantiate
+`Database(absolute_path)` directly. Dispose the engine when its owner shuts down.
+
+When a later issue changes models, import them into the migration metadata and
+run `db revision -m "description"` in a writable development checkout against an
+up-to-date disposable database. Review the generated Alembic script, including
+SQLite batch operations and data preservation, format/lint it, update
+`SCHEMA_REVISION` to the new single head, and test an explicit upgrade. The initial
+baseline contains only Alembic revision bookkeeping and the SQLite application
+ID; it does not pre-create future domain tables. Production uses packaged
+migrations, never autogeneration. Forward production updates and restore require
+the recovery contract still owned by #26/#27; replacing application files or
+matching the schema revision alone does not establish safe rollback.
 
 ## Documentation
 
