@@ -1,0 +1,1 @@
+# No shutdown hooks. systemd owns bounded service cleanup.
