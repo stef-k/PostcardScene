@@ -1,4 +1,4 @@
-"""Source/Widget configuration operations within Database.transaction() sessions.
+"""Composition configuration operations within Database.transaction() sessions.
 
 Use these operations for application writes, not direct ORM attribute assignment.
 Configuration is replaced in full; it must not contain credentials, catalog/media
@@ -8,7 +8,15 @@ payloads or runtime state. Feature owners add path/URL semantics before use.
 import json
 import math
 
-from sqlalchemy import JSON, Boolean, ForeignKey, String, select
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    ForeignKey,
+    String,
+    UniqueConstraint,
+    delete,
+    select,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from postcardscene.persistence import Base
@@ -80,15 +88,20 @@ def validate_configuration(value):
         ) from error
 
 
-def _validated_fields(name, kind, configuration, enabled, kinds):
+def _validate_name_enabled(name, enabled):
     if not isinstance(name, str) or not 1 <= len(name.strip()) <= MAX_NAME_LENGTH:
         raise DomainError("Name must contain 1–128 characters after trimming.")
-    if not isinstance(kind, str) or kind not in kinds:
-        raise DomainError("Unsupported kind.")
     if type(enabled) is not bool:
         raise DomainError("Enabled must be a boolean.")
+    return name.strip()
+
+
+def _validated_fields(name, kind, configuration, enabled, kinds):
+    name = _validate_name_enabled(name, enabled)
+    if not isinstance(kind, str) or kind not in kinds:
+        raise DomainError("Unsupported kind.")
     return dict(
-        name=name.strip(),
+        name=name,
         kind=kind,
         configuration=validate_configuration(configuration),
         enabled=enabled,
@@ -176,5 +189,146 @@ def remove_source(session, source_id):
 
 
 def remove_widget(session, widget_id):
-    session.delete(get_widget(session, widget_id))
+    widget = get_widget(session, widget_id)
+    if (
+        session.scalar(
+            select(ScenePlacement.id)
+            .where(ScenePlacement.widget_id == widget_id)
+            .limit(1)
+        )
+        is not None
+    ):
+        raise DomainError(
+            "Widget is referenced by a Scene; remove its placements first."
+        )
+    session.delete(widget)
+    session.flush()
+
+
+SCENE_LAYOUTS = {
+    "single": ("main",),
+    "split_vertical": ("left", "right"),
+    "split_horizontal": ("top", "bottom"),
+}
+
+
+class Scene(Base):
+    __tablename__ = "scene"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(MAX_NAME_LENGTH))
+    layout: Mapped[str] = mapped_column(String(64))
+    duration_seconds: Mapped[int | None]
+    enabled: Mapped[bool] = mapped_column(Boolean)
+
+
+class ScenePlacement(Base):
+    __tablename__ = "scene_placement"
+    __table_args__ = (
+        UniqueConstraint("scene_id", "position", name="uq_scene_placement_position"),
+        UniqueConstraint("scene_id", "region", name="uq_scene_placement_region"),
+        UniqueConstraint("scene_id", "widget_id", name="uq_scene_placement_widget"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    scene_id: Mapped[int] = mapped_column(ForeignKey("scene.id", ondelete="CASCADE"))
+    widget_id: Mapped[int] = mapped_column(
+        ForeignKey("widget.id", ondelete="RESTRICT"), index=True
+    )
+    position: Mapped[int]
+    region: Mapped[str] = mapped_column(String(64))
+
+
+def get_scene(session, scene_id):
+    scene = session.get(Scene, scene_id)
+    if scene is None:
+        raise DomainError("Scene does not exist.")
+    return scene
+
+
+def list_scenes(session):
+    return session.scalars(select(Scene).order_by(Scene.id)).all()
+
+
+def list_scene_placements(session, scene_id):
+    get_scene(session, scene_id)
+    return session.scalars(
+        select(ScenePlacement)
+        .where(ScenePlacement.scene_id == scene_id)
+        .order_by(ScenePlacement.position)
+    ).all()
+
+
+def _validated_scene(session, name, layout, placements, duration_seconds, enabled):
+    name = _validate_name_enabled(name, enabled)
+    if duration_seconds is not None and (
+        type(duration_seconds) is not int or not 1 <= duration_seconds <= 86400
+    ):
+        raise DomainError(
+            "Duration must be None or an integer from 1 to 86400 seconds."
+        )
+    if not isinstance(layout, str) or layout not in SCENE_LAYOUTS:
+        raise DomainError("Unsupported Scene layout.")
+    regions = SCENE_LAYOUTS[layout]
+    if not isinstance(placements, (list, tuple)) or len(placements) != len(regions):
+        raise DomainError("Supply the complete placement set for the layout.")
+    by_region = {}
+    for placement in placements:
+        if not isinstance(placement, (list, tuple)) or len(placement) != 2:
+            raise DomainError("Each placement must be a region/Widget identity pair.")
+        region, widget_id = placement
+        if not isinstance(region, str) or region not in regions or region in by_region:
+            raise DomainError("Each required region must appear exactly once.")
+        if type(widget_id) is not int or widget_id < 1:
+            raise DomainError("Widget identity must be a positive integer.")
+        if widget_id in by_region.values():
+            raise DomainError("A Widget may appear only once within a Scene.")
+        get_widget(session, widget_id)
+        by_region[region] = widget_id
+    rows = [
+        ScenePlacement(position=position, region=region, widget_id=by_region[region])
+        for position, region in enumerate(regions)
+    ]
+    return dict(
+        name=name, layout=layout, duration_seconds=duration_seconds, enabled=enabled
+    ), rows
+
+
+def create_scene(
+    session, *, name, layout, placements, duration_seconds=None, enabled=True
+):
+    """Create with complete [(region, widget_id), ...] input in any region order."""
+    fields, rows = _validated_scene(
+        session, name, layout, placements, duration_seconds, enabled
+    )
+    scene = Scene(**fields)
+    session.add(scene)
+    session.flush()
+    for row in rows:
+        row.scene_id = scene.id
+    session.add_all(rows)
+    session.flush()
+    return scene
+
+
+def update_scene(
+    session, scene_id, *, name, layout, placements, duration_seconds, enabled
+):
+    """Replace all fields/placements; validate before mutating even within a caught error."""
+    fields, rows = _validated_scene(
+        session, name, layout, placements, duration_seconds, enabled
+    )
+    scene = get_scene(session, scene_id)
+    session.execute(delete(ScenePlacement).where(ScenePlacement.scene_id == scene_id))
+    for key, value in fields.items():
+        setattr(scene, key, value)
+    for row in rows:
+        row.scene_id = scene_id
+    session.add_all(rows)
+    session.flush()
+    return scene
+
+
+def remove_scene(session, scene_id):
+    session.delete(get_scene(session, scene_id))
     session.flush()
