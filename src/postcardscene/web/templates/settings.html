@@ -18,7 +18,7 @@
             {{ form.timezone.label(class="form-label") }}
             {{ form.timezone(class="form-control" ~ (' is-invalid' if form.timezone.errors else ''), maxlength="255", autocomplete="off", spellcheck="false", aria_describedby="timezone-help timezone-error", aria_invalid='true' if form.timezone.errors else 'false') }}
             <div id="timezone-help" class="form-text">Use an IANA timezone name, such as Europe/Athens or UTC. This does not change the host clock.</div>
-            <div id="timezone-error" class="text-danger" role="alert">{% for message in form.timezone.errors %}{{ message }}{% endfor %}</div>
+            <div id="timezone-error" class="text-danger-emphasis" role="alert">{% for message in form.timezone.errors %}{{ message }}{% endfor %}</div>
           </div>
           <button class="btn btn-primary" type="submit">Save settings</button>
         </form>
