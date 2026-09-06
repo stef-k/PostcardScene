@@ -57,7 +57,9 @@ def database():
 @sources.errorhandler(SQLAlchemyError)
 def database_error(error):
     # Also covers database failure while login_required loads the administrator.
-    return render_template("sources_error.html"), 503
+    template = current_app.jinja_env.get_template("sources_error.html")
+    # Skip Flask-Login context processors: the user lookup itself may have failed.
+    return template.render(url_for=url_for), 503
 
 
 def managed_source(session, source_id):

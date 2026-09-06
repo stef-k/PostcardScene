@@ -45,7 +45,8 @@ Filesystem `MediaItem` catalog records are normalized data produced beneath a `S
 - incremental add/change/remove reconciliation
 - source outage distinguished from authoritative item deletion
 - bounded/cancellable catalog scans owned by the runtime/background-work boundary
-- source/catalog health and manual reconciliation through the control UI
+- authenticated filesystem Source management, persisted catalog health/counts,
+  and runtime-owned manual refresh are operational through the Sources UI (#25)
 
 Do not copy the user's original media into PostcardScene merely to index it.
 
