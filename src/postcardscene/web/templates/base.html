@@ -16,7 +16,13 @@
         <nav class="navbar p-0 gap-3" aria-label="Main navigation">
           <a class="navbar-brand m-0" href="{{ url_for('control.index') }}">PostcardScene<span class="brand-dot" aria-hidden="true">.</span></a>
           <div class="d-flex align-items-center flex-wrap gap-3">
+            {% if current_user.is_authenticated %}
             <a class="nav-link py-2" href="{{ url_for('control.index') }}"{% if request.endpoint == 'control.index' %} aria-current="page"{% endif %}>Overview</a>
+            <form method="post" action="{{ url_for('auth.logout') }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button class="btn btn-theme" type="submit">Log out all sessions</button>
+            </form>
+            {% endif %}
             <button id="theme-toggle" class="btn btn-theme" type="button" aria-pressed="false" hidden>Light theme</button>
           </div>
         </nav>

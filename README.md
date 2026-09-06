@@ -120,15 +120,15 @@ development commands and tooling workflow.
 
 ### Control shell development
 
-After `uv sync --locked`, start the local control interface with:
+After `uv sync --locked` and the database/authentication setup below, start the
+local control interface with:
 
 ```bash
 uv run flask --app postcardscene.web:create_app run --host 127.0.0.1 --no-debug
 ```
 
-Open <http://127.0.0.1:5000/>. This is a read-only navigation shell; authentication,
-settings, runtime status and playback controls are not implemented. Persistence
-is available through the explicit database commands below.
+Open <http://127.0.0.1:5000/> and log in. Authentication protects the overview;
+settings, runtime status and playback controls are not implemented.
 The command starts only the web process. Stop it with Ctrl-C.
 
 The Flask development server is for local development only. It is not the managed
@@ -141,7 +141,8 @@ secret), then an optional Python configuration file named by the
 tests or a deployment entrypoint. Use an absolute path to an operator-owned file
 outside the checkout; a specified missing/unreadable file fails startup. Python
 configuration is trusted executable host configuration, never web input. Keep
-secrets out of source control; this shell does not generate or require a secret.
+secrets out of source control; signing authority comes exclusively from the
+protected file described below, overriding any configured `SECRET_KEY`.
 
 Flask configuration such as `TRUSTED_HOSTS` can be supplied through that file or
 mapping. `SERVER_NAME` is not a bind address or a Host allowlist. The future WSGI
@@ -179,8 +180,8 @@ uv run flask --app postcardscene.web:create_app db check
 to the packaged head; repeated upgrades are safe. Stop all database users before
 migration. It refuses unrelated, unversioned nonempty, corrupt and unknown-revision
 databases. There is no automatic startup migration, `create_all`, stamping,
-downgrade or repair path. App construction remains lazy so the read-only control
-shell and migration CLI are available before initialization; each application
+downgrade or repair path. App construction remains database-lazy so the migration CLI is available before
+initialization; each application
 transaction checks schema compatibility before yielding a session.
 
 `check` performs schema/WAL, SQLite `quick_check` and foreign-key checks and emits
@@ -211,6 +212,63 @@ ID; it does not pre-create future domain tables. Production uses packaged
 migrations, never autogeneration. Forward production updates and restore require
 the recovery contract still owned by #26/#27; replacing application files or
 matching the schema revision alone does not establish safe rollback.
+
+### Local authentication and recovery
+
+Run setup as the unprivileged service account (your own user for development).
+Host access as that account, or root acting as that account, is the recovery
+authority: protect its database, configuration and signing-key paths from other
+users. There is one administrator, no registration, roles or web recovery.
+
+Provision an owner-only directory (`0700`) outside the checkout and configure
+`SESSION_SECRET_PATH = "/absolute/path/to/private/session.key"` alongside
+`DATABASE_PATH`. The default key path is `/var/lib/postcardscene/session.key`.
+The key's immediate parent must be owned by the effective user with no group/other
+permissions; keep ancestor directories under trusted host control. Then run:
+
+```bash
+uv run flask --app postcardscene.web:create_app auth init-secret
+uv run flask --app postcardscene.web:create_app db upgrade
+uv run flask --app postcardscene.web:create_app auth create-admin --username admin
+```
+
+The password is prompted twice without echo, never accepted as a command-line
+argument. Use 12–128 characters; usernames are case-sensitive, 1–64 characters,
+with no outer spaces. Bootstrap refuses to replace an existing administrator.
+Passwords use Werkzeug scrypt hashes in SQLite. No manual database editing is
+needed. Stop database users before explicit migration; restart web after setup.
+
+For a forgotten password, use the same trusted configuration and service account:
+
+```bash
+uv run flask --app postcardscene.web:create_app auth reset-password --username admin
+```
+
+Reset requires the existing username and a hidden confirmed new password. It
+revokes all existing login sessions, including copied cookies, without restarting
+web. The **Log out all sessions** POST action also revokes all browser sessions
+for this single administrator. Login and logout require CSRF tokens. Login always
+returns to Overview; supplied redirect destinations are ignored.
+
+`auth init-secret` creates a random 32-byte key with mode `0600`; repeated calls
+validate existing authority without replacing it. Web startup reads it without
+creating it. Missing authority leaves setup/database commands available but web
+returns 503; unsafe permissions, symlinks or malformed keys fail startup. Keep this
+sensitive installation state across process restarts. Do not delete/regenerate it
+as routine recovery; intentional replacement requires stopping/restarting every
+web process and invalidates signed sessions. Backup/recovery integration is owned
+by #27/#29. This signing file is not a provider-credential encryption/master key.
+
+Sessions use Flask-Login strong protection, browser-session cookies (no remember
+me), a 12-hour signed-cookie age limit, HttpOnly, SameSite=Lax, no Domain, and
+`Cache-Control: no-store` for dynamic responses. Sessions survive web reconstruction
+with the same database/key until expiry or revocation; browser restore behavior
+may preserve browser-session cookies. Configure `SESSION_COOKIE_SECURE = True`
+when serving HTTPS. It defaults to false solely for the documented loopback HTTP
+development server. Do not expose this development transport remotely. No proxy
+headers are trusted automatically. #29/#26 retain the final production server,
+bind/Host/proxy/TLS and cookie transport policy; #29 also owns bounded login-abuse
+protection, broader headers and provider credential-at-rest architecture.
 
 ## Documentation
 
