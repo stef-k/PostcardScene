@@ -101,7 +101,8 @@ evidence remain open.
 #82 implements HTTP/HTTPS URL semantics, immutable web-target resolution and
 authenticated structured web Source management. The isolated untrusted-web profile
 may persist ordinary site state but remains replaceable/non-backup state. Rendering
-remains #83; physical web support #84 remains gated on #31.
+is supplied by #83 with bounded fresh navigation, one fresh-browser retry and
+black fallback; physical web support #84 remains gated on #31.
 
 - supported HTTP/HTTPS URL scene/widget
 - Chromium kiosk integration
