@@ -1,5 +1,6 @@
 """Web semantics are local validation and detached DB reads, never browser work."""
 
+import sqlite3
 from dataclasses import FrozenInstanceError
 
 import pytest
@@ -34,6 +35,7 @@ def no_network(monkeypatch):
         "http://192.168.1.5",
         "http://169.254.1.2",
         "http://[::1]:8080/",
+        "http://[::1]:00080/",
         "https://EXAMPLE.invalid/",
         "http://host/" + "a" * 8180,
     ],
@@ -64,6 +66,8 @@ def test_valid_url(url):
         "http://host:",
         "http://[bad]/",
         "http://[::1]suffix/",
+        "http://bad<host/",
+        "http://bad%zzhost/",
         "http://host/a b",
         "http://host/\tpath",
         "http://host/\npath",
@@ -178,4 +182,13 @@ def test_ineligible_target(web_target, problem):
         else:
             source.configuration = {"url": "file:///private"}
     with pytest.raises(WebSelectionError):
+        resolve_web_target(db, widget_id)
+
+
+def test_missing_referenced_source_is_not_selectable(web_target):
+    db, source_id, widget_id = web_target
+    # Simulate externally damaged state; ordinary domain writes enforce the FK.
+    with sqlite3.connect(db.path) as connection:
+        connection.execute("DELETE FROM source WHERE id = ?", (source_id,))
+    with pytest.raises(WebSelectionError, match="Source is missing or disabled"):
         resolve_web_target(db, widget_id)
