@@ -17,7 +17,8 @@ class ContentClass(StrEnum):
 class ContentSurfaces:
     """Sole owner of supplied, initially stopped controllers on one session.
 
-    Callers must not start/stop these controllers outside this coordinator.
+    Callers use select/stop or operation; they must not independently start/stop
+    these controllers outside this coordinator.
     The runtime serializes calls and invokes reconcile during health polling.
     A stop failure retains authority and prevents all replacement activation.
     """

@@ -200,3 +200,32 @@ def test_renderer_cannot_switch_or_retire_another_content_class(rendering):
     renderer.stop()
     assert calls == []
     assert surfaces.active == ContentClass.TRUSTED_IMAGE
+
+
+@pytest.mark.parametrize("failure", [Failure.INVALID_SPEC, Failure.SESSION_UNAVAILABLE])
+def test_nonrecoverable_startup_failure_is_not_retried(rendering, monkeypatch, failure):
+    renderer, surfaces, browser, calls, _ = rendering
+
+    def fail_start(self, deadline):
+        calls.append("start_attempt")
+        raise ChromiumError(failure)
+
+    monkeypatch.setattr(ChromiumController, "_start", fail_start)
+    with pytest.raises(WebRendererError, match="unavailable"):
+        renderer.show(WebTarget(1, "https://example.org/"))
+    assert calls.count("start_attempt") == 1
+    assert not browser.running
+    assert surfaces.active == ContentClass.NONE
+
+
+def test_navigation_observes_cancellation_after_successful_blank(rendering):
+    renderer, surfaces, browser, calls, _ = rendering
+    with pytest.raises(WebRendererError, match="cancelled"):
+        renderer.show(
+            WebTarget(1, "https://example.org/"),
+            cancelled=lambda: BLACK_PAGE in calls,
+        )
+    assert calls.count("start") == 1
+    assert "https://example.org/" not in calls
+    assert not browser.running
+    assert surfaces.active == ContentClass.NONE
