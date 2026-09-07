@@ -20,6 +20,7 @@ from postcardscene.graphics._capability import (
     client_environment,
     command_words,
 )
+from postcardscene.video_audio import AudioPolicy, AudioSnapshot, intended_device
 
 
 class PlaybackError(CapabilityError):
@@ -35,6 +36,7 @@ class PlaybackSnapshot:
     duration_seconds: float | None = None
     seekable: bool = False
     absolute_seekable: bool = False
+    audio: AudioSnapshot = AudioSnapshot()
 
 
 def _seconds(value):
@@ -69,7 +71,6 @@ FLAGS = (
     "--osc=no",
     "--load-scripts=no",
     "--terminal=no",
-    "--audio=no",
     "--audio-file-auto=no",
     "--sub-auto=no",
     "--autoload-files=no",
@@ -88,7 +89,12 @@ class MpvController:
     Systemd is the outer runtime-crash cleanup boundary.
     """
 
-    def __init__(self, session, command):
+    def __init__(self, session, command, *, audio_device=None):
+        try:
+            self._audio_device = intended_device(audio_device)
+        except CapabilityError as error:
+            raise PlaybackError(error.reason) from None
+        self._audio_policy = AudioPolicy()
         self._lock = threading.RLock()
         self._retiring = threading.Event()
         self._generation = 0
@@ -106,9 +112,16 @@ class MpvController:
         self._cleanup_failed = False
         self._acknowledged = False
 
-    def prepare(self, descriptor):
+    def prepare(self, descriptor, *, configuration=None):
+        try:
+            policy = AudioPolicy.from_configuration(
+                {} if configuration is None else configuration
+            )
+        except CapabilityError as error:
+            raise PlaybackError(error.reason) from None
         with self._lock:
             self._prepare(descriptor)
+            self._audio_policy = policy
             self._retiring.clear()
 
     def _prepare(self, descriptor):
@@ -250,17 +263,20 @@ class MpvController:
 
     def _snapshot(self, deadline):
         if self._state not in ("playing", "paused"):
-            return PlaybackSnapshot(self._state, self._reason, self._cleanup_failed)
+            return self._inactive_snapshot()
         values = {}
         try:
             for name in ("pause", "time-pos", "duration", "seekable"):
                 values[name] = self._request(
                     ["get_property", name], deadline, property_read=True
                 )
+            audio = self._audio_policy.snapshot(
+                self._audio_device, request=self._request, deadline=deadline
+            )
         except PlaybackError as error:
             if error.reason != "not_active" or self._state != "ended":
                 raise
-            return PlaybackSnapshot(self._state, self._reason, self._cleanup_failed)
+            return self._inactive_snapshot()
         if type(values["pause"]) is not bool:
             raise PlaybackError("protocol_failed")
         self._state = self._reason = "paused" if values["pause"] else "playing"
@@ -274,6 +290,18 @@ class MpvController:
             duration,
             seekable,
             seekable and duration is not None and duration > 0,
+            audio,
+        )
+
+    def _inactive_snapshot(self):
+        return PlaybackSnapshot(
+            self._state,
+            self._reason,
+            self._cleanup_failed,
+            audio=self._audio_policy.snapshot(
+                self._audio_device,
+                reason="cleanup_failed" if self._cleanup_failed else "inactive",
+            ),
         )
 
     def snapshot(self, *, timeout_seconds=1, cancelled=None):
@@ -290,6 +318,28 @@ class MpvController:
 
     def resume(self, *, timeout_seconds=1, cancelled=None):
         return self._pause(False, timeout_seconds, cancelled)
+
+    def _audio_control(self, name, value, timeout_seconds, cancelled):
+        with self._control(timeout_seconds, cancelled) as deadline:
+            self._active()
+            audio = self._audio_policy.snapshot(
+                self._audio_device, request=self._request, deadline=deadline
+            )
+            if not audio.available:
+                raise PlaybackError("audio_unavailable")
+            self._request(["set_property", name, value], deadline)
+            return self._snapshot(deadline)
+
+    def mute(self, *, timeout_seconds=1, cancelled=None):
+        return self._audio_control("mute", True, timeout_seconds, cancelled)
+
+    def unmute(self, *, timeout_seconds=1, cancelled=None):
+        return self._audio_control("mute", False, timeout_seconds, cancelled)
+
+    def set_volume(self, value, *, timeout_seconds=1, cancelled=None):
+        if type(value) is not int or not 0 <= value <= 100:
+            raise PlaybackError("invalid_volume")
+        return self._audio_control("volume", value, timeout_seconds, cancelled)
 
     def _seek(self, seconds, absolute, timeout_seconds, cancelled):
         if type(seconds) not in (int, float):
@@ -328,6 +378,7 @@ class MpvController:
                 [
                     *self.command,
                     *FLAGS,
+                    *self._audio_policy.arguments(self._audio_device),
                     f"--input-ipc-client=fd://{child.fileno()}",
                     "--",
                     f"fd://{self._media}",
@@ -357,6 +408,11 @@ class MpvController:
             if b"\n" in self._buffer:
                 line, _, self._buffer = self._buffer.partition(b"\n")
                 self._message(line)
+                if self._state == "ended" and self._acknowledged:
+                    self._stop()
+                    self._state = self._reason = "ended"
+                    self._acknowledged = True
+                    return
                 continue
             if len(self._buffer) > 8192:
                 raise PlaybackError("protocol_failed")

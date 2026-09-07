@@ -20,7 +20,19 @@ def player(tmp_path):
     script.write_text("""
 import json, os, socket, sys, time
 args = sys.argv[1:]
-assert "--audio=no" in args and "--no-config" in args
+assert "--no-config" in args
+audio = "--audio=auto" in args
+if audio:
+    assert "--audio=no" not in args
+    assert "--volume-max=100" in args and "--mute=no" in args
+    assert "--audio-fallback-to-null=yes" in args and "--audio-spdif=" in args
+    volume = int(next(a.split("=", 1)[1] for a in args if a.startswith("--volume=")))
+    assert 0 <= volume <= 100
+else:
+    assert "--audio=no" in args
+    assert not any(a.startswith("--audio-device=") for a in args)
+    volume = 50
+muted = False
 assert "--gpu-context=wayland" in args and "--load-scripts=no" in args
 assert "--osc=no" in args and "--input-terminal=no" in args
 assert "--access-references=no" in args
@@ -83,14 +95,26 @@ for line in f:
     data = None
     if command[0] == "get_property":
         data = {"pause": paused, "time-pos": position, "duration": duration,
-                "seekable": mode != "nonseekable"}[command[1]]
+                "seekable": mode != "nonseekable",
+                "current-tracks/audio/id": None if mode == "no-track" else 1,
+                "current-ao": "null" if mode == "no-device" else "test",
+                "mute": muted, "volume": volume}[command[1]]
         if mode == "unknown-duration" and command[1] == "duration":
             error = "property unavailable"
         if mode == "invalid-numbers" and command[1] in ("duration", "time-pos"):
             data = float("nan")
     elif command[0] == "set_property":
-        assert command[1] == "pause" and type(command[2]) is bool
-        paused = command[2]
+        if command[1] == "pause":
+            assert type(command[2]) is bool
+            paused = command[2]
+        elif command[1] == "mute":
+            assert audio and type(command[2]) is bool
+            muted = command[2]
+        elif command[1] == "volume":
+            assert audio and type(command[2]) is int and 0 <= command[2] <= 100
+            volume = command[2]
+        else:
+            raise AssertionError("unexpected property")
     elif command[0] == "seek":
         assert command[2] in ("absolute+keyframes", "relative+keyframes")
         if mode == "seek-failed":
@@ -108,14 +132,14 @@ for line in f:
     )
     controller = MpvController(session, (sys.executable, str(script)))
 
-    def prepare(mode):
+    def prepare(mode, *, configuration=None):
         path = tmp_path / "video"
         path.write_text(mode)
         info = path.stat()
         selected = SelectedVideo(1, path.name, info.st_size, info.st_mtime_ns)
         source = VideoSource(1, "local_directory", str(tmp_path), True)
         with open_video_item(selected, source, PathPolicy([tmp_path])) as descriptor:
-            controller.prepare(descriptor)
+            controller.prepare(descriptor, configuration=configuration)
         # Caller lifetime and pathname no longer supply player authority.
         path.unlink()
         return controller
@@ -142,7 +166,7 @@ def test_load_pinned_fd_and_fresh_process(player):
 
 
 def test_eof_is_completion_without_reloading(player):
-    controller = player("eof")
+    controller = player("eof", configuration={"audio_enabled": True})
     controller.ensure_started(timeout_seconds=1)
     for _ in range(20):
         if controller.status.state == "ended":
@@ -153,9 +177,10 @@ def test_eof_is_completion_without_reloading(player):
         "reason": "ended",
         "cleanup_failed": False,
     }
-    child = controller._child
+    assert controller._child is None and controller._ipc is None
     controller.ensure_started()
-    assert controller._child is child
+    assert controller._child is None
+    assert not controller.snapshot().audio.available
 
 
 @pytest.mark.parametrize(
@@ -222,7 +247,8 @@ def test_prepared_stop_closes_duplicate(player):
         os.fstat(descriptor)
 
 
-def test_content_surfaces_retire_video_before_replacement(player):
+@pytest.mark.parametrize("audio_enabled", [False, True])
+def test_content_surfaces_retire_video_before_replacement(player, audio_enabled):
     from postcardscene.graphics.chromium import BrowserContext
     from postcardscene.graphics.surfaces import ContentClass, ContentSurfaces
 
@@ -247,7 +273,7 @@ def test_content_surfaces_retire_video_before_replacement(player):
         browser(BrowserContext.UNTRUSTED_WEB),
         controller,
     )
-    player("playing")
+    player("playing", configuration={"audio_enabled": audio_enabled})
     surfaces.select(ContentClass.VIDEO, timeout_seconds=1)
     child = controller._child
     surfaces.select(ContentClass.TRUSTED_IMAGE)
@@ -330,7 +356,9 @@ def test_rejected_or_failed_seek_preserves_player(player):
     assert controller._child is child
 
 
-@pytest.mark.parametrize("operation", ["snapshot", "pause", "seek_relative"])
+@pytest.mark.parametrize(
+    "operation", ["snapshot", "pause", "seek_relative", "mute", "set_volume"]
+)
 @pytest.mark.parametrize(
     "mode,reason",
     [
@@ -340,9 +368,9 @@ def test_rejected_or_failed_seek_preserves_player(player):
     ],
 )
 def test_bounded_control_failures(player, operation, mode, reason):
-    controller = player(mode)
+    controller = player(mode, configuration={"audio_enabled": True})
     controller.ensure_started(timeout_seconds=1)
-    args = (1,) if operation == "seek_relative" else ()
+    args = (1,) if operation in ("seek_relative", "set_volume") else ()
     with pytest.raises(PlaybackError, match=reason):
         getattr(controller, operation)(*args, timeout_seconds=0.2)
     assert controller.snapshot().state == "failed"
@@ -399,3 +427,90 @@ def test_precommand_cancellation_leaves_retirement_to_owner(player):
     with pytest.raises(PlaybackError, match="cancelled"):
         controller.pause()
     assert controller.snapshot().state == "stopped"
+
+
+@pytest.mark.parametrize("initial", [0, 50, 100])
+def test_audio_policy_and_transient_controls(player, initial):
+    controller = player(
+        "playing", configuration={"audio_enabled": True, "volume": initial}
+    )
+    controller.ensure_started(timeout_seconds=1)
+    state = controller.snapshot().audio
+    assert state.enabled and state.available and not state.muted
+    assert state.volume == initial and state.reason == "ready"
+    assert state.device_policy == "auto"
+    for _ in range(2):
+        assert controller.mute().audio.muted
+        assert not controller.unmute().audio.muted
+    assert controller.set_volume(0).audio.volume == 0
+    assert controller.set_volume(100).audio.volume == 100
+    controller.mute()
+    child = controller._child
+    controller.stop()
+    assert child.returncode is not None
+    assert not controller.snapshot().audio.available
+    player(
+        "playing", configuration={"audio_enabled": True, "volume": initial}
+    ).ensure_started()
+    assert controller.snapshot().audio.volume == initial
+    assert not controller.snapshot().audio.muted
+    controller.stop()
+    player("playing").ensure_started()
+    assert controller.snapshot().audio.reason == "disabled"
+
+
+@pytest.mark.parametrize(
+    "value", [True, 1.5, "50", None, -1, 101, float("nan"), float("inf")]
+)
+def test_invalid_volume_preserves_player(player, value):
+    controller = player("playing", configuration={"audio_enabled": True})
+    controller.ensure_started(timeout_seconds=1)
+    with pytest.raises(PlaybackError, match="invalid_volume"):
+        controller.set_volume(value)
+    assert controller.snapshot().audio.volume == 50
+
+
+@pytest.mark.parametrize(
+    "mode,enabled,reason",
+    [
+        ("playing", False, "disabled"),
+        ("no-track", True, "no_track"),
+        ("no-device", True, "device_unavailable"),
+    ],
+)
+def test_unavailable_audio_preserves_silent_video(player, mode, enabled, reason):
+    controller = player(mode, configuration={"audio_enabled": enabled})
+    controller.ensure_started(timeout_seconds=1)
+    child = controller._child
+    state = controller.snapshot()
+    assert state.state == "playing" and state.audio.reason == reason
+    assert not state.audio.available
+    assert state.audio.muted is None and state.audio.volume is None
+    for operation, args in (
+        (controller.mute, ()),
+        (controller.unmute, ()),
+        (controller.set_volume, (50,)),
+    ):
+        with pytest.raises(PlaybackError, match="audio_unavailable"):
+            operation(*args)
+    assert controller._child is child
+    assert controller.pause().state == "paused"
+
+
+@pytest.mark.parametrize(
+    "device",
+    [
+        "",
+        "help",
+        "--volume=200",
+        "alsa/x\n",
+        "alsa/a;echo",
+        "alsa/$(id)",
+        "alsa/" + "a" * 256,
+        1,
+        True,
+    ],
+)
+def test_invalid_audio_device(device):
+    with pytest.raises(PlaybackError, match="invalid_audio_device"):
+        MpvController(None, (sys.executable,), audio_device=device)
