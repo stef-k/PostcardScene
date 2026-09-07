@@ -53,6 +53,15 @@ def timestamp(nanoseconds, timezone):
 
 
 def source_view(session, source, timezone):
+    if source.kind == "web_url":
+        return dict(
+            id=source.id,
+            name=source.name,
+            kind="Web URL",
+            enabled=source.enabled,
+            web=True,
+            url=source.configuration.get("url", ""),
+        )
     state = session.get(MediaCatalogState, source.id)
     grouped = catalog_health_counts(session, source.id)
     label, description = health(source, state)

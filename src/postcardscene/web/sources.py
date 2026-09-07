@@ -1,4 +1,4 @@
-"""Authenticated filesystem Source management over domain and durable request seams."""
+"""Authenticated filesystem and web Source management over domain and durable request seams."""
 
 from zoneinfo import ZoneInfo
 
@@ -31,6 +31,9 @@ from postcardscene.filesystem_source import InvalidSource, PathPolicy, validate_
 from postcardscene.persistence import DatabaseError
 from postcardscene.settings import get_timezone
 from postcardscene.web.source_health import KINDS, source_view
+from postcardscene.web_selection import WebSelectionError, validate_web_source
+
+MANAGED_KINDS = {*KINDS, "web_url"}
 
 sources = Blueprint("sources", __name__, url_prefix="/sources")
 
@@ -49,6 +52,17 @@ class SourceForm(FlaskForm):
     enabled = BooleanField("Enabled", default=True)
 
 
+class WebSourceForm(FlaskForm):
+    name = StringField(
+        "Name",
+        validators=[InputRequired(), Length(min=1, max=128)],
+        filters=[lambda value: value.strip() if value else value],
+    )
+    kind = SelectField("Kind", choices=[("web_url", "Web URL")], default="web_url")
+    url = StringField("Display URL", validators=[InputRequired()])
+    enabled = BooleanField("Enabled", default=True)
+
+
 def database():
     return current_app.extensions["postcardscene.database"]
 
@@ -64,7 +78,7 @@ def database_error(error):
 
 def managed_source(session, source_id):
     source = session.get(Source, source_id)
-    if source is None or source.kind not in KINDS:
+    if source is None or source.kind not in MANAGED_KINDS:
         abort(404)
     return source
 
@@ -77,7 +91,7 @@ def index():
         rows = [
             source_view(session, source, timezone)
             for source in session.scalars(
-                select(Source).where(Source.kind.in_(KINDS)).order_by(Source.id)
+                select(Source).where(Source.kind.in_(MANAGED_KINDS)).order_by(Source.id)
             )
         ]
     return render_template("sources.html", sources=rows)
@@ -108,14 +122,18 @@ def save_source(form, configuration, source_id):
     with database().transaction(write=True) as session:
         if source_id is None:
             source_id = create_source(session, **fields).id
-            refresh = form.enabled.data
+            refresh = form.enabled.data and form.kind.data in KINDS
         else:
             source = managed_source(session, source_id)
             authority_changed = source.kind != form.kind.data or any(
-                source.configuration.get(key) != configuration[key]
+                source.configuration.get(key) != configuration.get(key)
                 for key in ("path", "recursive")
             )
-            refresh = form.enabled.data and (authority_changed or not source.enabled)
+            refresh = (
+                form.kind.data in KINDS
+                and form.enabled.data
+                and (authority_changed or not source.enabled)
+            )
             update_source(session, source_id, **fields)
     flash("Source saved.", "success")
     if refresh:
@@ -129,24 +147,30 @@ def save_source(form, configuration, source_id):
     return redirect(url_for("sources.index"))
 
 
+@sources.route("/new/web", methods=["GET", "POST"], defaults={"web": True})
 @sources.route("/new", methods=["GET", "POST"])
 @sources.route("/<int:source_id>/edit", methods=["GET", "POST"])
 @login_required
-def edit(source_id=None):
-    form = SourceForm()
+def edit(source_id=None, web=False):
+    form = WebSourceForm() if web else SourceForm()
     if source_id is not None:
         with database().transaction() as session:
             source = managed_source(session, source_id)
+            web = source.kind == "web_url"
+            form = WebSourceForm() if web else SourceForm()
             if request.method == "GET":
                 form.process(
                     data=dict(
                         name=source.name,
                         kind=source.kind,
                         path=source.configuration.get("path", ""),
+                        url=source.configuration.get("url", ""),
                         recursive=source.configuration.get("recursive", False),
                         enabled=source.enabled,
                     )
                 )
+    if web:
+        return edit_web(form, source_id)
     try:
         policy = PathPolicy(current_app.config["MEDIA_ALLOWED_ROOTS"])
     except InvalidSource:
@@ -179,6 +203,22 @@ def edit(source_id=None):
     return render_template(
         "source_form.html", form=form, source_id=source_id, roots=roots
     )
+
+
+def edit_web(form, source_id):
+    if form.validate_on_submit():
+        try:
+            configuration = validate_web_source(form.kind.data, {"url": form.url.data})
+        except WebSelectionError as error:
+            form.url.errors.append(str(error))
+        else:
+            try:
+                return save_source(form, configuration, source_id)
+            except DomainError:
+                form.name.errors.append(
+                    "Source could not be saved. Check the name and configuration."
+                )
+    return render_template("web_source_form.html", form=form, source_id=source_id)
 
 
 @sources.post("/<int:source_id>/refresh")

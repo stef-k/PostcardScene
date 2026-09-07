@@ -328,6 +328,9 @@ for API, failure and metadata limitations.
 
 Open **Sources** after logging in to manage local and already-mounted NFS/SMB
 Sources, queue runtime refreshes, and inspect persisted catalog health/counts.
+Choose **Add web Source** to manage HTTP/HTTPS display URLs (including LAN
+services) without network probes or a media catalog. Web configuration/resolution
+is implemented; rendering and composition execution remain #83/#8.
 See the [Media Sources guide](docs/sources.md) for allowed-root setup, editing,
 enabling/disabling, refresh and outage semantics, and deletion.
 

@@ -1,10 +1,10 @@
-# Media Sources
+# Sources
 
 Use **Sources** in the authenticated control interface to manage directories of
 photos and videos. The catalog records media information; your original files
-stay in their directories. This page manages filesystem Sources only, not web URLs.
+stay in their directories. Use **Add web Source** for HTTP/HTTPS display URLs.
 
-## Before adding a Source
+## Before adding a filesystem Source
 
 The host administrator must configure `MEDIA_ALLOWED_ROOTS` in the trusted Python
 configuration file selected by `POSTCARDSCENE_CONFIG`. Web and runtime processes
@@ -23,7 +23,7 @@ restart the web and runtime processes to load it. See the README's
 
 Allowed roots are trusted host policy. The Source form shows them as read-only
 guidance and cannot change them. With empty or invalid allowed roots, the Sources
-list still works, but saving a Source fails closed. Ask the host administrator to
+list still works, but saving a filesystem Source fails closed. Ask the host administrator to
 configure the intended roots; entering a path in the form does not grant access.
 Paths must remain within an allowed root, including through existing symlinks.
 Relative paths, parent traversal and symlink escapes are rejected.
@@ -106,3 +106,40 @@ Source and its derived catalog, not original files. It never deletes Widgets,
 Scenes or Sequences. A Source referenced by a Widget cannot be deleted; the
 reference must be reassigned or removed through the owning composition tools
 first. This page does not provide a composition editor.
+
+## Web URL Sources
+
+Choose **Add web Source**, enter a **Name** and **Display URL**, set **Enabled**,
+and save. Use **Edit** to change the URL/name or enable/disable; deletion uses the
+same Widget-reference restriction above. The kind stays Web URL. No Widget is
+automatically created, and this page is not a Widget/Scene/Sequence editor.
+Web Sources require no `MEDIA_ALLOWED_ROOTS`, have no media catalog, health counts
+or Refresh action, and saving does no DNS lookup, HTTP request or browser launch.
+The configured URL is visible only after administrator login; mutations use CSRF.
+
+Use an absolute HTTP/HTTPS URL with a hostname, for example
+`http://wayfarer.local:8080/display?share=example#map`. Public/share URLs and
+loopback/private/link-local/LAN services are deliberately supported. Outer
+whitespace is trimmed; paths, case, percent-encoding, query strings and fragments
+are preserved. URLs are limited to 8192 characters. Embedded whitespace,
+controls/DEL, backslashes, userinfo, invalid/zero ports and non-HTTP(S) schemes
+such as file, javascript, data, blob and browser-internal URLs are rejected.
+Invalid saves preserve the previous configuration and show form feedback.
+
+HTTPS requires normal browser-trusted certificates: no TLS bypass or custom
+application trust store. An intentionally configured LAN service can use HTTP.
+V0 has no generic login/password/API-key/token fields or credential injection,
+cookie import/export, browser-profile copying, DOM login scripts or OAuth automation.
+Share identifiers remain valid URL content; avoid exposing full URLs in logs or
+public diagnostics.
+
+One isolated untrusted-web Chromium profile may retain ordinary cookies, local
+storage and site preferences across restarts/reboots. It is separate from
+administration and trusted images, replaceable, excluded from backup/restore,
+and may start clean on a replacement host. This is not supported third-party
+login provisioning or session portability; see [operations](operations.md).
+Scene/Sequence owns dwell. New presentations navigate freshly; no periodic reload
+setting is provided. Pages may run their own timers/scripts even when future
+Scene progression is paused. URL management/resolution is implemented by #82;
+rendering (#83), composition execution (#8) and physical Pi/browser support
+(#84, gated on #31) remain separate work.

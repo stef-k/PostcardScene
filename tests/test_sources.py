@@ -179,22 +179,12 @@ def test_invalid_fields_are_form_feedback(sources_ui, source_post, fields):
         assert len(domain.list_sources(session)) == 1
 
 
-def test_non_filesystem_and_missing_sources_cannot_be_managed(sources_ui, source_post):
-    _, client, db, _, _ = sources_ui
-    with db.transaction() as session:
-        web_id = domain.create_source(
-            session, name="Private web source", kind="web_url", configuration={}
-        ).id
-    assert "Private web source" not in client.get("/sources").text
-    for source_id in (web_id, 999):
-        assert client.get(f"/sources/{source_id}/edit").status_code == 404
-        for action in ("edit", "delete"):
-            assert source_post(f"/sources/{source_id}/{action}").status_code == 404
-        response = source_post(f"/sources/{source_id}/refresh")
-        assert "Refresh could not be queued" in response.text
-    with db.transaction() as session:
-        assert domain.get_source(session, web_id).kind == "web_url"
-        assert session.get(MediaCatalogState, web_id) is None
+def test_missing_sources_cannot_be_managed(sources_ui, source_post):
+    _, client, _, _, _ = sources_ui
+    assert client.get("/sources/999/edit").status_code == 404
+    for action in ("edit", "delete"):
+        assert source_post(f"/sources/999/{action}").status_code == 404
+    assert "Refresh could not be queued" in source_post("/sources/999/refresh").text
 
 
 @pytest.mark.parametrize("exception", [DatabaseError, SQLAlchemyError])

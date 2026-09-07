@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Edit web Source' if source_id else 'Add web Source' }}{% endblock %}
+{% block content %}
+<div class="row"><div class="col-lg-9 col-xl-8">
+<h1 class="mb-4">{{ 'Edit web Source' if source_id else 'Add web Source' }}</h1>
+<section class="card mb-4"><div class="card-body p-4">
+  <p id="url-help">Use an absolute HTTP/HTTPS display URL. LAN and loopback services and public/share URLs are supported. No connection is tested here. HTTPS requires a browser-trusted certificate; there is no TLS bypass or login/credential injection.</p>
+  <form method="post">
+    {{ form.hidden_tag() }}
+    {% for field in [form.name, form.kind, form.url] %}
+    <div class="mb-4">
+      {{ field.label(class="form-label") }}
+      {{ field(class=('form-select' if field.name == 'kind' else 'form-control') ~ (' is-invalid' if field.errors else ''), aria_describedby=field.name ~ '-help ' ~ field.name ~ '-error' if field.name in ['url'] else field.name ~ '-error', aria_invalid='true' if field.errors else 'false') }}
+      <div id="{{ field.name }}-error" class="text-danger-emphasis" role="alert">{% for message in field.errors %}{{ message }}{% endfor %}</div>
+    </div>
+    {% endfor %}
+    <div class="form-check mb-4">{{ form.enabled(class="form-check-input") }} {{ form.enabled.label(class="form-check-label") }}</div>
+    <div class="d-flex flex-wrap gap-3">
+      <button class="btn btn-primary" type="submit">Save Source</button>
+      <a class="btn btn-outline-secondary" href="{{ url_for('sources.index') }}">Cancel</a>
+    </div>
+  </form>
+</div></section>
+{% if source_id %}
+<section class="card border-danger"><div class="card-body p-4">
+  <h2 class="h4">Delete Source</h2>
+  <p id="delete-warning">Deletion removes this web Source. Widgets, Scenes and Sequences are never deleted here. A Source referenced by a Widget cannot be deleted.</p>
+  <form method="post" action="{{ url_for('sources.delete', source_id=source_id) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button class="btn btn-outline-danger" type="submit" aria-describedby="delete-warning">Delete Source</button>
+  </form>
+</div></section>
+{% endif %}
+</div></div>
+{% endblock %}
