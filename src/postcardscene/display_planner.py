@@ -190,6 +190,8 @@ class DisplayPlanner:
             # Draw as though first were consumed; commit consumption only after
             # grouping. A rejected lookahead remains owned by this Widget.
             lookahead = self._candidate(step, stream, first)
+            if lookahead is not None and lookahead.identity == first.identity:
+                lookahead = None
             frame, consumed = build_image_frame(step.kind, "contain", first, lookahead)
             selected = frame.images
             if consumed == 1 and lookahead is not None:

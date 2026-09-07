@@ -128,15 +128,23 @@ def test_small_shuffle_exhausts_before_reuse(playback, count):
         assert len(set(identities[i : i + count])) == count
 
 
-def test_pair_lookahead_is_retained_and_not_consumed(playback):
-    db, (source, _, _, _) = playback
+@pytest.mark.parametrize("mode", ["ordered", "shuffle"])
+def test_pair_lookahead_is_retained_and_not_consumed(playback, mode):
+    db, (source, _, _, sequence) = playback
+
+    class FirstRank(random.Random):
+        def random(self):
+            return 0.0
+
+    with db.transaction() as session:
+        d.get_sequence(session, sequence).mode = mode
     populate(
         playback,
         ["a", "b", "c", "d"],
         kind="portrait_image_pair",
         orientations=["portrait", "landscape", "portrait", "portrait"],
     )
-    planner = DisplayPlanner(db)
+    planner = DisplayPlanner(db, rng=FirstRank())
     assert step(planner).media == ((source, "a"),)
     assert step(planner).media == ((source, "b"),)
     pair = step(planner)
@@ -285,3 +293,41 @@ def test_large_query_returns_single_candidate_and_uses_canonical_index(playback,
             assert params[-2] == 1
             plan = connection.exec_driver_sql("EXPLAIN QUERY PLAN " + sql, params).all()
             assert not any("TEMP B-TREE" in row[3] for row in plan), plan
+
+
+def test_singleton_pair_does_not_retain_itself_after_library_growth(playback):
+    db, (source, _, _, sequence) = playback
+    populate(playback, ["a"], kind="portrait_image_pair")
+    with db.transaction() as session:
+        d.get_sequence(session, sequence).mode = "shuffle"
+    planner = DisplayPlanner(db, rng=random.Random(4))
+    assert step(planner).media == ((source, "a"),)
+    populate(playback, ["b"], kind="portrait_image_pair", orientations=["landscape"])
+    assert step(planner).media == ((source, "b"),)
+
+
+def test_shared_widget_across_scenes_and_invalid_forward_history(playback):
+    db, (_, widget, _, sequence) = playback
+    populate(playback, ["a", "b", "c", "d"])
+    with db.transaction() as session:
+        scene = d.create_scene(
+            session, name="Second", layout="single", placements=[("main", widget)]
+        )
+        d.update_sequence(
+            session,
+            sequence,
+            name="Sequence",
+            mode="ordered",
+            enabled=True,
+            memberships=[(1, None), (scene.id, None)],
+        )
+    planner = DisplayPlanner(db)
+    first, middle, last = [step(planner) for _ in range(3)]
+    assert [s.media[0][1] for s in (first, middle, last)] == ["a", "b", "c"]
+    planner.previous()
+    assert planner.previous().step == first
+    with db.transaction() as session:
+        d.get_scene(session, middle.scene_id).enabled = False
+    assert step(planner) == last
+    assert planner.next().status == PlanStatus.INELIGIBLE
+    assert step(planner).media[0][1] == "d"

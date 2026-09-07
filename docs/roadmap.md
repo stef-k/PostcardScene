@@ -135,6 +135,11 @@ timed video ends at EOF or its deadline, whichever occurs first. Panel-safety
 thresholds remain separate. Runtime restart discards cursor/history/shuffle state;
 configuration is reread at display-step boundaries.
 
+#88 supplies pure bounded display-step planning: canonical ordered media, shuffled
+membership cycles, per-Widget media streams with 32 consumed recent identities,
+caller-owned portrait lookahead, and 32 revalidated Previous/Next history steps.
+It adds no runtime worker, timer, rendering or controls; #89 owns execution.
+
 The portrait pair is one Widget in a `single` Scene. Existing split layouts remain
 valid persistence but are explicitly non-executable in V0. Generic multi-region
 execution belongs to V1 rich composition. Playback, controls and composition UI

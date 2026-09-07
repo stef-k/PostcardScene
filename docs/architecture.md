@@ -1074,6 +1074,57 @@ later starts at the first currently eligible membership and shuffle creates a
 fresh in-memory epoch. No cursor, history, random seed or current media identity
 is persisted. Active selection and dwell UI belong to later #8 children.
 
+### Bounded display-step planner (#88)
+
+`display_planner.DisplayPlanner(database, rng=...)` supplies serialized `next()`
+(including automatic forward progression) and `previous()` planning calls.
+`PlanResult` distinguishes ready, temporarily ineligible, history boundary and
+configuration/selection failure without exposing raw exception values. Each new
+forward call attempts one configured occurrence; #89 owns retries and backoff.
+A successful new plan enters history when returned. The execution owner decides
+when to request progression and how to handle a subsequent display failure.
+
+Frozen `DisplayStep` records Sequence/membership/Scene/Widget identities, content
+kind and exact canonical `(source_id, relative_path)` media identities only.
+They carry neither file authority nor web targets. Execution must revalidate
+current configuration/media before opening bytes or resolving a web target.
+The planner calls no renderer and is not wired into RuntimeHost.
+
+Ordered membership cycles preserve configured occurrences, including repeated
+Scenes. Shuffle cycles visit every occurrence once and avoid repeating a cycle's
+last occurrence immediately at the next cycle's start. Configuration is unchanged.
+One transient media stream per Widget advances across all referencing occurrences.
+`media_stream.select_candidate` uses canonical relative-path keysets and one wrap
+for ordered selection. SQLite's existing Source/path uniqueness index supports
+these queries without a temporary ordering tree; no schema/index is added.
+
+Media shuffle uses an injected random fraction generated outside transactions,
+then count plus ranked canonical selection in a short transaction. SQLite may
+scan eligible index entries for counts/ranks; Python receives a single candidate
+and at most 32 excluded paths, never a complete library. Up to 32 consumed
+identities per Widget exclude recent repeats. Exhaustion relaxes oldest eligible
+exclusions first, retaining the latest where alternatives exist. Small libraries
+avoid reuse until exhausted; larger libraries do not promise a full permutation.
+
+Portrait grouping uses #56's first/lookahead consumed-count contract. A rejected
+lookahead remains a revalidated identity owned by the Widget stream; only consumed
+candidates advance its cursor/recent window. A wrapped identical singleton is not
+retained as its own lookahead.
+
+History holds at most 32 steps, without URLs. Previous skips invalid entries
+backward and stops at the oldest usable boundary. Next/automatic progression
+replays valid forward history before planning new content. Replay rereads current
+composition and media eligibility, requires exact historical pair members and
+pair compatibility, and validates the current web target without retaining it.
+Replay does not consume or rewind media streams. Source/Widget/Scene eligibility
+changes may invalidate entries without resetting the epoch.
+
+An observed active Sequence change, idle/disabled selection, membership identity
+or order replacement, or mode change clears streams, cycles and history. A
+concurrent epoch replacement detected during resolution returns ineligible and
+starts the new epoch on the next call. Restart constructs empty transient state.
+No database transaction spans RNG/history computation or future rendering.
+
 ### Transient execution ownership
 
 The runtime executes the composition model and owns transient playback state.
