@@ -1125,23 +1125,55 @@ concurrent epoch replacement detected during resolution returns ineligible and
 starts the new epoch on the next call. Restart constructs empty transient state.
 No database transaction spans RNG/history computation or future rendering.
 
-### Transient execution ownership
+### Playback execution worker (#89)
 
-The runtime executes the composition model and owns transient playback state.
+`runtime.playback.PlaybackWorker(database, presenter, stop_event)` owns one stdlib
+thread and a maximum of 32 pending commands. `start()` is called once;
+`submit(name, value=None)` returns a Future containing a fixed `Outcome`, including
+busy/rejected/unavailable results. There is no executor pool or request-thread
+rendering. The worker serializes planner calls, presentation, video snapshots,
+transport and cleanup. #93 owns its construction in RuntimeHost and the concrete
+V0 presenter; #58 remains the image prerequisite. No production renderer is
+constructed by this worker capability.
 
-Useful transient state may include:
+`PlaybackState` consumes #88 Next/Previous directly. Planner `revalidate(step)`
+reuses current composition/media validation without advancing order/history; it
+supports re-presenting a held identity. Configuration is reread for each new or
+replayed presentation. The presenter must re-resolve exact content authority at
+execution, honor `start_paused` before video becomes audible, and implement bounded
+cancellable operations. `clear` must retire all content/audio to safe black and
+`stop` must finish retirement; cleanup uncertainty raises typed `cleanup_failed`.
 
-- current scene/membership
-- recent-play history
-- previous/next navigation state
-- current selected MediaItems
-- renderer health
+Dwell uses injectable monotonic time with membership duration before Scene duration,
+then default image/pair/web dwell or natural video EOF. Timed video ends at the
+first of EOF and dwell expiry. Video state is inspected every 0.5 seconds; timed
+image/web waits sleep until their deadline or a command. Global Pause freezes the
+remaining budget and automatic progression, pauses actual video, and leaves image
+or web content displayed (web scripts continue). Previous/Next use planner history
+while retaining Pause; new video receives `start_paused=True`. Pause is transient
+and is not a panel-safety override.
 
-This state should not be pushed into configuration models unless a concrete restart requirement justifies a small durable field.
+Navigation/state commands cancel the private in-flight operation token; cancellation
+is not a failed-content attempt. Eight consecutive ordinary failed attempts retire
+to degraded black/idle for five seconds before continuing the planner. A successful
+presentation resets the budget. No active Sequence means intentional idle; disabled
+selection also waits five seconds for reevaluation. Ineligible occurrences consume
+the same bounded attempt budget. There is no configuration notification service.
 
-When content is unavailable, the runtime must use bounded skipping/fallback behavior. It must not enter a tight retry loop.
+`set_output_suppressed(bool)` clears content/audio and holds progression, retaining
+the logical current identity and user Pause. Release revalidates/re-presents that
+identity or enters normal bounded fallback. Video position restoration is not
+promised. #9/#10 own suppression policy; this seam makes no physical-power claim.
 
-If no eligible content remains, the display should converge to a defined safe blank/idle state and may invoke panel-protection behavior rather than leave stale content indefinitely.
+Frozen thread-safe `status` contains fixed state/reason, composition IDs, remaining
+dwell at the last update and optional bounded video progress/audio capabilities.
+Media paths and web targets never enter it. No playback state is persisted.
+Unexpected thread failure or uncertain cleanup sets a fixed `failure` and the shared
+host stop event; no replacement content starts after authority loss. The owner must
+call `join()` when that event wakes: join cancels/wakes the operation or dwell wait,
+waits at most five seconds and raises on failed cleanup or an unresponsive worker.
+The daemon flag permits fatal process exit, not clean abandonment. #93 must propagate
+failure as nonzero runtime exit for systemd/cgroup cleanup; Flask remains independent.
 
 ## 10. Scene composition and rendering
 

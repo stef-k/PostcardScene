@@ -105,6 +105,16 @@ class DisplayPlanner:
     def previous(self):
         return self._request(-1)
 
+    def revalidate(self, step):
+        """Resolve a held current identity without advancing order or history."""
+        try:
+            self._refresh()
+            if self._valid_history(step):
+                return PlanResult(PlanStatus.READY, step)
+            return PlanResult(PlanStatus.INELIGIBLE)
+        except (DatabaseError, SQLAlchemyError, ValueError):
+            return PlanResult(PlanStatus.FAILURE)
+
     def _request(self, direction):
         try:
             configuration = self._refresh()

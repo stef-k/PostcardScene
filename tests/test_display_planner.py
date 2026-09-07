@@ -331,3 +331,20 @@ def test_shared_widget_across_scenes_and_invalid_forward_history(playback):
     assert step(planner) == last
     assert planner.next().status == PlanStatus.INELIGIBLE
     assert step(planner).media[0][1] == "d"
+
+
+def test_held_step_revalidation_preserves_cursor_and_invalidates_deleted_media(
+    playback,
+):
+    db, _ = playback
+    populate(playback, ["a", "b"])
+    planner = DisplayPlanner(db)
+    first = step(planner)
+    assert planner.revalidate(first).step == first
+    assert planner.history == (first,)
+    second = step(planner)
+    assert second.media[0][1] == "b"
+    with db.transaction() as session:
+        session.execute(delete(MediaItem).where(MediaItem.relative_path == "a"))
+    assert planner.revalidate(first).status == PlanStatus.INELIGIBLE
+    assert planner.history == (first, second)
