@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Scenes{% endblock %}
+{% block content %}
+<div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4">
+  <h1 class="mb-0">Scenes</h1><a class="btn btn-primary" href="{{ url_for('scenes.edit') }}">Add single Scene</a>
+</div>
+{% for category, message in get_flashed_messages(with_categories=true) %}<p class="alert alert-{{ category }}" role="status">{{ message }}</p>{% endfor %}
+<p>V0 uses one Widget in a single Scene. Saving configuration does not start playback or preview content. Disabled Widgets remain valid configuration choices.</p>
+<div class="row g-4">
+{% for scene in scenes %}
+<div class="col-12 col-xl-6"><section class="card h-100" aria-labelledby="scene-{{ scene.id }}"><div class="card-body p-4">
+  <h2 id="scene-{{ scene.id }}" class="h4 text-break">{{ scene.name }}</h2>
+  <p>{{ scene.layout }} · {{ 'Enabled' if scene.enabled else 'Disabled' }}</p>
+  <p>Duration: {{ (scene.duration_seconds ~ ' seconds') if scene.duration_seconds is not none else 'No fixed Scene dwell' }}</p>
+  {% if scene.layout == 'single' %}
+  <a class="btn btn-outline-primary" href="{{ url_for('scenes.edit', scene_id=scene.id) }}" aria-label="Edit {{ scene.name }}">Edit</a>
+  {% else %}
+  <p class="alert alert-warning">Not executable in V0 — reserved for future composition. Create a single Scene for V0 instead; this layout cannot be edited here.</p>
+  <p id="delete-warning-{{ scene.id }}">Deletion preserves Widgets and Sources and is blocked while referenced by a Sequence.</p>
+  <form method="post" action="{{ url_for('scenes.delete', scene_id=scene.id) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button class="btn btn-outline-danger" type="submit" aria-label="Delete {{ scene.name }}" aria-describedby="delete-warning-{{ scene.id }}">Delete Scene</button>
+  </form>
+  {% endif %}
+</div></section></div>
+{% else %}<p>No Scenes configured. Add a Widget, then create a single Scene.</p>{% endfor %}
+</div>
+{% endblock %}

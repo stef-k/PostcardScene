@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% from "composition_fields.html" import field, checkbox %}
+{% block title %}{{ 'Edit' if widget_id else 'Add' }} Widget{% endblock %}
+{% block content %}
+<div class="row"><div class="col-lg-9 col-xl-8">
+<h1 class="mb-4">{{ 'Edit' if widget_id else 'Add' }} Widget</h1>
+<section class="card mb-4"><div class="card-body p-4">
+  <p>Kind: <strong>{{ kind_label }} ({{ kind }})</strong>. To change kind, create a new Widget and reassign the Scene.</p>
+  {% if not form.source_id.choices %}<p class="alert alert-warning" role="status">No compatible Source exists. <a href="{{ url_for('sources.index') }}">Add a {{ 'web' if kind == 'web_view' else 'filesystem' }} Source</a> before saving.</p>{% endif %}
+  <form method="post">
+    {{ form.hidden_tag() }}
+    {{ field(form.name) }}
+    {{ field(form.source_id) }}
+    {% if kind in ['image', 'portrait_image_pair'] %}
+    {{ field(form.fit) }}
+    {% if kind == 'portrait_image_pair' %}<p>Portrait pairing happens automatically inside this Widget. Other eligible images display singly.</p>{% endif %}
+    {% elif kind == 'video' %}
+    {{ checkbox(form.audio_enabled) }}
+    {{ field(form.volume) }}
+    <p>Audio is off by default. Volume is 0–100; the host controls the audio output device.</p>
+    {% else %}
+    <p>Edit the URL in Sources. This form does not connect to the page.</p>
+    {% endif %}
+    {{ checkbox(form.enabled) }}
+    <div class="d-flex flex-wrap gap-3">
+      <button class="btn btn-primary" type="submit"{% if not form.source_id.choices %} disabled{% endif %}>Save Widget</button>
+      <a class="btn btn-outline-secondary" href="{{ url_for('widgets.index') }}">Cancel</a>
+    </div>
+  </form>
+</div></section>
+{% if widget_id %}
+<section class="card border-danger"><div class="card-body p-4">
+  <h2 class="h4">Delete Widget</h2>
+  <p id="delete-warning">A Widget referenced by any Scene cannot be deleted. Deletion preserves Sources and media. Disable above to preserve configuration and references.</p>
+  <form method="post" action="{{ url_for('widgets.delete', widget_id=widget_id) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button class="btn btn-outline-danger" type="submit" aria-describedby="delete-warning">Delete Widget</button>
+  </form>
+</div></section>
+{% endif %}
+</div></div>
+{% endblock %}
