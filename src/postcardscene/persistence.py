@@ -12,7 +12,7 @@ from sqlalchemy.orm import DeclarativeBase, sessionmaker
 from sqlalchemy.pool import NullPool
 
 APPLICATION_ID = 0x5053434E  # PSCN, SQLite file identity (not a release number).
-SCHEMA_REVISION = "0008_catalog_requests"
+SCHEMA_REVISION = "0009_playback_settings"
 DEFAULT_DATABASE_PATH = Path("/var/lib/postcardscene/postcardscene.sqlite3")
 
 

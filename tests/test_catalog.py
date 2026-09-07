@@ -84,14 +84,18 @@ def test_migration_preserves_full_configuration(tmp_path):
             "sequence_membership",
         ]
         before = {
-            table: connection.exec_driver_sql(f"SELECT * FROM {table}").all()
+            table: connection.exec_driver_sql(
+                f"SELECT {'id, timezone' if table == 'application_settings' else '*'} FROM {table}"
+            ).all()
             for table in tables
         }
-    assert upgrade_database(db.path).schema_revision == "0008_catalog_requests"
+    assert upgrade_database(db.path).schema_revision == "0009_playback_settings"
     with db.engine.connect() as connection:
         for table in tables:
             assert (
-                connection.exec_driver_sql(f"SELECT * FROM {table}").all()
+                connection.exec_driver_sql(
+                    f"SELECT {'id, timezone' if table == 'application_settings' else '*'} FROM {table}"
+                ).all()
                 == before[table]
             )
         assert (

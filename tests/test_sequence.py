@@ -54,18 +54,24 @@ def test_upgrade_preserves_existing_state(tmp_path):
         for statement in statements:
             connection.exec_driver_sql(statement)
         before = {
-            table: connection.exec_driver_sql(f"SELECT * FROM {table}").all()
+            table: connection.exec_driver_sql(
+                f"SELECT {'id, timezone' if table == 'application_settings' else '*'} FROM {table}"
+            ).all()
             for table in tables
         }
     assert (
         upgrade_database(database.path).schema_revision
         == SCHEMA_REVISION
-        == "0008_catalog_requests"
+        == "0009_playback_settings"
     )
     with database.transaction() as session:
         for table in tables:
             assert (
-                session.connection().exec_driver_sql(f"SELECT * FROM {table}").all()
+                session.connection()
+                .exec_driver_sql(
+                    f"SELECT {'id, timezone' if table == 'application_settings' else '*'} FROM {table}"
+                )
+                .all()
                 == before[table]
             )
         assert d.list_sequences(session) == []

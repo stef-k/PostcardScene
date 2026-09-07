@@ -119,7 +119,7 @@ This is sufficient to display a Wayfarer share/display URL before native Wayfare
 
 - single-content scene
 - portrait-pair scene
-- simple multi-region/layout capability
+- `single`-Scene execution only; persisted split layouts reserved for V1 composition
 - scene duration
 - ordered/shuffled sequences
 - small recent-play/runtime history where useful
@@ -127,7 +127,18 @@ This is sufficient to display a Wayfarer share/display URL before native Wayfare
 - bounded skipping/fallback when sources/items fail
 - safe blank/idle behavior when no eligible content remains
 
-The scene representation should leave room for multiple widgets without requiring the full future scene editor in V0.
+#87 supplies explicit nullable active-Sequence selection (`None` means safe idle),
+immutable configuration/occurrence snapshots, and default image/web dwell of 30
+seconds (integer 1–86400). Membership duration overrides Scene duration; otherwise
+image/portrait-pair/web use default dwell and video uses natural EOF. Explicitly
+timed video ends at EOF or its deadline, whichever occurs first. Panel-safety
+thresholds remain separate. Runtime restart discards cursor/history/shuffle state;
+configuration is reread at display-step boundaries.
+
+The portrait pair is one Widget in a `single` Scene. Existing split layouts remain
+valid persistence but are explicitly non-executable in V0. Generic multi-region
+execution belongs to V1 rich composition. Playback, controls and composition UI
+remain later #8 children; #93/#94 retain their image/physical prerequisite gates.
 
 ### Operating schedule
 
