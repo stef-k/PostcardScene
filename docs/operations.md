@@ -477,3 +477,40 @@ Pi/HDMI/audio/codec/hwdec evidence (#66/#76) remain separate.
 Deterministic helper-process tests prove FD/IPC/lifecycle behavior, not physical
 playback support. No installed mpv/Wayland smoke is available in this development
 environment.
+
+
+## Playback worker capability (#89)
+
+The independently constructible playback worker is tested with fake presenters.
+The packaged runtime still performs catalog work only; #93 will wire playback and
+real image/video/web presenters after #58. There are no new operator launch settings,
+Flask playback controls, display-power commands or hardware support claims here.
+
+Integration starts one `PlaybackWorker` once and observes its shared RuntimeHost
+stop event. Always call `join()` on host cancellation, including failure signalled
+by the worker: it wakes long dwell waits and cancels in-flight work. Cleanup has a
+five-second join bound; a fixed `failure` or join error requires nonzero runtime
+exit so systemd can reap remaining process authority. Never restart another content
+owner over uncertain cleanup. Presenter clear/stop must provide bounded retirement
+and confirmed silence, including when the loading operation was cancelled.
+
+The local Python command seam accepts `next`, `previous`, `pause`, `resume`,
+`toggle_pause`, `seek_relative`, `mute`, `unmute`, `set_volume`, and
+`set_output_suppressed`. Commands return Futures with fixed outcomes, never backend
+exception details. Seek is limited to finite ±3600-second deltas and volume to
+integer 0–100; actual availability and seek bounds remain presenter responsibilities.
+A full 32-command mailbox returns busy. `request_shutdown()` bypasses the mailbox.
+Do not wait for command results on the playback thread itself.
+
+Pause holds remaining dwell and automatic progression; manual navigation retains
+Pause, including video paused from its first authoritative state. Web pages remain
+live while logically paused. Suppression retires output/audio and holds progression
+without changing user Pause or claiming panel standby. Release revalidates the
+current step; a video may restart from its beginning. Scheduling and panel protection
+remain later owners of this mechanism.
+
+Eight ordinary failed attempts produce safe degraded idle and a five-second backoff.
+Intentional Idle is normal; disabled/no eligible configuration is degraded and
+reevaluated boundedly. Public snapshots expose composition IDs and safe progress,
+never source paths or URLs. They describe the last worker update rather than a
+continuously refreshed clock. Restart discards Pause, current step, dwell and history.

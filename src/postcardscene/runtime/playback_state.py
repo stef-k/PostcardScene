@@ -174,6 +174,8 @@ class PlaybackState:
         if cancelled():
             raise PresentationError(Outcome.CANCELLED)
         self.accept_content(content)
+        if not self.content.active or self.content.ended:
+            raise PresentationError(Outcome.UNAVAILABLE)
         self.remaining = dwell_seconds(config, self.current.kind)
         self.updated = self.clock()
         self.poll_at = self.updated + VIDEO_POLL_SECONDS
@@ -240,10 +242,11 @@ class PlaybackState:
         if name in {"next", "previous"}:
             return self.advance(name, cancelled)
         if name == "set_output_suppressed":
-            if value != self.suppressed:
-                self.clear()
-                self.suppressed = value
-                self.retry_at = 0.0
+            if value == self.suppressed:
+                return Outcome.OK
+            self.clear()
+            self.suppressed = value
+            self.retry_at = 0.0
             self.report("idle", "suppressed" if value else "idle")
             return Outcome.OK
         if name in {"pause", "resume", "toggle_pause"}:
@@ -295,4 +298,5 @@ class PlaybackState:
             self.failed(PresentationError(Outcome.UNAVAILABLE))
         except PresentationError as error:
             self.failed(error)
+            return error.outcome
         return Outcome.UNAVAILABLE

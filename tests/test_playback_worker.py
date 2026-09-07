@@ -68,7 +68,7 @@ class Presenter:
             raise PresentationError(Outcome.CANCELLED)
         if self.show_error:
             raise PresentationError(self.show_error)
-        return self.content
+        return replace(self.content, active=True, ended=False)
 
     def snapshot(self, *, cancelled):
         self.record("snapshot")
@@ -391,3 +391,117 @@ def test_unexpected_backend_exception_is_sanitized():
         worker.join()
     assert "secret" not in repr(worker.status)
     assert worker.failure == "worker_failed"
+
+
+def test_repeated_suppression_release_keeps_playing_status():
+    h = Harness()
+    h.tick()
+    h.command("set_output_suppressed", False)
+    h.tick()
+    assert h.status.state == "playing"
+
+
+def test_already_ended_show_is_bounded_as_unavailable():
+    h = Harness("video")
+    h.presenter.show = lambda *args, **kwargs: ContentSnapshot(active=False, ended=True)
+    for _ in range(8):
+        h.tick()
+    assert h.tick() == 5
+    assert h.status.state == "degraded"
+
+
+def test_previous_replay_keeps_pause_and_rereads_duration():
+    h = Harness("web_view")
+    h.tick()
+    h.command("next")
+    h.command("pause")
+    h.machine.planner.previous = lambda: PlanResult(PlanStatus.READY, step("web_view"))
+    h.configuration.override = 12
+    h.command("previous")
+    assert h.status.membership_id == 1
+    assert h.status.remaining_seconds == 12 and h.status.paused
+    assert h.configuration.reads[-1] == 1
+
+
+def test_clear_failure_never_shows_replacement():
+    h = Harness()
+    h.tick()
+    h.presenter.cleanup_error = True
+    with pytest.raises(PresentationError) as error:
+        h.command("next")
+    assert error.value.outcome == Outcome.CLEANUP_FAILED
+    assert len([c for c in h.presenter.calls if isinstance(c, tuple)]) == 1
+
+
+def test_worker_injected_wait_advances_timed_content_without_polling():
+    presenter = Presenter()
+    now = [0.0]
+    waits = []
+    stop = Event()
+
+    def wait(condition, timeout):
+        waits.append(timeout)
+        now[0] += timeout
+        if len([c for c in presenter.calls if isinstance(c, tuple)]) == 2:
+            stop.set()
+
+    worker = PlaybackWorker(
+        None,
+        presenter,
+        stop,
+        planner=Planner(
+            [PlanResult(PlanStatus.READY, step("web_view", i)) for i in (1, 2)]
+        ),
+        configuration=Configuration(default=12),
+        clock=lambda: now[0],
+        wait=wait,
+    )
+    worker.start()
+    assert presenter.stopped.wait(2)
+    worker.join()
+    assert waits == [0.0, 12.0, 0.0]
+    assert "snapshot" not in presenter.calls
+
+
+def test_join_wakes_shared_stop_during_long_dwell():
+    presenter = Presenter()
+    worker = PlaybackWorker(
+        None,
+        presenter,
+        Event(),
+        planner=Planner([PlanResult(PlanStatus.READY, step())]),
+        configuration=Configuration(default=86400),
+    )
+    worker.start()
+    assert presenter.entered.wait(2)
+    worker.stop_event.set()
+    worker.join()
+    assert worker.status.state == "stopped"
+
+
+def test_uncooperative_operation_reports_fatal_join_timeout(monkeypatch):
+    from postcardscene.runtime import playback
+
+    presenter = Presenter()
+    release = Event()
+
+    def show(*args, **kwargs):
+        presenter.entered.set()
+        release.wait(2)
+        return ContentSnapshot()
+
+    presenter.show = show
+    worker = make_worker(presenter)
+    monkeypatch.setattr(playback, "JOIN_SECONDS", 0.02)
+    worker.start()
+    assert presenter.entered.wait(2)
+    try:
+        with pytest.raises(RuntimeError, match="shutdown_timeout"):
+            worker.join()
+        assert worker.status.state == "error"
+        assert worker.stop_event.is_set()
+    finally:
+        release.set()
+        worker.thread.join(2)
+    assert not worker.thread.is_alive()
+    assert worker.failure == "shutdown_timeout"
