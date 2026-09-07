@@ -1,19 +1,34 @@
 """Typed appliance settings, owned by explicit short database transactions."""
 
+from dataclasses import dataclass
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from sqlalchemy import CheckConstraint, String
+from sqlalchemy import CheckConstraint, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column
 
-from postcardscene.persistence import Base, DatabaseError
+from postcardscene.domain import Sequence
+from postcardscene.persistence import Base, Database, DatabaseError
 
 
 class ApplicationSettings(Base):
     __tablename__ = "application_settings"
-    __table_args__ = (CheckConstraint("id = 1", name="single_settings"),)
+    __table_args__ = (
+        CheckConstraint("id = 1", name="single_settings"),
+        CheckConstraint(
+            "typeof(default_scene_dwell_seconds) = 'integer' AND "
+            "default_scene_dwell_seconds BETWEEN 1 AND 86400",
+            name="default_scene_dwell_range",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     timezone: Mapped[str] = mapped_column(String(255))
+    active_sequence_id: Mapped[int | None] = mapped_column(
+        ForeignKey("sequence.id", ondelete="SET NULL")
+    )
+    default_scene_dwell_seconds: Mapped[int] = mapped_column(
+        default=30, server_default="30"
+    )
 
 
 def validate_timezone(value: str) -> None:
@@ -43,3 +58,45 @@ def set_timezone(database, value: str) -> None:
         if settings is None:
             raise DatabaseError("Application settings row is missing.")
         settings.timezone = value
+
+
+@dataclass(frozen=True)
+class PlaybackSettings:
+    active_sequence_id: int | None
+    default_scene_dwell_seconds: int
+
+
+def read_playback_settings(session) -> PlaybackSettings:
+    """Detach settings within a caller-owned short snapshot transaction."""
+    row = session.get(ApplicationSettings, 1)
+    if row is None:
+        raise DatabaseError("Application settings row is missing.")
+    if (
+        type(row.default_scene_dwell_seconds) is not int
+        or not 1 <= row.default_scene_dwell_seconds <= 86400
+    ):
+        raise DatabaseError("Application playback settings are damaged.")
+    return PlaybackSettings(row.active_sequence_id, row.default_scene_dwell_seconds)
+
+
+def get_playback_settings(database: Database) -> PlaybackSettings:
+    with database.transaction() as session:
+        return read_playback_settings(session)
+
+
+def set_active_sequence(database: Database, value: int | None) -> None:
+    if value is not None and (type(value) is not int or not 1 <= value <= 2**63 - 1):
+        raise ValueError("Sequence identity must be a positive SQLite integer or None.")
+    with database.transaction(write=True) as session:
+        read_playback_settings(session)
+        if value is not None and session.get(Sequence, value) is None:
+            raise ValueError("Sequence does not exist.")
+        session.get(ApplicationSettings, 1).active_sequence_id = value
+
+
+def set_default_scene_dwell(database: Database, value: int) -> None:
+    if type(value) is not int or not 1 <= value <= 86400:
+        raise ValueError("Default dwell must be an integer from 1 to 86400 seconds.")
+    with database.transaction(write=True) as session:
+        read_playback_settings(session)
+        session.get(ApplicationSettings, 1).default_scene_dwell_seconds = value

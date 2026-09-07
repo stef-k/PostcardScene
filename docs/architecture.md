@@ -368,7 +368,7 @@ Duration is `None` (no fixed Scene dwell) or an integer 1–86400; booleans are
 rejected. Runtime/content completion, timers, Sequence overrides (#20), and
 operating hours (#9) remain separate concerns.
 
-The complete V0 layout vocabulary and canonical region positions are:
+The persisted layout vocabulary and canonical region positions are:
 
 | Layout | Regions in position order (starting at 0) |
 | --- | --- |
@@ -1025,6 +1025,56 @@ Audio is explicit appliance state rather than an accidental mpv default. The sys
 No orphan audio may continue after a scene transition, player restart, or scheduled display-off state.
 
 ## 9. Scene/sequence runtime behavior
+
+### Active playback configuration (#87)
+
+Migration `0009_playback_settings` follows `0008_catalog_requests`, preserves
+existing configuration/catalog rows, and adds two singleton settings:
+`active_sequence_id = NULL` and `default_scene_dwell_seconds = 30`.
+Apply it explicitly with database users stopped; startup never migrates.
+
+The nullable active Sequence FK is the sole selection authority. `None` means
+intentional safe idle, with no guessing from names, IDs, enabled state or order.
+An existing disabled Sequence may be selected and remains temporarily ineligible
+until re-enabled. Deleting the selected Sequence sets only the pointer to NULL
+and deletes its owned memberships, preserving unrelated composition.
+
+Ordinary Python callers use `settings.get_playback_settings`,
+`set_active_sequence` and `set_default_scene_dwell`. Setters validate before
+mutation in short write transactions; invalid input raises `ValueError`, while
+schema/storage failures retain their separate database exceptions. Default dwell
+is an integer 1–86400, never bool. No per-Widget dwell is introduced.
+
+Progression duration precedence is membership `duration_override_seconds`, then
+Scene `duration_seconds`, then application default dwell for image/portrait-pair
+and web content. Untimed video uses natural EOF; explicitly timed video advances
+at EOF or the dwell deadline, whichever occurs first. This normal progression
+policy is distinct from #10 maximum-static-dwell/panel protection. #87 freezes
+configuration semantics only; later #8 children execute timers and completion.
+
+`playback_configuration.resolve_active_sequence(database, membership_id=...)`
+returns frozen settings, Sequence and ordered membership records, optionally
+including that membership's Scene and canonical Widget ID. One short read
+transaction covers the entire result and closes before return. Eligibility
+separates intentional idle, missing/disabled/damaged Sequence, missing/disabled
+Scene, unsupported layout, and malformed occurrence/placement configuration.
+A stale or foreign membership never selects another occurrence. Storage errors
+propagate separately. Content-specific Widget/Source resolution stays with
+#56/#71/#82; these snapshots neither select media nor authorize rendering.
+
+V0 executes only `single` Scenes through #65's one active content surface.
+A `portrait_image_pair` Widget in the `main` region satisfies side-by-side
+portraits. Persisted `split_vertical` and `split_horizontal` remain valid,
+round-trip configuration for V1 rich composition, but return unsupported-layout
+eligibility in V0; they are never silently converted to single content.
+
+Settings/configuration are reread at display-step boundaries, without DB
+notifications or IPC. Restart creates a new transient epoch: ordered playback
+later starts at the first currently eligible membership and shuffle creates a
+fresh in-memory epoch. No cursor, history, random seed or current media identity
+is persisted. Active selection and dwell UI belong to later #8 children.
+
+### Transient execution ownership
 
 The runtime executes the composition model and owns transient playback state.
 

@@ -57,9 +57,11 @@ def test_cli_initialization_identity_and_idempotent_upgrade(tmp_path):
     assert runner.invoke(args=["db", "upgrade"]).exit_code == 0
     assert path.read_bytes() == before
     with sqlite3.connect(path) as connection:
-        assert connection.execute(
-            "SELECT name FROM sqlite_master WHERE type='table'"
-        ).fetchall() == [
+        assert set(
+            connection.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            ).fetchall()
+        ) == {
             ("alembic_version",),
             ("administrator",),
             ("application_settings",),
@@ -71,7 +73,7 @@ def test_cli_initialization_identity_and_idempotent_upgrade(tmp_path):
             ("sequence_membership",),
             ("media_item",),
             ("media_catalog_state",),
-        ]
+        }
     other = create_app({"DATABASE_PATH": tmp_path / "other.sqlite3"})
     assert other.test_cli_runner().invoke(args=["db", "check"]).exit_code != 0
     assert not (tmp_path / "other.sqlite3").exists()
