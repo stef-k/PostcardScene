@@ -101,6 +101,8 @@ for line in f:
                 "mute": muted, "volume": volume}[command[1]]
         if mode == "unknown-duration" and command[1] == "duration":
             error = "property unavailable"
+        if mode == "bad-audio" and command[1] == "volume":
+            data = 101
         if mode == "invalid-numbers" and command[1] in ("duration", "time-pos"):
             data = float("nan")
     elif command[0] == "set_property":
@@ -132,7 +134,13 @@ for line in f:
     )
     controller = MpvController(session, (sys.executable, str(script)))
 
-    def prepare(mode, *, configuration=None):
+    def prepare(mode, *, configuration=None, audio_device=None):
+        nonlocal controller
+        if audio_device is not None:
+            controller.stop()
+            controller = MpvController(
+                session, (sys.executable, str(script)), audio_device=audio_device
+            )
         path = tmp_path / "video"
         path.write_text(mode)
         info = path.stat()
@@ -196,7 +204,7 @@ def test_eof_is_completion_without_reloading(player):
     ],
 )
 def test_load_failures_retire_authority(player, mode, reason):
-    controller = player(mode)
+    controller = player(mode, configuration={"audio_enabled": True})
     with pytest.raises(PlaybackError, match=reason):
         controller.ensure_started(timeout_seconds=0.3)
     assert controller.status.reason == reason
@@ -205,20 +213,22 @@ def test_load_failures_retire_authority(player, mode, reason):
 
 
 def test_cancel_and_crash(player):
-    controller = player("timeout")
+    controller = player("timeout", configuration={"audio_enabled": True})
     start = time.monotonic()
     with pytest.raises(PlaybackError, match="cancelled"):
         controller.ensure_started(cancelled=lambda: time.monotonic() - start > 0.1)
     assert controller._child is None
     controller.stop()
-    player("crash").ensure_started(timeout_seconds=1)
+    player("crash", configuration={"audio_enabled": True}).ensure_started(
+        timeout_seconds=1
+    )
     time.sleep(0.2)
     assert controller.status.state == "failed"
     assert controller._child is None
 
 
 def test_cleanup_failure_retains_child_for_retry(player, monkeypatch):
-    controller = player("playing")
+    controller = player("playing", configuration={"audio_enabled": True})
     controller.ensure_started(timeout_seconds=1)
     child = controller._child
     wait = child.wait
@@ -231,6 +241,7 @@ def test_cleanup_failure_retains_child_for_retry(player, monkeypatch):
         controller.stop()
     assert error.value.cleanup_failed
     assert controller.status.cleanup_failed
+    assert controller.snapshot().audio.reason == "cleanup_failed"
     assert controller._child is child
     with pytest.raises(PlaybackError):
         controller.prepare(0)
@@ -388,13 +399,14 @@ def test_eof_during_snapshot_and_inactive_control(player):
         controller.seek_relative(1)
 
 
-def test_stop_cancels_pending_control(player):
+@pytest.mark.parametrize("operation", ["pause", "unmute"])
+def test_stop_cancels_pending_control(player, operation):
     from concurrent.futures import ThreadPoolExecutor
 
-    controller = player("control-timeout")
+    controller = player("control-timeout", configuration={"audio_enabled": True})
     controller.ensure_started(timeout_seconds=1)
     with ThreadPoolExecutor() as pool:
-        pending = pool.submit(controller.pause)
+        pending = pool.submit(getattr(controller, operation))
         time.sleep(0.05)
         controller.stop()
         with pytest.raises(PlaybackError, match="cancelled"):
@@ -514,3 +526,45 @@ def test_unavailable_audio_preserves_silent_video(player, mode, enabled, reason)
 def test_invalid_audio_device(device):
     with pytest.raises(PlaybackError, match="invalid_audio_device"):
         MpvController(None, (sys.executable,), audio_device=device)
+
+
+@pytest.mark.parametrize("device", ["auto", "alsa/hdmi:CARD=Test,DEV=0"])
+def test_intended_device_is_one_literal_argument(player, monkeypatch, device):
+    launch = subprocess.Popen
+    captured = []
+
+    def capture(argv, **kwargs):
+        captured.append(argv)
+        assert kwargs["shell"] is False
+        return launch(argv, **kwargs)
+
+    monkeypatch.setattr(subprocess, "Popen", capture)
+    controller = player(
+        "playing", configuration={"audio_enabled": True}, audio_device=device
+    )
+    controller.ensure_started(timeout_seconds=1)
+    assert [arg for arg in captured[0] if arg.startswith("--audio-device=")] == [
+        f"--audio-device={device}"
+    ]
+    state = controller.snapshot().audio
+    assert state.device_policy == ("auto" if device == "auto" else "explicit")
+    assert device == "auto" or device not in repr(state)
+
+
+def test_invalid_audio_policy_does_not_take_fd_ownership(player):
+    controller = player("playing")
+    controller.stop()
+    with pytest.raises(PlaybackError, match="invalid_audio_policy"):
+        controller.prepare(0, configuration={"audio_enabled": 1})
+    assert controller.status.state == "stopped" and controller._media is None
+
+
+def test_malformed_audio_state_retires_player(player):
+    controller = player("bad-audio", configuration={"audio_enabled": True})
+    controller.ensure_started(timeout_seconds=1)
+    child = controller._child
+    with pytest.raises(PlaybackError, match="protocol_failed"):
+        controller.unmute()
+    assert child.returncode is not None
+    assert controller.snapshot().state == "failed"
+    assert not controller.snapshot().audio.available
