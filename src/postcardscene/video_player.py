@@ -91,6 +91,7 @@ class MpvController:
     def __init__(self, session, command):
         self._lock = threading.RLock()
         self._retiring = threading.Event()
+        self._generation = 0
         self._request_id = 1
         self._pending = None
         self._response = None
@@ -172,25 +173,35 @@ class MpvController:
             raise failure from None
 
     @contextmanager
-    def _control(self, timeout_seconds, cancelled):
-        deadline = Deadline(
-            timeout_seconds,
-            lambda: self._retiring.is_set() or bool(cancelled and cancelled()),
-        )
+    def _control(self, timeout_seconds, cancelled, *, allow_retired=False):
+        generation = self._generation
         acquired = False
         try:
+            deadline = Deadline(
+                timeout_seconds,
+                lambda: (
+                    (self._retiring.is_set() and not allow_retired)
+                    or generation != self._generation
+                    or bool(cancelled and cancelled())
+                ),
+            )
             while not acquired:
                 acquired = self._lock.acquire(timeout=deadline.check())
             deadline.check()
             yield deadline
         except CapabilityError as error:
             failure = PlaybackError(error.reason)
-            if acquired and error.reason in (
-                "timeout",
-                "cancelled",
-                "protocol_failed",
-                "process_exited",
-                "load_failed",
+            if (
+                acquired
+                and generation == self._generation
+                and error.reason
+                in (
+                    "timeout",
+                    "cancelled",
+                    "protocol_failed",
+                    "process_exited",
+                    "load_failed",
+                )
             ):
                 self._fail(failure)
             raise failure from None
@@ -266,9 +277,7 @@ class MpvController:
         )
 
     def snapshot(self, *, timeout_seconds=1, cancelled=None):
-        if self._state not in ("playing", "paused"):
-            return PlaybackSnapshot(self._state, self._reason, self._cleanup_failed)
-        with self._control(timeout_seconds, cancelled) as deadline:
+        with self._control(timeout_seconds, cancelled, allow_retired=True) as deadline:
             return self._snapshot(deadline)
 
     def _pause(self, paused, timeout_seconds, cancelled):
@@ -433,6 +442,7 @@ class MpvController:
         self._reason = error.reason
 
     def stop(self):
+        self._generation += 1
         self._retiring.set()
         with self._lock:
             self._stop()

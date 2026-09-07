@@ -947,7 +947,9 @@ All operations share the controller lock and correlated private IPC owner. The
 one-second default deadline covers each complete control operation, including lock
 acquisition and snapshot refresh; callers may supply a finite timeout up to 60 seconds
 and cancellation callback. Stop signals cancellation before acquiring the lock.
-Timeout, cancellation and protocol/process failures retire the child through #73;
+Timeout, cancellation and protocol/process failures during IPC retire the child through #73;
+cancellation before lock acquisition sends nothing and leaves cleanup to the owner.
+Retirement invalidates queued commands even if the controller is reused.
 mpv command rejection raises `PlaybackError("command_failed")` without restarting.
 Invalid seeks and unavailable capabilities also leave the player intact. Inactive
 controls raise `not_active`, or `cancelled` after retirement; terminal snapshots remain

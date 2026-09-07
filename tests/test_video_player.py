@@ -373,3 +373,29 @@ def test_stop_cancels_pending_control(player):
             pending.result(timeout=1)
     assert controller.snapshot().state == "stopped"
     assert controller._child is None
+
+
+def test_concurrent_controls_share_one_ipc_owner(player):
+    from concurrent.futures import ThreadPoolExecutor
+
+    controller = player("playing")
+    controller.ensure_started(timeout_seconds=1)
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        results = list(pool.map(lambda _: controller.seek_relative(1), range(8)))
+    assert sorted(state.position_seconds for state in results) == [
+        13.5 + index for index in range(8)
+    ]
+    assert controller.snapshot().position_seconds == 20.5
+
+
+def test_precommand_cancellation_leaves_retirement_to_owner(player):
+    controller = player("playing")
+    controller.ensure_started(timeout_seconds=1)
+    with pytest.raises(PlaybackError, match="cancelled"):
+        controller.resume(cancelled=lambda: True)
+    assert controller.snapshot().state == "playing"
+    # Cancellation before lock acquisition sends nothing and leaves cleanup to owner.
+    controller.stop()
+    with pytest.raises(PlaybackError, match="cancelled"):
+        controller.pause()
+    assert controller.snapshot().state == "stopped"
