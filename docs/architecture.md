@@ -1072,7 +1072,7 @@ Settings/configuration are reread at display-step boundaries, without DB
 notifications or IPC. Restart creates a new transient epoch: ordered playback
 later starts at the first currently eligible membership and shuffle creates a
 fresh in-memory epoch. No cursor, history, random seed or current media identity
-is persisted. Active selection and dwell UI belong to later #8 children.
+is persisted. #91 exposes active selection and dwell in authenticated Settings.
 
 ### Bounded display-step planner (#88)
 
@@ -1690,6 +1690,15 @@ non-executable in V0, reject edits, and retain restrictive deletion. Disabling
 preserves references and related state. These DB-only pages perform no content
 probes, catalog requests, rendering, Sequence editing or runtime commands and add
 no schema. See the [composition guide](composition.md) for the operator workflow.
+
+Issue #91 adds authenticated Sequence forms with complete domain membership
+replacement, repeated occurrences, and server-rendered draft Add/Remove/Move
+controls. New membership choices are single Scenes, including disabled Scenes;
+existing splits stay visible and must be explicitly replaced or removed before
+saving. Settings exposes explicit active Sequence/Idle and fallback dwell through
+separate POST/CSRF forms using #87 typed setters. Active Sequence deletion clears
+selection through the existing FK. These operations are DB-only, with no schema,
+transient playback persistence or runtime IPC; #92/#93 retain controls/integration.
 
 ## 21. Authentication, network exposure, and secrets
 

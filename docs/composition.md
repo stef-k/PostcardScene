@@ -5,9 +5,10 @@ where content comes from; a Widget defines how that content is presented; a Scen
 places a Widget on the display; a Sequence orders Scenes and controls progression.
 
 The authenticated control interface currently manages Sources, all four V0 Widget
-kinds, and single Scenes. Sequence editing, active playback selection and playback
-controls are not available in this UI yet. Saving these forms configures durable
-state; it does not start playback, preview content or test content availability.
+kinds, single Scenes, Sequences and active playback selection. Saving these forms
+configures durable state; it does not start playback, preview content or test
+content availability. Actual playback integration (#93) and on-display controls
+(#92) remain separate, unfinished work.
 
 ## Configure a Widget
 
@@ -54,11 +55,57 @@ precedence over Scene duration. Without either, images/portrait pairs/web use th
 application default dwell (initially 30 seconds), while video uses natural
 completion. Explicitly timed video finishes at end of file or the duration limit,
 whichever comes first. This is progression timing, not panel/burn-in protection;
-these forms do not activate a runtime or expose Sequence/default-dwell settings.
+these forms do not activate a runtime. Configure fallback dwell in Settings.
 
 Existing `split_vertical` and `split_horizontal` Scenes remain intact and are
 listed as **Not executable in V0 — reserved for future composition**. There is no
 split editor or automatic conversion. Create a single Scene for V0 instead.
+
+## Configure a Sequence
+
+Open **Sequences → Add Sequence**. Enter a name, choose **Ordered** or **Shuffle**,
+and add at least one single Scene occurrence. Ordered follows the configured
+occurrence order; Shuffle varies the occurrence order during playback without
+rewriting configuration. Neither mode saves a playback cursor, shuffle seed or
+history. Disabled single Scenes remain selectable and are marked **Disabled**.
+
+The same Scene can appear repeatedly. Each row is a separate occurrence with its
+own position and optional duration override; adding a duplicate never merges rows.
+Use **Add occurrence**, **Remove occurrence**, **Move Up** and **Move Down** to
+prepare the draft, then **Save Sequence** to save all fields and the complete
+ordered list together. The ordering buttons do not save; **Cancel** discards the
+draft. No dragging or JavaScript is required. Each save may replace occurrence
+identities; identities remain stable between saved configuration changes.
+
+Leave an occurrence's duration override blank to defer to Scene timing, or enter
+**1–86400** seconds. Timing precedence is **membership override → Scene duration →
+default image/portrait-pair/web dwell or natural video completion**. An override
+does not change the reusable Scene's duration. Timed video may finish sooner at
+end of file.
+
+Split layouts cannot be selected as new V0 memberships. Existing split occurrences
+remain visible on the list and in their original edit rows, marked **Not executable
+in V0**. They are reserved for future composition. To save an edited Sequence,
+explicitly remove or replace every unsupported occurrence with a single Scene;
+opening, moving or cancelling the draft never drops or converts stored rows.
+
+## Select active playback and fallback dwell
+
+In **Settings**, choose an **Active Sequence** and **Save active selection**, or
+choose **None / Idle** to intentionally select no playback. There is no automatic
+first-Sequence fallback. A disabled Sequence may remain selected, but is ineligible
+until re-enabled; disabling does not erase selection or its occurrences.
+
+Set **Fallback Scene dwell in seconds** with **Save fallback dwell**. Its default
+is **30 seconds**, and accepted values are integers **1–86400**. It applies only
+to otherwise untimed image, portrait-pair and web Scenes, not untimed video. This
+normal progression setting is separate from panel-protection/static-dwell safety.
+Each Settings button saves only its own setting.
+
+The playback worker consumes active/composition changes at its next display-step
+or bounded idle reevaluation. Configuration saves do not send commands to the
+runtime or launch/stop Chromium, mpv or media; they do not promise an instant
+on-screen change. Real content wiring remains #93's responsibility.
 
 ## Disable and delete
 
@@ -68,10 +115,13 @@ Widgets or Sequence memberships.
 
 A Widget referenced by any Scene cannot be deleted. A Scene referenced by any
 Sequence cannot be deleted, even when the referring object is disabled. Remove or
-reassign the reference first. Sequence membership editing is not yet available in
-the control UI, so a blocked Sequence reference remains blocked here.
+reassign the reference first using the owning Scene or Sequence edit form.
 
 Unreferenced single Scenes can be deleted from their edit page. Future split
 Scenes have a delete action on the list, subject to the same restriction. Deleting
 a Scene removes only its placements; deleting a Widget preserves its Source and
 media catalog. Neither action deletes original media.
+
+Deleting a Sequence deletes only that Sequence and its owned occurrences. Scenes,
+Widgets, Sources and media are preserved. Deleting the active Sequence clears
+selection to **None / Idle**; no replacement Sequence is chosen.

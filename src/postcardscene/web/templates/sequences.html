@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Sequences{% endblock %}
+{% block content %}
+<div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4">
+  <h1 class="mb-0">Sequences</h1><a class="btn btn-primary" href="{{ url_for('sequences.edit') }}">Add Sequence</a>
+</div>
+{% for category, message in get_flashed_messages(with_categories=true) %}<p class="alert alert-{{ category }}" role="status">{{ message }}</p>{% endfor %}
+<p>Manage ordered or shuffled Scene occurrences. Choose the active Sequence or None / Idle in <a href="{{ url_for('settings.index') }}">Settings</a>. Saving configuration does not start or preview playback.</p>
+{% if active is none %}<p>Active selection: None / Idle.</p>{% endif %}
+<div class="row g-4">
+{% for sequence in sequences %}
+<div class="col-12 col-xl-6"><section class="card h-100" aria-labelledby="sequence-{{ sequence.id }}"><div class="card-body p-4">
+  <h2 id="sequence-{{ sequence.id }}" class="h4 text-break">{{ sequence.name }}</h2>
+  <p>{{ sequence.mode }} · {{ 'Enabled' if sequence.enabled else 'Disabled' }}{% if active == sequence.id %} · Active selection{% endif %}</p>
+  <ol>
+  {% for row in sequence.occurrences %}
+    <li class="text-break">{{ row.name }} · {{ 'Enabled' if row.enabled else 'Disabled' }} · Override: {{ (row.duration_override_seconds ~ ' seconds') if row.duration_override_seconds is not none else 'None (use Scene/default timing)' }}
+    {% if row.layout != 'single' %}<p class="text-warning">{{ row.layout }} — Not executable in V0 — reserved for future composition.</p>{% endif %}</li>
+  {% endfor %}
+  </ol>
+  <a class="btn btn-outline-primary" href="{{ url_for('sequences.edit', sequence_id=sequence.id) }}" aria-label="Edit {{ sequence.name }}">Edit</a>
+</div></section></div>
+{% else %}<p>No Sequences configured. <a href="{{ url_for('scenes.index') }}">Create a single Scene</a>, then add a Sequence.</p>{% endfor %}
+</div>
+{% endblock %}

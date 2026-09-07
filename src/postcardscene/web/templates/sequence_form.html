@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% from "composition_fields.html" import field, checkbox %}
+{% block title %}{{ 'Edit' if sequence_id else 'Add' }} Sequence{% endblock %}
+{% block content %}
+<div class="row"><div class="col-lg-10">
+<h1 class="mb-4">{{ 'Edit' if sequence_id else 'Add' }} Sequence</h1>
+{% if error %}<p class="alert alert-danger" role="alert">{{ error }}</p>{% endif %}
+<p>Add, remove and move occurrences in this draft, then choose Save Sequence to persist the complete order. Cancel discards the draft. Repeated Scenes are separate occurrences.</p>
+<p>Only single Scenes can be saved here. Existing split occurrences are reserved for future composition: explicitly replace or remove them before saving. Disabled single Scenes remain valid choices.</p>
+<form method="post" class="card mb-4"><div class="card-body p-4">
+  {{ form.hidden_tag() }}
+  {{ field(form.name) }}
+  {{ field(form.mode) }}
+  {{ checkbox(form.enabled) }}
+  <p>Ordered follows the configured occurrence order; Shuffle varies playback order without changing this list.</p>
+  <p>Blank override uses Scene duration, then default image/web dwell or natural video completion. Overrides accept 1–86400 seconds. Timed video can finish earlier at end of file.</p>
+  {% for entry in form.occurrences %}
+  <fieldset class="border rounded p-3 mb-3">
+    <legend class="float-none w-auto fs-5 px-2">Occurrence {{ loop.index }}</legend>
+    {{ field(entry.scene_id) }}
+    {{ field(entry.duration_override_seconds) }}
+    <div class="d-flex flex-wrap gap-2">
+      <button class="btn btn-outline-secondary" name="action" value="up:{{ loop.index0 }}" type="submit" formnovalidate aria-label="Move occurrence {{ loop.index }} up"{% if loop.first %} disabled{% endif %}>Move Up</button>
+      <button class="btn btn-outline-secondary" name="action" value="down:{{ loop.index0 }}" type="submit" formnovalidate aria-label="Move occurrence {{ loop.index }} down"{% if loop.last %} disabled{% endif %}>Move Down</button>
+      <button class="btn btn-outline-danger" name="action" value="remove:{{ loop.index0 }}" type="submit" formnovalidate aria-label="Remove occurrence {{ loop.index }}">Remove occurrence</button>
+    </div>
+  </fieldset>
+  {% else %}<p role="status">No occurrences. Add at least one single Scene before saving.</p>{% endfor %}
+  <div class="d-flex flex-wrap gap-3">
+    <button class="btn btn-outline-primary" name="action" value="add" type="submit" formnovalidate>Add occurrence</button>
+    <button class="btn btn-primary" name="action" value="save" type="submit">Save Sequence</button>
+    <a class="btn btn-outline-secondary" href="{{ url_for('sequences.index') }}">Cancel</a>
+  </div>
+</div></form>
+{% if sequence_id %}
+<section class="card border-danger"><div class="card-body p-4">
+  <h2 class="h4">Delete Sequence</h2>
+  <p id="delete-warning">Deletes only this Sequence and its occurrences. Scenes, Widgets and Sources are preserved. If active, selection becomes None / Idle; no other Sequence is selected. Disable above to preserve configuration.</p>
+  <form method="post" action="{{ url_for('sequences.delete', sequence_id=sequence_id) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button class="btn btn-outline-danger" type="submit" aria-describedby="delete-warning">Delete Sequence</button>
+  </form>
+</div></section>
+{% endif %}
+</div></div>
+{% endblock %}
