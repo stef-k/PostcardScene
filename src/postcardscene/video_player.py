@@ -2,13 +2,16 @@
 
 import fcntl
 import json
+import math
 import os
 import select
 import signal
 import socket
 import stat
 import subprocess
+import threading
 import time
+from contextlib import contextmanager
 from dataclasses import dataclass
 
 from postcardscene.graphics._capability import (
@@ -21,6 +24,26 @@ from postcardscene.graphics._capability import (
 
 class PlaybackError(CapabilityError):
     """Fixed playback reason compatible with ContentSurfaces cleanup."""
+
+
+@dataclass(frozen=True)
+class PlaybackSnapshot:
+    state: str
+    reason: str
+    cleanup_failed: bool
+    position_seconds: float | None = None
+    duration_seconds: float | None = None
+    seekable: bool = False
+    absolute_seekable: bool = False
+
+
+def _seconds(value):
+    if type(value) not in (int, float):
+        return None
+    try:
+        return float(value) if math.isfinite(value) and value >= 0 else None
+    except OverflowError:
+        return None
 
 
 @dataclass(frozen=True)
@@ -66,6 +89,12 @@ class MpvController:
     """
 
     def __init__(self, session, command):
+        self._lock = threading.RLock()
+        self._retiring = threading.Event()
+        self._generation = 0
+        self._request_id = 1
+        self._pending = None
+        self._response = None
         self.session = session
         self.command = command_words(command)
         self._media = None
@@ -78,6 +107,11 @@ class MpvController:
         self._acknowledged = False
 
     def prepare(self, descriptor):
+        with self._lock:
+            self._prepare(descriptor)
+            self._retiring.clear()
+
+    def _prepare(self, descriptor):
         if self._state != "stopped" or self._child is not None:
             raise PlaybackError("already_owned")
         try:
@@ -94,7 +128,11 @@ class MpvController:
 
     @property
     def status(self):
-        if self._state == "playing":
+        with self._lock:
+            return self._status()
+
+    def _status(self):
+        if self._state in ("playing", "paused"):
             try:
                 self._poll(0)
             except PlaybackError as error:
@@ -104,10 +142,19 @@ class MpvController:
         return PlaybackStatus(self._state, self._reason, self._cleanup_failed)
 
     def ensure_started(self, *, timeout_seconds=10, cancelled=None):
+        with self._lock:
+            self._ensure_started(
+                timeout_seconds=timeout_seconds,
+                cancelled=lambda: (
+                    self._retiring.is_set() or bool(cancelled and cancelled())
+                ),
+            )
+
+    def _ensure_started(self, *, timeout_seconds, cancelled):
         try:
             deadline = Deadline(timeout_seconds, cancelled)
             deadline.check()
-            if self._state in ("playing", "ended"):
+            if self._state in ("playing", "paused", "ended"):
                 if self.status.state == "failed":
                     raise PlaybackError(self._reason)
                 return
@@ -124,6 +171,153 @@ class MpvController:
             failure = PlaybackError("startup_failed")
             self._fail(failure)
             raise failure from None
+
+    @contextmanager
+    def _control(self, timeout_seconds, cancelled, *, allow_retired=False):
+        generation = self._generation
+        acquired = False
+        try:
+            deadline = Deadline(
+                timeout_seconds,
+                lambda: (
+                    (self._retiring.is_set() and not allow_retired)
+                    or generation != self._generation
+                    or bool(cancelled and cancelled())
+                ),
+            )
+            while not acquired:
+                acquired = self._lock.acquire(timeout=deadline.check())
+            deadline.check()
+            yield deadline
+        except CapabilityError as error:
+            failure = PlaybackError(error.reason)
+            if (
+                acquired
+                and generation == self._generation
+                and error.reason
+                in (
+                    "timeout",
+                    "cancelled",
+                    "protocol_failed",
+                    "process_exited",
+                    "load_failed",
+                )
+            ):
+                self._fail(failure)
+            raise failure from None
+        except OSError:
+            failure = PlaybackError("protocol_failed")
+            if acquired:
+                self._fail(failure)
+            raise failure from None
+        finally:
+            if acquired:
+                self._lock.release()
+
+    def _active(self):
+        if self._state not in ("playing", "paused"):
+            raise PlaybackError("not_active")
+
+    def _request(self, command, deadline, *, property_read=False):
+        deadline.check()
+        self._active()
+        self._request_id += 1
+        self._pending = self._request_id
+        self._response = None
+        data = (
+            json.dumps({"command": command, "request_id": self._pending}).encode()
+            + b"\n"
+        )
+        while data:
+            wait = deadline.check()
+            if select.select([], [self._ipc], [], wait)[1]:
+                sent = self._ipc.send(data)
+                if not sent:
+                    raise PlaybackError("protocol_failed")
+                data = data[sent:]
+        while self._response is None:
+            self._poll(deadline.check())
+            if self._state == "ended":
+                raise PlaybackError("not_active")
+        deadline.check()
+        response = self._response
+        self._pending = self._response = None
+        if response["error"] == "property unavailable" and property_read:
+            return None
+        if response["error"] != "success":
+            raise PlaybackError("command_failed")
+        return response.get("data")
+
+    def _snapshot(self, deadline):
+        if self._state not in ("playing", "paused"):
+            return PlaybackSnapshot(self._state, self._reason, self._cleanup_failed)
+        values = {}
+        try:
+            for name in ("pause", "time-pos", "duration", "seekable"):
+                values[name] = self._request(
+                    ["get_property", name], deadline, property_read=True
+                )
+        except PlaybackError as error:
+            if error.reason != "not_active" or self._state != "ended":
+                raise
+            return PlaybackSnapshot(self._state, self._reason, self._cleanup_failed)
+        if type(values["pause"]) is not bool:
+            raise PlaybackError("protocol_failed")
+        self._state = self._reason = "paused" if values["pause"] else "playing"
+        duration = _seconds(values["duration"])
+        seekable = values["seekable"] is True
+        return PlaybackSnapshot(
+            self._state,
+            self._reason,
+            self._cleanup_failed,
+            _seconds(values["time-pos"]),
+            duration,
+            seekable,
+            seekable and duration is not None and duration > 0,
+        )
+
+    def snapshot(self, *, timeout_seconds=1, cancelled=None):
+        with self._control(timeout_seconds, cancelled, allow_retired=True) as deadline:
+            return self._snapshot(deadline)
+
+    def _pause(self, paused, timeout_seconds, cancelled):
+        with self._control(timeout_seconds, cancelled) as deadline:
+            self._request(["set_property", "pause", paused], deadline)
+            return self._snapshot(deadline)
+
+    def pause(self, *, timeout_seconds=1, cancelled=None):
+        return self._pause(True, timeout_seconds, cancelled)
+
+    def resume(self, *, timeout_seconds=1, cancelled=None):
+        return self._pause(False, timeout_seconds, cancelled)
+
+    def _seek(self, seconds, absolute, timeout_seconds, cancelled):
+        if type(seconds) not in (int, float):
+            raise PlaybackError("invalid_seek")
+        try:
+            valid = math.isfinite(seconds) and (
+                seconds >= 0 if absolute else abs(seconds) <= 3600
+            )
+        except OverflowError:
+            valid = False
+        if not valid:
+            raise PlaybackError("invalid_seek")
+        with self._control(timeout_seconds, cancelled) as deadline:
+            state = self._snapshot(deadline)
+            self._active()
+            if not state.seekable or (absolute and not state.absolute_seekable):
+                raise PlaybackError("seek_unavailable")
+            if absolute and seconds > state.duration_seconds:
+                raise PlaybackError("invalid_seek")
+            mode = "absolute+keyframes" if absolute else "relative+keyframes"
+            self._request(["seek", seconds, mode], deadline)
+            return self._snapshot(deadline)
+
+    def seek_relative(self, seconds, *, timeout_seconds=1, cancelled=None):
+        return self._seek(seconds, False, timeout_seconds, cancelled)
+
+    def seek_absolute(self, seconds, *, timeout_seconds=1, cancelled=None):
+        return self._seek(seconds, True, timeout_seconds, cancelled)
 
     def _launch(self, environment):
         parent, child = socket.socketpair()
@@ -190,6 +384,16 @@ class MpvController:
                 raise ValueError
         except (ValueError, UnicodeError, RecursionError):
             raise PlaybackError("protocol_failed") from None
+        if "request_id" in message and self._acknowledged:
+            if (
+                type(message["request_id"]) is not int
+                or message["request_id"] != self._pending
+                or not isinstance(message.get("error"), str)
+                or self._response is not None
+            ):
+                raise PlaybackError("protocol_failed")
+            self._response = message
+            return
         if "request_id" in message:
             if (
                 type(message["request_id"]) is not int
@@ -205,7 +409,10 @@ class MpvController:
         if event == "file-loaded" and self._state == "starting":
             self._state = self._reason = "playing"
         elif event == "end-file":
-            if message.get("reason") != "eof" or self._state != "playing":
+            if message.get("reason") != "eof" or self._state not in (
+                "playing",
+                "paused",
+            ):
                 raise PlaybackError("load_failed")
             self._state = self._reason = "ended"
         elif event not in (
@@ -235,12 +442,19 @@ class MpvController:
         self._reason = error.reason
 
     def stop(self):
+        self._generation += 1
+        self._retiring.set()
+        with self._lock:
+            self._stop()
+
+    def _stop(self):
         if self._media is not None:
             os.close(self._media)
             self._media = None
         if self._ipc is not None:
             self._ipc.close()
             self._ipc = None
+        self._pending = self._response = None
         self._buffer.clear()
         self._acknowledged = False
         if self._child is not None:
