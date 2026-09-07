@@ -410,8 +410,15 @@ Stop retires prepared/active authority with bounded group TERM/KILL. A retained
 I/O stalls); do not activate replacement content until retirement succeeds.
 Diagnostics contain only state, fixed reason and cleanup marker.
 
-Audio is forced off. Transport/progress (#74), audio policy (#75), runtime scene
-execution (#8) and physical Pi/HDMI/codec/hwdec evidence (#66/#76) remain separate.
+Poll `snapshot()` on demand for immutable live position/duration and seek capability.
+`pause()`/`resume()` are idempotent; relative seeks accept ±3600 seconds, and absolute
+seeks require a known positive duration and reject targets outside it. Unknown duration
+disables the scrubber; non-seekable media disables all seeking. Operations default to
+a one-second deadline, support cancellation, and raise fixed `PlaybackError` reasons.
+Stop cancels pending IPC and retires the child. Successful load has no hidden playback
+time limit; the owner observes real EOF. See the architecture transport contract.
+
+Audio is forced off. Audio policy (#75), runtime scene execution/common controls (#8) and physical Pi/HDMI/codec/hwdec evidence (#66/#76) remain separate.
 Deterministic helper-process tests prove FD/IPC/lifecycle behavior, not physical
 playback support. No installed mpv/Wayland smoke is available in this development
 environment.

@@ -63,7 +63,44 @@ else:
     if mode == "crash":
         time.sleep(0.1)
         sys.exit(1)
-time.sleep(10)
+paused = False
+position = 12.5
+duration = 100.0
+for line in f:
+    request = json.loads(line)
+    command = request["command"]
+    if mode == "control-timeout":
+        time.sleep(10)
+    if mode == "control-exit":
+        sys.exit(1)
+    if mode == "control-malformed":
+        s.sendall(b"{no\\n")
+        continue
+    if mode == "control-eof":
+        send({"event": "end-file", "reason": "eof"})
+        continue
+    error = "success"
+    data = None
+    if command[0] == "get_property":
+        data = {"pause": paused, "time-pos": position, "duration": duration,
+                "seekable": mode != "nonseekable"}[command[1]]
+        if mode == "unknown-duration" and command[1] == "duration":
+            error = "property unavailable"
+        if mode == "invalid-numbers" and command[1] in ("duration", "time-pos"):
+            data = float("nan")
+    elif command[0] == "set_property":
+        assert command[1] == "pause" and type(command[2]) is bool
+        paused = command[2]
+    elif command[0] == "seek":
+        assert command[2] in ("absolute+keyframes", "relative+keyframes")
+        if mode == "seek-failed":
+            error = "command error"
+        else:
+            position = command[1] if command[2].startswith("absolute") else position + command[1]
+            position = min(duration, max(0, position))
+    else:
+        raise AssertionError("unexpected command")
+    send({"request_id": request["request_id"], "error": error, "data": data})
 """)
     session = SimpleNamespace(
         inspect=lambda: SimpleNamespace(available=True),
@@ -225,3 +262,114 @@ def test_start_failure_clears_prepared_authority(player):
         controller.ensure_started()
     assert controller._media is None and controller._ipc is None
     assert controller.status.state == "failed"
+
+
+def test_live_transport_and_bounds(player):
+    controller = player("playing")
+    controller.ensure_started(timeout_seconds=1)
+    state = controller.snapshot()
+    assert (state.position_seconds, state.duration_seconds) == (12.5, 100)
+    assert state.seekable and state.absolute_seekable
+    child = controller._child
+    for _ in range(2):
+        assert controller.pause().state == "paused"
+    controller.ensure_started()
+    for _ in range(2):
+        assert controller.resume().state == "playing"
+    assert controller.seek_relative(-3600).position_seconds == 0
+    assert controller.seek_relative(3600).position_seconds == 100
+    assert controller.seek_absolute(25).position_seconds == 25
+    assert controller._child is child
+
+
+@pytest.mark.parametrize(
+    "value", [True, "1", None, float("nan"), float("inf"), 10**400]
+)
+def test_invalid_seek_numbers(player, value):
+    controller = player("playing")
+    controller.ensure_started(timeout_seconds=1)
+    for operation in (controller.seek_relative, controller.seek_absolute):
+        with pytest.raises(PlaybackError, match="invalid_seek"):
+            operation(value)
+    assert controller.snapshot().position_seconds == 12.5
+
+
+@pytest.mark.parametrize("mode", ["nonseekable", "unknown-duration", "invalid-numbers"])
+def test_truthful_capabilities(player, mode):
+    controller = player(mode)
+    controller.ensure_started(timeout_seconds=1)
+    state = controller.snapshot()
+    assert not state.absolute_seekable
+    if mode != "nonseekable":
+        assert state.duration_seconds is None
+    if mode == "invalid-numbers":
+        assert state.position_seconds is None
+    with pytest.raises(PlaybackError, match="seek_unavailable"):
+        controller.seek_absolute(0)
+    if mode == "nonseekable":
+        with pytest.raises(PlaybackError, match="seek_unavailable"):
+            controller.seek_relative(1)
+    else:
+        controller.seek_relative(1)
+
+
+def test_rejected_or_failed_seek_preserves_player(player):
+    controller = player("seek-failed")
+    controller.ensure_started(timeout_seconds=1)
+    child = controller._child
+    for operation, value in (
+        (controller.seek_absolute, -1),
+        (controller.seek_absolute, 101),
+        (controller.seek_relative, 3601),
+    ):
+        with pytest.raises(PlaybackError, match="invalid_seek"):
+            operation(value)
+    with pytest.raises(PlaybackError, match="command_failed"):
+        controller.seek_relative(1)
+    assert controller.snapshot().state == "playing"
+    assert controller._child is child
+
+
+@pytest.mark.parametrize("operation", ["snapshot", "pause", "seek_relative"])
+@pytest.mark.parametrize(
+    "mode,reason",
+    [
+        ("control-timeout", "timeout"),
+        ("control-exit", "process_exited"),
+        ("control-malformed", "protocol_failed"),
+    ],
+)
+def test_bounded_control_failures(player, operation, mode, reason):
+    controller = player(mode)
+    controller.ensure_started(timeout_seconds=1)
+    args = (1,) if operation == "seek_relative" else ()
+    with pytest.raises(PlaybackError, match=reason):
+        getattr(controller, operation)(*args, timeout_seconds=0.2)
+    assert controller.snapshot().state == "failed"
+    assert controller._child is None
+
+
+def test_eof_during_snapshot_and_inactive_control(player):
+    controller = player("control-eof")
+    controller.ensure_started(timeout_seconds=1)
+    assert controller.snapshot().state == "ended"
+    for operation in (controller.pause, controller.resume):
+        with pytest.raises(PlaybackError, match="not_active"):
+            operation()
+    with pytest.raises(PlaybackError, match="not_active"):
+        controller.seek_relative(1)
+
+
+def test_stop_cancels_pending_control(player):
+    from concurrent.futures import ThreadPoolExecutor
+
+    controller = player("control-timeout")
+    controller.ensure_started(timeout_seconds=1)
+    with ThreadPoolExecutor() as pool:
+        pending = pool.submit(controller.pause)
+        time.sleep(0.05)
+        controller.stop()
+        with pytest.raises(PlaybackError, match="cancelled"):
+            pending.result(timeout=1)
+    assert controller.snapshot().state == "stopped"
+    assert controller._child is None

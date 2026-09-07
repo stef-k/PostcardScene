@@ -914,7 +914,7 @@ socketpair endpoint in `pass_fds`. Media uses `fd://N`; JSON IPC uses inherited
 Launch argv is shell-free, native Wayland, fullscreen and borderless. Host config,
 scripts, terminal/default input, OSC, external-file discovery and media references
 are disabled. Audio is forcibly disabled until #75. No playlist progression,
-pause/seek/progress, codec/hwdec selection or runtime scheduling is added.
+codec/hwdec selection or runtime scheduling is added.
 
 Startup waits boundedly for `file-loaded` and a correlated fixed JSON handshake.
 Messages are capped at 8 KiB and processing at 32 steps per poll. Unknown or invalid
@@ -926,6 +926,37 @@ Stop closes parent FDs and sends bounded group TERM/KILL, retaining the child ha
 and `cleanup_failed` if reaping fails. Replacement content remains blocked through
 ContentSurfaces until cleanup succeeds. Launchers must retain descendants in their
 process group; systemd remains the outer runtime-owner crash boundary.
+
+### Active video transport (#74)
+
+`MpvController.snapshot()` returns an immutable `PlaybackSnapshot`: lifecycle state,
+fixed reason, cleanup marker, optional position/duration in seconds, seekability,
+and absolute-seek capability. These are live private IPC properties, never catalog
+`duration_ms` updates. Nonfinite, negative or missing numbers become `None`;
+absolute seek requires seekability and a known positive duration. Unknown seekability
+is false; an unavailable/malformed pause property fails the operation explicitly.
+
+`pause()`/`resume()` set the actual pause boolean idempotently. `seek_relative(seconds)`
+accepts finite signed deltas within ±3600 seconds; `seek_absolute(seconds)` requires
+0 through the known duration inclusive. Booleans and nonnumeric values are rejected.
+Out-of-range absolute targets are rejected, leaving future UI clamping to #8.
+Both use mpv keyframe seek modes for ordinary playback and return a refreshed snapshot;
+relative boundary behavior follows mpv, without editing-grade accuracy guarantees.
+
+All operations share the controller lock and correlated private IPC owner. The
+one-second default deadline covers each complete control operation, including lock
+acquisition and snapshot refresh; callers may supply a finite timeout up to 60 seconds
+and cancellation callback. Stop signals cancellation before acquiring the lock.
+Timeout, cancellation and protocol/process failures retire the child through #73;
+mpv command rejection raises `PlaybackError("command_failed")` without restarting.
+Invalid seeks and unavailable capabilities also leave the player intact. Inactive
+controls raise `not_active`, or `cancelled` after retirement; terminal snapshots remain
+readable with unavailable progress/capabilities. No operation prepares another item.
+
+Successfully loaded video has no maximum playback duration: it reaches real EOF
+unless its owner retires or pauses it. These are #6 media capabilities beneath #8's
+global Play/Pause. Previous/Next are #8 display-step navigation, never mpv playlist
+commands. No UI/history, audio policy or panel-safety policy is introduced.
 
 Video playback should use mpv where practical because codec support, hardware acceleration, control, and failure isolation benefit from a dedicated player.
 
