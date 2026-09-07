@@ -75,7 +75,7 @@ def index():
                 for row in d.list_sequences(session)
             ]
         if (
-            request.endpoint == "/settings/active-sequence"
+            request.endpoint == "settings.active_sequence"
             and active_form.validate_on_submit()
         ):
             try:
@@ -90,7 +90,7 @@ def index():
                 flash("Active selection saved.")
                 return redirect(url_for("settings.index"))
         elif (
-            request.endpoint == "/settings/default-dwell"
+            request.endpoint == "settings.default_dwell"
             and dwell_form.validate_on_submit()
         ):
             set_default_scene_dwell(

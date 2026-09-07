@@ -69,10 +69,7 @@ def index():
 def change_draft(form, action):
     """Rebuild contiguous form rows, retaining raw invalid input for later validation."""
     rows = [
-        {
-            name: (field.raw_data or [""])[0]
-            for name, field in entry.form._fields.items()
-        }
+        {field.short_name: (field.raw_data or [""])[0] for field in entry.form}
         for entry in form.occurrences
     ]
     if action == "add":
@@ -82,6 +79,7 @@ def change_draft(form, action):
         if (
             not separator
             or not index.isdecimal()
+            or len(index) > len(str(len(rows)))
             or operation not in ("remove", "up", "down")
         ):
             abort(400)
