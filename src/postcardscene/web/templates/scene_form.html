@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% from "composition_fields.html" import field, checkbox %}
+{% block title %}{{ 'Edit' if scene_id else 'Add' }} Scene{% endblock %}
+{% block content %}
+<div class="row"><div class="col-lg-9 col-xl-8">
+<h1 class="mb-4">{{ 'Edit' if scene_id else 'Add' }} Scene</h1>
+<section class="card mb-4"><div class="card-body p-4">
+  <p>Layout: <strong>single</strong>, with one Widget in region <strong>main</strong>.</p>
+  {% if not form.widget_id.choices %}<p class="alert alert-warning" role="status">No Widget exists. <a href="{{ url_for('widgets.index') }}">Add a Widget</a> before saving.</p>{% endif %}
+  <form method="post">
+    {{ form.hidden_tag() }}
+    {{ field(form.name) }}
+    {{ field(form.widget_id) }}
+    <p>Leave duration blank for no fixed Scene dwell; otherwise enter 1–86400 seconds. Sequence duration overrides take precedence. Without either duration, images/web use the application default and video uses natural completion. Timed video may finish earlier at end of file. This does not configure panel protection.</p>
+    {{ field(form.duration_seconds) }}
+    {{ checkbox(form.enabled) }}
+    <div class="d-flex flex-wrap gap-3">
+      <button class="btn btn-primary" type="submit"{% if not form.widget_id.choices %} disabled{% endif %}>Save Scene</button>
+      <a class="btn btn-outline-secondary" href="{{ url_for('scenes.index') }}">Cancel</a>
+    </div>
+  </form>
+</div></section>
+{% if scene_id %}
+<section class="card border-danger"><div class="card-body p-4">
+  <h2 class="h4">Delete Scene</h2>
+  <p id="delete-warning">A Scene referenced by any Sequence cannot be deleted. Deletion preserves Widgets and Sources. Disable above to preserve configuration and references.</p>
+  <form method="post" action="{{ url_for('scenes.delete', scene_id=scene_id) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button class="btn btn-outline-danger" type="submit" aria-describedby="delete-warning">Delete Scene</button>
+  </form>
+</div></section>
+{% endif %}
+</div></div>
+{% endblock %}

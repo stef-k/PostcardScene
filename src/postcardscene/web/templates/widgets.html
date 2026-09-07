@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Widgets{% endblock %}
+{% block content %}
+<h1 class="mb-4">Widgets</h1>
+{% for category, message in get_flashed_messages(with_categories=true) %}<p class="alert alert-{{ category }}" role="status">{{ message }}</p>{% endfor %}
+<p>Choose how an existing Source presents content, then place the Widget in a Scene. Saving configuration does not start playback or preview content.</p>
+<div class="d-flex flex-wrap gap-3 mb-4">
+{% for kind, label in kinds.items() %}<a class="btn btn-primary" href="{{ url_for('widgets.edit', kind=kind) }}">Add {{ label }} Widget</a>{% endfor %}
+</div>
+<div class="row g-4">
+{% for widget in widgets %}
+<div class="col-12 col-xl-6"><section class="card h-100" aria-labelledby="widget-{{ widget.id }}"><div class="card-body p-4">
+  <h2 id="widget-{{ widget.id }}" class="h4 text-break">{{ widget.name }}</h2>
+  <p>{{ widget.kind }} · {{ 'Enabled' if widget.enabled else 'Disabled' }}</p>
+  <p class="text-break">Source: {{ widget.source }}</p>
+  <a class="btn btn-outline-primary" href="{{ url_for('widgets.edit', widget_id=widget.id) }}" aria-label="Edit {{ widget.name }}">Edit</a>
+</div></section></div>
+{% else %}<p>No Widgets configured. Add a Source first, then choose a Widget kind above.</p>{% endfor %}
+</div>
+{% endblock %}

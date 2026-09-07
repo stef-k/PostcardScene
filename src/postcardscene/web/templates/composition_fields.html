@@ -1,0 +1,10 @@
+{% macro field(control) %}
+<div class="mb-4">
+  {{ control.label(class="form-label") }}
+  {{ control(class=('form-select' if control.type == 'SelectField' else 'form-control') ~ (' is-invalid' if control.errors else ''), aria_describedby=control.name ~ '-error', aria_invalid='true' if control.errors else 'false') }}
+  <div id="{{ control.name }}-error" class="text-danger-emphasis" role="alert">{% for message in control.errors %}{{ message }}{% endfor %}</div>
+</div>
+{% endmacro %}
+{% macro checkbox(control) %}
+<div class="form-check mb-4">{{ control(class="form-check-input") }} {{ control.label(class="form-check-label") }}</div>
+{% endmacro %}

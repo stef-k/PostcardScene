@@ -20,6 +20,8 @@
             <a class="nav-link py-2" href="{{ url_for('control.index') }}"{% if request.endpoint == 'control.index' %} aria-current="page"{% endif %}>Overview</a>
             <a class="nav-link py-2" href="{{ url_for('settings.index') }}"{% if request.endpoint == 'settings.index' %} aria-current="page"{% endif %}>Settings</a>
             <a class="nav-link py-2" href="{{ url_for('sources.index') }}"{% if request.blueprint == 'sources' %} aria-current="page"{% endif %}>Sources</a>
+            <a class="nav-link py-2" href="{{ url_for('widgets.index') }}"{% if request.blueprint == 'widgets' %} aria-current="page"{% endif %}>Widgets</a>
+            <a class="nav-link py-2" href="{{ url_for('scenes.index') }}"{% if request.blueprint == 'scenes' %} aria-current="page"{% endif %}>Scenes</a>
             <form method="post" action="{{ url_for('auth.logout') }}">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <button class="btn btn-theme" type="submit">Log out all sessions</button>

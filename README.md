@@ -138,7 +138,7 @@ local control interface with:
 uv run flask --app postcardscene.web:create_app run --host 127.0.0.1 --no-debug
 ```
 
-Open <http://127.0.0.1:5000/> and log in. Authentication protects Overview, Settings and Sources. Overview shows the application
+Open <http://127.0.0.1:5000/> and log in. Authentication protects Overview, Settings, Sources, Widgets and Scenes. Overview shows the application
 version, database/schema health and unavailable runtime status; playback controls
 are not implemented.
 The command starts only the web process. Stop it with Ctrl-C.
@@ -259,7 +259,8 @@ After stopping database users, explicitly run `db upgrade` to apply `0005_scene`
 Existing administrator, settings, Sources and Widgets are preserved. Scene APIs
 in `postcardscene.domain` work inside `Database.transaction()` without Flask:
 `create_scene`, `get_scene`, `list_scenes`, `update_scene`, `remove_scene`, and
-`list_scene_placements`. There is no Scene editor or renderer yet.
+`list_scene_placements`. The authenticated Scenes area edits V0 `single` Scenes;
+rendering is not connected to these forms.
 
 Create/update takes a complete list of `(region, widget_id)` pairs; the domain
 derives canonical positions for `single` (`main`), `split_vertical` (`left`,
@@ -272,6 +273,16 @@ an integer 1–86400; `enabled` is a boolean.
 Referenced Widgets cannot be deleted. Unreferenced Scene removal deletes only placements,
 preserving Widgets and Sources; disable preserves references. See
 [Scene architecture](docs/architecture.md#scene) for the complete contract.
+
+### Composition management
+
+Use **Widgets** to create/edit Image, Portrait pair, Video and Web view Widgets
+from existing compatible Sources, then **Scenes** to configure one Widget in a
+V0 `single` Scene. Forms preserve restrictive deletion and non-destructive disable
+semantics. Existing split Scenes are listed as non-executable in V0 and cannot be
+converted or edited here. See the [composition guide](docs/composition.md) for
+options, duration precedence and lifecycle behavior. Sequence/active-playback UI
+and runtime controls remain with later issues.
 
 ### Filesystem media catalog
 

@@ -1680,6 +1680,17 @@ create no Widgets/catalog/refresh requests, and invalid input leaves state intac
 Web cards omit filesystem health/counts/refresh; restrictive deletion is shared.
 Filesystem forms, refresh/invalidation and health retain #25's behavior.
 
+Issue #90 adds authenticated `widgets` and `scenes` blueprints with structured
+Flask-WTF forms and POST/CSRF mutations. Widget kinds are fixed at creation;
+image/pair/video/web forms normalize configuration through #56/#71/#82 validators.
+Source compatibility is rechecked inside the short writer transaction, including
+disabled compatible Sources. Scene editing replaces one `main` placement through
+the domain with layout fixed to `single`; existing splits remain listed as
+non-executable in V0, reject edits, and retain restrictive deletion. Disabling
+preserves references and related state. These DB-only pages perform no content
+probes, catalog requests, rendering, Sequence editing or runtime commands and add
+no schema. See the [composition guide](composition.md) for the operator workflow.
+
 ## 21. Authentication, network exposure, and secrets
 
 Initial authentication should be simple and appropriate to a self-hosted appliance.

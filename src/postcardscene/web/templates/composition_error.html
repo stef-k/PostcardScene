@@ -1,0 +1,11 @@
+<!doctype html>
+<html lang="en" data-bs-theme="dark">
+  <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Composition unavailable · PostcardScene</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='vendor/bootstrap-5.3.8/bootstrap.min.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='control.css') }}">
+  </head>
+  <body><main class="container py-5"><h1>Composition unavailable</h1>
+    <p role="alert">Configuration could not be loaded or saved. Check database health and try again.</p>
+    <a href="{{ url_for('widgets.index') }}">Widgets</a> · <a href="{{ url_for('scenes.index') }}">Scenes</a>
+  </main></body>
+</html>

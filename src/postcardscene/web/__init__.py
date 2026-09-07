@@ -13,8 +13,10 @@ from postcardscene.session_secret import DEFAULT_SECRET_PATH
 from postcardscene.web.auth import init_auth
 from postcardscene.web.control import control
 from postcardscene.web.database import init_database
+from postcardscene.web.scenes import scenes
 from postcardscene.web.settings import settings
 from postcardscene.web.sources import sources
+from postcardscene.web.widgets import widgets
 
 
 def create_app(config: Mapping[str, Any] | None = None) -> Flask:
@@ -44,6 +46,8 @@ def create_app(config: Mapping[str, Any] | None = None) -> Flask:
     app.register_blueprint(control)
     app.register_blueprint(settings)
     app.register_blueprint(sources)
+    app.register_blueprint(widgets)
+    app.register_blueprint(scenes)
     app.register_error_handler(HTTPException, render_http_error)
     return app
 
