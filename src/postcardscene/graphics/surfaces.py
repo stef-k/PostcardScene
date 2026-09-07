@@ -1,5 +1,6 @@
 """Serialized content-class ownership, without Scene/Sequence decisions."""
 
+from contextlib import contextmanager
 from enum import StrEnum
 
 from ._capability import CapabilityError, CapabilityStatus
@@ -66,6 +67,30 @@ class ContentSurfaces:
                 error.cleanup_failed = True
             self.reason = error.reason
             raise error from None
+
+    @contextmanager
+    def operation(self, content):
+        """Lend the exact owner for a serialized content operation.
+
+        This does not switch content classes or start a controller. The caller
+        may use its bounded content methods; this coordinator retains retirement
+        authority on failure. Global switching still uses select/stop.
+        """
+        if not isinstance(content, ContentClass) or content == ContentClass.NONE:
+            raise CapabilityError("invalid_spec")
+        if self._retiring:
+            raise CapabilityError("cleanup_failed")
+        if self.active not in (ContentClass.NONE, content):
+            raise CapabilityError("content_busy")
+        self.active = content
+        try:
+            yield self._owners[content]
+        except (ChromiumError, CapabilityError) as error:
+            try:
+                self.stop()
+            except CapabilityError:
+                error.cleanup_failed = True
+            raise
 
     def reconcile(self, **kwargs):
         """Recheck existing owner, retire crashes to black; no automatic retry."""

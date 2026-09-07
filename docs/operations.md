@@ -255,7 +255,28 @@ application trust store. A LAN service without a browser-trusted certificate can
 use intentionally configured HTTP. Keep full URLs out of renderer/public logs
 and diagnostics because share identifiers can be non-public. See the
 [Sources guide](sources.md#web-url-sources) for configuration. #82 implements
-configuration/resolution only; #83 owns rendering and #84/#31 physical evidence.
+configuration/resolution; #83 supplies the renderer capability and #84/#31 own
+physical evidence.
+
+`WebRenderer(ContentSurfaces(...))` accepts only a resolved `WebTarget`. Its caller
+must serialize `show(target, cancelled=...)`, `clear(cancelled=...)` and `stop()`
+outside requests/transactions. Global runtime switching must retire any different
+active content first. The renderer borrows only the coordinator's untrusted owner.
+Each presentation blanks (five seconds by default), then navigates freshly (15
+seconds). Recoverable browser startup/control/navigation/crash failure gets at most
+one fresh-browser retry after cleanup. Invalid input, cancellation, unavailable
+session and cleanup uncertainty receive no retry. A loaded page continues its own
+scripts/network; a rendered HTTP error response is still page content.
+
+Failed loads and clear failures retire to compositor black. A cleanup failure
+retains ownership and blocks activation until `stop()` succeeds; report this
+honestly rather than claiming black if retirement failed. Public renderer errors
+contain only `invalid_target`, `unavailable`, `cancelled` or `cleanup_failed`, plus
+secondary cleanup status. Never serialize traceback locals or controller internals.
+No periodic reload, new worker, Flask browser endpoint or Scene controls are added.
+Deterministic tests cover the renderer policy and existing Chromium navigation
+seam. No local Chromium/labwc installation is available for a real-browser smoke;
+this supplies no physical Raspberry Pi/HDMI evidence for #84.
 
 CDP is bound to `127.0.0.1` with port `0` (OS selection). Under the private root,
 `DevToolsActivePort` is bounded to 512 bytes, validated as an owned regular file,

@@ -1104,12 +1104,35 @@ login provisioning nor session portability. #64 owns profile/process lifecycle;
 no profile wipe/copy machinery is added to emulate incognito.
 
 Scene duration and Sequence overrides own dwell, executed later by #8. Each new
-web presentation will navigate freshly; V0 has no web-specific duration or periodic
+web presentation navigates freshly; V0 has no web-specific duration or periodic
 reload option. Third-party pages may continue their own scripts/timers/network;
-future Pause holds Scene progression without freezing web execution. #83 owns the
-bounded renderer adapter/recovery through #64; #82 launches no browser and adds no
-Scene/Sequence execution. #84's physical Pi/browser support remains gated on #31.
+future Pause holds Scene progression without freezing web execution. #82 launches
+no browser and adds no Scene/Sequence execution. #84's physical Pi/browser support remains gated on #31.
 Production CDP stays private to local controller authority and is not a Flask API.
+
+#83 implements synchronous `web_renderer.WebRenderer(surfaces)` with
+`show(WebTarget, cancelled=...)`, `clear(cancelled=...)` and `stop()`. The caller
+serializes these calls outside Flask/DB transactions. `ContentSurfaces.operation`
+lends its exact untrusted controller and retains cleanup authority; it refuses
+another active content class or pending retirement. #8 still owns global switching
+through the coordinator. Renderer clear/stop never activate or retire other classes.
+
+Each show validates the detached target, loads #64's fixed black document (default
+five-second bound), then performs a fresh navigation with a 15-second bound.
+Success means #64 main-document load completion; normal rendered HTTP error pages
+remain content. There is no DOM inspection, injected control UI or background loop.
+Startup/control/navigation/crash failure permits at most one fresh-browser retry,
+after retirement through #64/#65. Cancellation, invalid input/configuration,
+unavailable session and cleanup uncertainty are not retried. Invalid replacement
+input also retires prior web content. Clear blanks; failed blank/navigation retires
+to compositor black. Stop is bounded/idempotent. Cleanup failure retains authority
+and prevents subsequent activation until explicit cleanup succeeds; black cannot
+be guaranteed when the OS refuses retirement.
+
+`WebRendererError` exposes only `WebFailure` (`invalid_target`, `unavailable`,
+`cancelled`, `cleanup_failed`) and a secondary `cleanup_failed` boolean. It retains
+no URL/target or successful-page state. #8 owns subsequent skip/fallback decisions;
+#84 remains physically gated, and these software contracts claim no Pi/HDMI support.
 
 ## 12. Sources and later integrations
 
