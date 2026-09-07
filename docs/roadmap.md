@@ -84,13 +84,17 @@ belongs to #19/#20; runtime dwell, order/shuffle, history and global transport
 #71 implements DB-backed video configuration/selection: immutable Source-relative
 identity and size/mtime snapshots, bounded catalog lookup/pages, no filesystem
 scan/open or decoder-support promise. Image metadata and catalog `duration_ms` are
-not prerequisites; active duration is a later player concern. Intended audio-device
+not prerequisites; active duration comes from the player. Intended audio-device
 selection remains a trusted runtime input. #8 owns order/shuffle/history and global
 transport UI. #73 implements supervised playback and #74 adds live state,
-idempotent pause/resume and bounded seek beneath #8 controls. Audio remains #75; physical support
+idempotent pause/resume and bounded seek beneath #8 controls. Physical support
 claims remain gated by #66/#76. #72 adds fresh pinned read-only FD authority,
 including bounded spawned mounted safe-open and private opened-FD transfer.
 #73 consumes pinned descriptors in a fresh mpv child; #8 still owns runtime integration.
+#75 adds opt-in audio, capped initial/transient volume, mute, trusted automatic/explicit
+device policy and fail-silent retirement. No-track/device failures preserve silent
+video where mpv can continue. #10 sleep integration and #66/#76 physical HDMI/audio
+evidence remain open.
 
 ### Basic web scenes
 

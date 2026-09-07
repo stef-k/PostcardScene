@@ -418,7 +418,26 @@ a one-second deadline, support cancellation, and raise fixed `PlaybackError` rea
 Stop cancels pending IPC and retires the child. Successful load has no hidden playback
 time limit; the owner observes real EOF. See the architecture transport contract.
 
-Audio is forced off. Audio policy (#75), runtime scene execution/common controls (#8) and physical Pi/HDMI/codec/hwdec evidence (#66/#76) remain separate.
+Pass #71 Widget JSON to `prepare(fd, configuration=...)`. Omission is silent:
+`audio_enabled=false`, volume 50. Opt-in audio starts unmuted at its configured
+integer volume (0–100), capped at 100. `snapshot().audio` reports enabled/available,
+transient mute/volume, a fixed reason and automatic versus explicit device policy.
+`mute()`, `unmute()` and `set_volume(integer)` are bounded active-audio operations;
+changes are transient and reset on a newly prepared video.
+
+Trusted host callers may construct `MpvController(..., audio_device=...)` with
+`None`/`auto` or one bounded mpv `driver/device` value; see the architecture contract.
+There is no device setting/UI or enumeration. A missing track plays silently;
+[mpv's null-output fallback](https://mpv.io/manual/stable/#audio) preserves silent
+video when an intended device cannot open, without selecting another real device.
+The snapshot reports `device_unavailable`, not ready audio. No passthrough,
+normalization or advanced processing is enabled.
+
+EOF now reaps the child and preserves `ended` for the owner. Scene retirement and
+future #10 sleep/off integration must call stop; process termination is the final
+silence boundary. `cleanup_failed` means silence is unconfirmed and replacement
+content must remain blocked. #8 controls, #10 panel/schedules and physical
+Pi/HDMI/audio/codec/hwdec evidence (#66/#76) remain separate.
 Deterministic helper-process tests prove FD/IPC/lifecycle behavior, not physical
 playback support. No installed mpv/Wayland smoke is available in this development
 environment.

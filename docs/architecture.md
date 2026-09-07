@@ -913,7 +913,7 @@ socketpair endpoint in `pass_fds`. Media uses `fd://N`; JSON IPC uses inherited
 `--input-ipc-client=fd://N`, with no filesystem socket or network listener.
 Launch argv is shell-free, native Wayland, fullscreen and borderless. Host config,
 scripts, terminal/default input, OSC, external-file discovery and media references
-are disabled. Audio is forcibly disabled until #75. No playlist progression,
+are disabled. Audio follows the explicit #75 policy below. No playlist progression,
 codec/hwdec selection or runtime scheduling is added.
 
 Startup waits boundedly for `file-loaded` and a correlated fixed JSON handshake.
@@ -921,7 +921,8 @@ Messages are capped at 8 KiB and processing at 32 steps per poll. Unknown or inv
 protocol fails closed. `end-file` with reason `eof` after load means `ended`;
 other endings, crash, timeout and cancellation produce fixed playback failures.
 The serialized owner polls `status`/surface reconciliation regularly; there is no
-background monitor or automatic retry. EOF stays observable until owner retirement.
+background monitor or automatic retry. EOF reaps the child while retaining observable
+`ended` state until owner retirement.
 Stop closes parent FDs and sends bounded group TERM/KILL, retaining the child handle
 and `cleanup_failed` if reaping fails. Replacement content remains blocked through
 ContentSurfaces until cleanup succeeds. Launchers must retain descendants in their
@@ -958,7 +959,46 @@ readable with unavailable progress/capabilities. No operation prepares another i
 Successfully loaded video has no maximum playback duration: it reaches real EOF
 unless its owner retires or pauses it. These are #6 media capabilities beneath #8's
 global Play/Pause. Previous/Next are #8 display-step navigation, never mpv playlist
-commands. No UI/history, audio policy or panel-safety policy is introduced.
+commands. No UI/history or panel-safety policy is introduced.
+
+### Active video audio (#75)
+
+`prepare(fd, configuration=...)` consumes #71's validated video Widget JSON:
+`audio_enabled=false`, integer `volume=50` by default, bounded 0–100. Disabled
+players launch with `--audio=no` and never select an audio device. Enabled players
+start unmuted with explicit initial volume, `--volume-max=100`, passthrough and
+ReplayGain disabled; user config/scripts remain disabled. No normalization,
+equalizer, dynamic-range processing or other advanced audio controls are added.
+
+The controller's optional trusted `audio_device` constructor argument accepts
+`None`/`auto` or one ASCII mpv `driver/device` value of at most 256 characters
+(letters, digits and `_./:,=-`, no leading dash). It is a single shell-free
+argument, never Widget JSON, a persistent setting, enumeration or a mixer command.
+Explicit devices do not fall back to another real output: mpv's
+`--audio-fallback-to-null=yes` preserves silent video on device-open failure.
+Automatic selection permits mpv's normal output choice. Final HDMI/device policy
+and physical support remain gated by #66/#76.
+
+`PlaybackSnapshot.audio` is immutable: configured `enabled`, live `available`,
+optional `muted`/bounded `volume`, fixed `reason`, and `device_policy` (`auto` or
+`explicit`). Scalar selected-audio-track and current-output IPC properties establish
+`no_track`, `device_unavailable` (including null output), or `ready`; readiness is
+mpv output evidence, not proof that a physical speaker is audible. Missing output
+means unavailable; malformed properties fail the bounded control operation.
+Inactive/disabled/degraded audio exposes no mute/volume capability or raw device data.
+
+`mute()`/`unmute()` set the actual boolean idempotently; `set_volume(value)` accepts
+only integers 0–100, rejecting booleans and invalid values with `invalid_volume`.
+These use #74's serialized deadline/cancellation/retirement boundary and refresh
+live state. Unavailable audio raises `audio_unavailable`; inactive players follow
+#74's `not_active`/`cancelled` contract. Adjustments write no database state and
+never carry into another prepared video's initial policy.
+
+Stop, failure, cancellation, EOF and content retirement close IPC and reap the
+process group; successful mute is never the final silence authority. Failed cleanup
+retains degraded ownership and reports `cleanup_failed`, not confirmed silence.
+#8 must retire video before changing display steps; #10 must use this same stop
+primitive for sleep/off. Neither runtime integration nor panel policy is added here.
 
 Video playback should use mpv where practical because codec support, hardware acceleration, control, and failure isolation benefit from a dedicated player.
 
