@@ -281,8 +281,12 @@ from existing compatible Sources, then **Scenes** to configure one Widget in a
 V0 `single` Scene. Forms preserve restrictive deletion and non-destructive disable
 semantics. Existing split Scenes are listed as non-executable in V0 and cannot be
 converted or edited here. See the [composition guide](docs/composition.md) for
-options, duration precedence and lifecycle behavior. Sequence/active-playback UI
-and runtime controls remain with later issues.
+options, duration precedence and lifecycle behavior. Use **Sequences** to manage
+ordered/shuffle occurrence lists with Add/Remove/Move controls, then **Settings**
+to select an active Sequence or None / Idle and set fallback dwell. Repeated Scene
+occurrences remain distinct; existing split occurrences must be explicitly removed
+or replaced before saving an edited Sequence. Runtime controls and actual playback
+integration remain with #92/#93.
 
 ### Filesystem media catalog
 
@@ -364,9 +368,9 @@ remain unchanged. Invalid updates raise `DomainError` before mutation.
 
 Disabled Scenes remain valid references; disabling either object preserves
 membership configuration. Referenced Scenes cannot be deleted. Sequence deletion
-removes only its memberships, preserving Scenes, Widgets and Sources. There is no
-Sequence editor or playback yet; #8 owns shuffle execution/history and #9 owns
-operating schedules. See [Sequence architecture](docs/architecture.md#sequence).
+removes only its memberships, preserving Scenes, Widgets and Sources, and clears
+active selection to Idle if applicable. The authenticated Sequence editor uses
+these operations; playback integration remains #93 and operating schedules #9. See [Sequence architecture](docs/architecture.md#sequence).
 
 ### Application settings and status
 
