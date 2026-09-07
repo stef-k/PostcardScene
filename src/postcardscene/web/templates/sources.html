@@ -3,10 +3,11 @@
 {% block content %}
 <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4">
   <h1 class="mb-0">Sources</h1>
+  <a class="btn btn-outline-primary" href="{{ url_for('sources.edit', web=True) }}">Add web Source</a>
   <a class="btn btn-primary" href="{{ url_for('sources.edit') }}">Add Source</a>
 </div>
 {% for category, message in get_flashed_messages(with_categories=true) %}<p class="alert alert-{{ category }}" role="status">{{ message }}</p>{% endfor %}
-<p>Manage local directories and already-mounted Linux NFS/SMB directories. PostcardScene V0 does not mount shares, collect NAS credentials here, or run mount/unmount commands.</p>
+<p>Manage web URLs, local directories and already-mounted Linux NFS/SMB directories. PostcardScene V0 does not mount shares, collect NAS credentials here, or run mount/unmount commands.</p>
 <p class="text-body-secondary">Health and counts are persisted catalog knowledge, not confirmation that retained files are currently online. A storage outage does not mean confirmed deletion. Refresh requests remain queued while the runtime is stopped.</p>
 <div class="row g-4">
 {% for source in sources %}
@@ -14,6 +15,10 @@
     <section class="card h-100" aria-labelledby="source-{{ source.id }}">
       <div class="card-body p-4">
         <h2 id="source-{{ source.id }}" class="h4 text-break">{{ source.name }}</h2>
+        {% if source.web %}
+        <p>{{ source.kind }} · {{ 'Enabled' if source.enabled else 'Disabled' }}</p>
+        <p class="text-break">{{ source.url }}</p>
+        {% else %}
         <p>{{ source.kind }} · {{ 'Recursive' if source.recursive else 'Direct-only' }} · {{ 'Enabled' if source.enabled else 'Disabled' }}</p>
         <p class="text-break">{{ source.path }}</p>
         <h3 class="h5">{{ source.health }}</h3>
@@ -27,18 +32,21 @@
         <dl class="row">
           {% for label, count in source.counts.items() %}<dt class="col-9">{{ label }}</dt><dd class="col-3">{{ count }}</dd>{% endfor %}
         </dl>
+        {% endif %}
         <div class="d-flex flex-wrap gap-3">
           <a class="btn btn-outline-primary" href="{{ url_for('sources.edit', source_id=source.id) }}" aria-label="Edit {{ source.name }}">Edit</a>
+          {% if not source.web %}
           <form method="post" action="{{ url_for('sources.refresh', source_id=source.id) }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button class="btn btn-primary" type="submit" aria-label="Refresh {{ source.name }}"{% if not source.enabled %} disabled{% endif %}>Refresh</button>
           </form>
+          {% endif %}
         </div>
       </div>
     </section>
   </div>
 {% else %}
-  <p>No filesystem Sources configured. Add a Source to start building a catalog.</p>
+  <p>No Sources configured. Add a filesystem or web Source.</p>
 {% endfor %}
 </div>
 {% endblock %}

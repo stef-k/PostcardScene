@@ -1065,19 +1065,51 @@ The runtime/player service coordinates the active scene and Chromium/mpv process
 
 ## 11. Web-content isolation
 
-Configured web pages are untrusted renderer content even when the administrator chose the URL.
+Configured web pages are untrusted renderer content even when an administrator
+chose the URL. #82 implements `postcardscene.web_selection` independently of Flask
+and Chromium. `validate_web_source(kind, configuration)` requires `web_url` and
+exactly `{"url": "..."}`. It trims outer whitespace, bounds the result to 8192
+characters, rejects controls/DEL, embedded whitespace, backslashes, userinfo,
+missing hostnames and invalid/zero ports, and accepts absolute HTTP/HTTPS only.
+Paths, case, percent-encoding, query strings and fragments are preserved.
+Loopback, private/link-local addresses and LAN/mDNS hostnames are deliberately
+allowed for configured local services. Validation does no DNS, HTTP, reachability
+or browser work. HTTPS retains normal Chromium certificate validation: no TLS
+bypass or application-managed trust store; deliberately configured LAN HTTP is
+supported when a service lacks a browser-trusted certificate.
 
-V0 web scenes should normally accept only supported HTTP/HTTPS URLs. Dangerous local/script/browser-extension schemes such as `file:` or `javascript:` are not ordinary web-scene inputs.
+`validate_web_configuration(kind, configuration)` requires `web_view` and exactly
+`{}`. Generic domain JSON remains structural; semantic callers validate before
+writes. `resolve_web_target(database, widget_id)` owns one short read transaction,
+requires the current enabled Widget and enabled referenced `web_url` Source,
+validates both configurations and returns a frozen `WebTarget(source_id, url)`.
+Missing, disabled, mismatched or invalid state raises sanitized `WebSelectionError`.
+The snapshot contains no ORM/session authority; resolve anew for every display
+step and never keep a transaction open during browser/network work. URL is omitted
+from the target repr; do not emit full URLs in public diagnostics or renderer logs.
 
-The kiosk browser must use a dedicated profile/runtime state separate from the administrator's normal browser and from PostcardScene's control-plane session cookies/secrets.
+Public/share-display URLs, including share identifiers in path/query, are supported
+content configuration. V0 has no generic username/password/API-key/token fields,
+userinfo, generated credential headers/cookies/JavaScript, cookie import/export,
+profile copying, DOM login scripting, OAuth automation or authenticated-page
+provisioning. Protected third-party credentials require a later #29-owned design.
 
-Persistent third-party kiosk login/session support, if implemented in V0, must use an explicit isolated mechanism. Generic credentials/tokens should not be embedded in URLs merely to display private pages.
+Use one installation-owned `untrusted_web` Chromium profile root, separate from
+trusted-image and administration cookies/secrets. Ordinary cookies, local storage
+and site preferences may persist through browser restarts and host reboots within
+that installation. There are no per-Source/per-site profiles. This is replaceable
+browser/runtime state, excluded from V0 backup/restore authority; a replacement
+host or fresh install may begin clean. Persistence promises neither third-party
+login provisioning nor session portability. #64 owns profile/process lifecycle;
+no profile wipe/copy machinery is added to emulate incognito.
 
-Public/share-token display pages such as a purpose-built Wayfarer display/share view are the simpler preferred integration before native structured Wayfarer support exists.
-
-Production Chromium must not expose unnecessary remote-debug/automation listeners. If a control mechanism requires one, it must be bound to a narrow local authority.
-
-Navigation/load retries and timeouts must be bounded so one unreachable site cannot monopolize a sequence indefinitely.
+Scene duration and Sequence overrides own dwell, executed later by #8. Each new
+web presentation will navigate freshly; V0 has no web-specific duration or periodic
+reload option. Third-party pages may continue their own scripts/timers/network;
+future Pause holds Scene progression without freezing web execution. #83 owns the
+bounded renderer adapter/recovery through #64; #82 launches no browser and adds no
+Scene/Sequence execution. #84's physical Pi/browser support remains gated on #31.
+Production CDP stays private to local controller authority and is not a Flask API.
 
 ## 12. Sources and later integrations
 
@@ -1297,13 +1329,14 @@ distro branch or parent-environment inheritance. #26 provisions actual launchers
 
 `BrowserContext.TRUSTED_IMAGE` accepts only explicit-port `http://127.0.0.1/`
 caller URLs with an absolute path and no userinfo/fragment. `UNTRUSTED_WEB` accepts
-ordinary HTTP/HTTPS URLs without userinfo; #7 retains full remote-network and
-authenticated-session policy. Caller data/file/script/browser URLs are rejected.
+ordinary HTTP/HTTPS URLs without userinfo; #82 defines the application URL and
+session policy above. Caller data/file/script/browser URLs are rejected.
 Each root is private, non-root-owned, non-symlinked and context-marked; an existing
 personal profile is never adopted. Nested roots and cross-context reuse are
 rejected. A profile lock prevents simultaneous owners. The two contexts use
 independent process groups, user-data directories and CDP connections. Trusted
-state is replaceable, not backup authority; #7 still decides web-session retention.
+state is replaceable, not backup authority; the untrusted-web root follows #82's
+persistent-but-replaceable policy above.
 
 V0 uses loopback CDP with OS-selected ephemeral port, discovered only from fresh,
 bounded `DevToolsActivePort` metadata under the dedicated profile. Endpoint host
@@ -1464,14 +1497,14 @@ contributors that contain their own failures, without a registry. Runtime is onl
 unavailable/not yet connected until a later issue selects and wires IPC. Authentication still depends
 on a compatible readable database; status does not bypass that boundary.
 
-Issue #25 adds the authenticated filesystem-only `sources` blueprint: list,
+Issue #25 adds the authenticated filesystem `sources` blueprint: list,
 create/edit, POST refresh and POST delete, all mutations CSRF-protected. Forms
 validate through `PathPolicy(MEDIA_ALLOWED_ROOTS)` and #22 before short Source
 write transactions; normalized configuration goes through the domain seam.
 Enabled creation, authority edits and re-enable queue #52 requests after commit;
 queue failure preserves the saved Source and offers manual retry. Rename does
 not queue; disable and authority invalidation retain #52 semantics. Empty/invalid
-roots leave the DB-only list usable but prevent form saves. Roots are read-only
+roots leave the DB-only list usable but prevent filesystem form saves. Roots are read-only
 host guidance; there are no mount controls, credentials or filesystem browser.
 
 A small explicit view model derives health from persisted Source/catalog state,
@@ -1481,6 +1514,15 @@ without materializing MediaItems or touching storage. Retained counts are not
 current availability claims; only a completed authoritative presence scan means
 Ready. Database failures produce sanitized 503 feedback. Deletion uses the
 existing restrictive domain/FK lifecycle. Schema remains `0008_catalog_requests`.
+
+Issue #82 extends Sources with **Add web Source** and a dedicated structured
+name/kind/URL/enabled form, using the shared web semantic validator before saving.
+Edit selects the form from the stored Source kind; web/filesystem conversion is
+not offered. Login and CSRF protect every page/mutation. URLs are shown only in
+the authenticated Sources area. Web saves require no media roots or network probe,
+create no Widgets/catalog/refresh requests, and invalid input leaves state intact.
+Web cards omit filesystem health/counts/refresh; restrictive deletion is shared.
+Filesystem forms, refresh/invalidation and health retain #25's behavior.
 
 ## 21. Authentication, network exposure, and secrets
 
@@ -1581,7 +1623,8 @@ The V0 recovery contract must classify:
 - manifest with application/schema/archive identity
 - checksums
 
-It excludes external media libraries and replaceable caches by default.
+It excludes external media libraries, replaceable caches and the isolated
+untrusted-web Chromium profile (including ordinary site state) by default.
 
 Backup creation must use a SQLite-consistent method, publish atomically, verify integrity, and support bounded retention.
 

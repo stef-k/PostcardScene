@@ -98,6 +98,11 @@ evidence remain open.
 
 ### Basic web scenes
 
+#82 implements HTTP/HTTPS URL semantics, immutable web-target resolution and
+authenticated structured web Source management. The isolated untrusted-web profile
+may persist ordinary site state but remains replaceable/non-backup state. Rendering
+remains #83; physical web support #84 remains gated on #31.
+
 - supported HTTP/HTTPS URL scene/widget
 - Chromium kiosk integration
 - isolated kiosk browser profile/session separate from PostcardScene administration

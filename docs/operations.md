@@ -209,8 +209,8 @@ outputs. Renderer lifecycle and shared surfaces remain #64/#65.
 ## Isolated Chromium control (#64)
 
 The implemented controller lives in `postcardscene.graphics.chromium`. It is not
-yet started by the runtime CLI: #58 owns image-adapter integration, #7 full web
-URL/session policy, #65 shared Chromium/mpv/overlay surfaces, and #8 playback.
+yet started by the runtime CLI: #58 owns image-adapter integration, #82 web
+URL/session policy and #83 web rendering, #65 shared Chromium/mpv/overlay surfaces, and #8 playback.
 
 #26 must supply `ChromiumLaunchSpec(command, profile_root, environment={})` from
 trusted host configuration. `command` is a tuple whose first element is an
@@ -236,11 +236,26 @@ non-secret overlay accepts only `PATH`, `LANG`, `LC_ALL`, `SNAP_NAME` and
 are `/usr/bin:/bin` and `C.UTF-8`. Package launchers needing more must receive a
 deliberately reviewed provisioning change, not a second renderer implementation.
 
-Trusted-image root contents are disposable/replaceable and excluded from backup
-authority. This controller reuses its dedicated user-data directory across process
-restarts but promises no cookie persistence or credential recovery. #7 decides
-intentional web-session retention; #26/#11 own managed cache/root cleanup and disk
-bounds. Never remove a root while its controller is running or its lock is held.
+Both trusted-image and the single installation-owned untrusted-web root are
+replaceable browser/runtime state, excluded from V0 backup/restore authority.
+The isolated untrusted-web profile may retain ordinary cookies/local storage/site
+preferences across Chromium restarts and reboots. It is never shared with
+administration or trusted-image state, and is not split per Source/site. A fresh
+installation or replacement host may start clean. V0 provides no third-party login
+provisioning, session portability, credential injection, cookie import/export,
+profile copying or login scripting. Long-lived protected credentials await #29.
+#64 owns lifecycle; #26/#11 own managed cache/root cleanup and disk bounds. No
+incognito-emulating deletion machinery is added. Never remove a root while its
+controller is running or its lock is held.
+
+Configured web URLs accept HTTP/HTTPS, including deliberate loopback/private/LAN
+services and public/share identifiers. Source forms perform no DNS/HTTP/browser
+probe. Normal Chromium TLS validation stays enabled: no certificate bypass or
+application trust store. A LAN service without a browser-trusted certificate can
+use intentionally configured HTTP. Keep full URLs out of renderer/public logs
+and diagnostics because share identifiers can be non-public. See the
+[Sources guide](sources.md#web-url-sources) for configuration. #82 implements
+configuration/resolution only; #83 owns rendering and #84/#31 physical evidence.
 
 CDP is bound to `127.0.0.1` with port `0` (OS selection). Under the private root,
 `DevToolsActivePort` is bounded to 512 bytes, validated as an owned regular file,
