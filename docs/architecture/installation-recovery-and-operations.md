@@ -117,6 +117,38 @@ global journald configuration mutation is introduced. Cache growth should be
 bounded/cleanable. Low disk-space state should be visible through status/doctor
 paths rather than discovered only after corruption/failure.
 
+## Owned storage health (#123)
+
+`postcardscene.resource_health` supplies immutable ordinary-Python snapshots for
+explicit trusted durable-state, cache and transient-runtime roots. Overview checks
+only the installed `/var/lib/postcardscene`, `/var/cache/postcardscene` and
+`/run/postcardscene` roots, in that order. Custom database paths remain covered by
+the separate `Database.check()` row; no parent-directory or mount discovery occurs.
+The seam can be reused by #26 doctor with explicitly supplied owned roots.
+
+Each direct `os.statvfs()` call uses `f_blocks * f_frsize` capacity and
+`f_bavail * f_frsize` free bytes: space available to the unprivileged application,
+excluding root-reserved blocks. Only zero fragment size falls back to `f_bsize`.
+Counters and byte products must fit unsigned 64-bit values. Invalid integer
+values (including booleans), nonpositive capacity, negative free space, free above
+capacity and stat/arithmetic failures return unavailable with fixed safe reasons.
+
+Frozen V0 thresholds are critical first: free bytes **< 256 * 1024 * 1024** OR
+free/capacity **< 2%**; otherwise warning if free bytes **< 1024 * 1024 * 1024** OR
+free/capacity **< 5%**; otherwise healthy. Comparisons are strict: equality alone
+does not trigger that threshold, but the other dimension can. Integer
+cross-products compare the ratios exactly without floating-point rounding.
+Thresholds are not configurable.
+
+One authenticated Owned storage row presents the worst state using
+critical > warning > unavailable > healthy, with durable state first in details
+and each unavailable resource still named. It exposes rounded free GiB and fixed
+states, never paths or exceptions. This is a current host snapshot and advisory
+only: no persistence, background monitor, recursive sizing, cleanup or mutation.
+External media/NAS and backup destinations (#27) are excluded. Journald remains
+host/systemd retention authority; #26 owns doctor/service/journal installation
+checks and #126 owns later cache cleanup.
+
 ## Release, installation, and update boundary
 
 V0 targets a managed native Linux installation rather than requiring users to deploy from a Git checkout.

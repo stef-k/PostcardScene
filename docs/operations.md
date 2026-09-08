@@ -63,6 +63,33 @@ Startup checks existing database compatibility/integrity without auto-migration
 or repair. Unit/text/process tests establish software behavior only; actual Pi
 boot, abrupt power-loss recovery and complete unattended evidence remain #127.
 
+## Owned storage snapshot (#123)
+
+Authenticated **Overview** shows one **Owned storage** row for durable state
+(`/var/lib/postcardscene`), replaceable cache (`/var/cache/postcardscene`) and
+transient runtime storage (`/run/postcardscene`). Durable state appears first;
+each class shows its current state and, when available, rounded free GiB.
+A missing/inaccessible root is unavailable, including on an unprovisioned checkout.
+Custom database locations are not discovered by this row; database integrity
+remains a separate check.
+
+Critical means free space **below 256 MiB or below 2%**. Otherwise warning means
+**below 1 GiB or below 5%**; otherwise healthy. MiB is 1024 * 1024 bytes and GiB is
+1024 * 1024 * 1024 bytes. Comparisons are strict: equality does not trigger that
+dimension, but the other dimension can still degrade health. Critical takes
+precedence, then warning, unavailable and healthy. Details retain all unavailable
+checks even when another resource produces a worse overall state.
+
+Free space uses filesystem `f_bavail`, excluding blocks reserved for root, with
+fragment-size byte conversion (block size only when fragment size is zero).
+Invalid statistics become unavailable. Refresh Overview for a new current host
+snapshot; this is advisory, without automatic cleanup or background monitoring.
+For degradation, check the named installed root's host capacity and accessibility.
+No recursive sizing, mount discovery, deletion or database repair occurs. External
+media/NAS are unowned, backups belong to #27, and journal usage/retention remains
+host/systemd authority. #26 may reuse the seam for doctor and installation checks;
+#126 retains cache cleanup policy.
+
 ## Linux graphical session (#62)
 
 Raspberry Pi 4/5-class ARM64 is the primary V0 hardware class. **Ubuntu Server LTS

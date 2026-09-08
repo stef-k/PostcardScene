@@ -146,7 +146,10 @@ def test_dashboard_real_database_health_and_unavailable_runtime(app, client):
     assert response.status_code == 200
     assert "Needs attention" in response.text
     assert "Not yet connected" in response.text
-    assert "Healthy" not in response.text
+    assert (
+        'Database <span class="badge text-body border">Healthy</span>'
+        not in response.text
+    )
     for private in [
         str(database.path),
         "existing-hash",
@@ -155,3 +158,48 @@ def test_dashboard_real_database_health_and_unavailable_runtime(app, client):
         "session_id",
     ]:
         assert private not in response.text
+
+
+@pytest.mark.parametrize(
+    "states,worst",
+    [
+        (("healthy", "healthy", "healthy"), "Healthy"),
+        (("unavailable", "healthy", "healthy"), "Unavailable"),
+        (("healthy", "unavailable", "warning"), "Warning"),
+        (("critical", "warning", "unavailable"), "Critical"),
+        (("unavailable", "unavailable", "unavailable"), "Unavailable"),
+    ],
+)
+def test_overview_owned_storage_is_safe_and_current(client, monkeypatch, states, worst):
+    from types import SimpleNamespace
+
+    from postcardscene import resource_health as health
+
+    calls = []
+    values = dict(zip((root for _, root in health.INSTALLED_ROOTS), states))
+
+    def stat(root):
+        calls.append(root)
+        state = values[root]  # Any unrelated or auto-discovered path fails the test.
+        if state == "unavailable":
+            raise OSError(f"injected-secret-error {root}")
+        free = {"healthy": 2 * health.GIB, "warning": health.GIB - 1, "critical": 0}
+        return SimpleNamespace(
+            f_frsize=1, f_blocks=10 * health.GIB, f_bavail=free[state]
+        )
+
+    monkeypatch.setattr(health.os, "statvfs", stat)
+    for _ in range(2):
+        response = client.get("/")
+        assert response.status_code == 200
+        assert (
+            f'Owned storage <span class="badge text-body border">{worst}</span>'
+            in response.text
+        )
+        for label, state in zip(("Durable state", "Cache", "Runtime"), states):
+            assert f"{label}: {state}" in response.text
+        assert "Schema revision:" in response.text
+        assert "injected-secret-error" not in response.text
+        for _, root in health.INSTALLED_ROOTS:
+            assert str(root) not in response.text
+    assert calls == [root for _, root in health.INSTALLED_ROOTS] * 2
