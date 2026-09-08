@@ -12,7 +12,7 @@ AUTO_HIDE_SECONDS = 5.0
 
 
 def control_state(status):
-    enabled = status.reason != "suppressed" and status.state not in {
+    enabled = not status.output_suppressed and status.state not in {
         "stopping",
         "stopped",
         "error",

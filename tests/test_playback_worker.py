@@ -220,7 +220,7 @@ def test_suppression_preserves_identity_pause_and_revalidates_on_release():
     h.tick()
     h.command("pause")
     h.command("set_output_suppressed", True)
-    assert h.status.reason == "suppressed"
+    assert h.status.reason == "suppressed" and h.status.output_suppressed
     assert h.status.membership_id == 1 and h.status.paused
     assert h.presenter.calls[-1] == "clear"
     count = len(h.planner.calls)
@@ -237,6 +237,12 @@ def test_suppression_preserves_identity_pause_and_revalidates_on_release():
     h.tick()
     assert h.machine.current is None
     assert h.status.reason == "unavailable"
+    assert not h.status.output_suppressed
+    # A queued navigation can fail after suppression. Reason is not hold state.
+    h.command("set_output_suppressed", True)
+    h.machine.planner = Planner([PlanResult(PlanStatus.FAILURE)])
+    h.command("next")
+    assert h.status.reason == "unavailable" and h.status.output_suppressed
 
 
 def test_eight_failures_backoff_and_success_reset():

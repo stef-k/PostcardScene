@@ -1556,7 +1556,8 @@ injection, browser control API or additional renderer authority is involved.
 
 `runtime.controls.Controls` owns one cancellable control/input thread suitable
 for #93 integration. It forwards actions to #89's bounded mailbox, reads its
-snapshot and owns only chrome visibility: hidden initially, valid activity reveals,
+snapshot (including its explicit output-suppression boolean) and owns only chrome
+visibility: hidden initially, valid activity reveals,
 five monotonic seconds without activity hides even when paused. Status updates
 never reset this timer. Suppression disables both panel and hotspot. Modest bounded
 polling services both private event sources; only needed state changes reach the

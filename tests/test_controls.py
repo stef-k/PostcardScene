@@ -78,12 +78,16 @@ def test_visibility_activity_and_suppression_never_change_pause(controls):
     owner.activity("next")
     owner.refresh()
     assert submitted == [("next", None)]
-    owner.playback.status = replace(owner.playback.status, reason="suppressed")
+    owner.playback.status = replace(
+        owner.playback.status, reason="unavailable", output_suppressed=True
+    )
     owner.refresh()
     assert owner.overlay.states[-1] == ControlState()
     owner.activity("next")
     assert submitted == [("next", None)]
-    owner.playback.status = replace(owner.playback.status, reason="ready")
+    owner.playback.status = replace(
+        owner.playback.status, reason="ready", output_suppressed=False
+    )
     owner.refresh()
     assert owner.overlay.states[-1] == ControlState(enabled=True)
 

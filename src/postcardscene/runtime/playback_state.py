@@ -81,6 +81,7 @@ class PlaybackState:
                 state=self.state,
                 reason=self.reason,
                 paused=self.paused,
+                output_suppressed=self.suppressed,
                 sequence_id=step.sequence_id if step else None,
                 membership_id=step.membership_id if step else None,
                 scene_id=step.scene_id if step else None,
