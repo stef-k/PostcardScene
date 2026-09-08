@@ -15,6 +15,20 @@ class ApplicationSettings(Base):
     __table_args__ = (
         CheckConstraint("id = 1", name="single_settings"),
         CheckConstraint(
+            "display_power_backend IN ('auto', 'cec', 'ddc', 'signal')",
+            name="display_power_backend_choice",
+        ),
+        CheckConstraint(
+            "typeof(display_wake_delay_seconds) = 'integer' AND "
+            "display_wake_delay_seconds BETWEEN 0 AND 30",
+            name="display_wake_delay_range",
+        ),
+        CheckConstraint(
+            "typeof(maximum_static_dwell_seconds) = 'integer' AND "
+            "maximum_static_dwell_seconds BETWEEN 300 AND 14400",
+            name="maximum_static_dwell_range",
+        ),
+        CheckConstraint(
             "typeof(schedule_enabled) = 'integer' AND schedule_enabled IN (0, 1)",
             name="schedule_enabled_bool",
         ),
@@ -37,6 +51,15 @@ class ApplicationSettings(Base):
         ),
     )
 
+    display_power_backend: Mapped[str] = mapped_column(
+        String(6), default="auto", server_default="auto"
+    )
+    display_wake_delay_seconds: Mapped[int] = mapped_column(
+        default=5, server_default="5"
+    )
+    maximum_static_dwell_seconds: Mapped[int] = mapped_column(
+        default=1800, server_default="1800"
+    )
     id: Mapped[int] = mapped_column(primary_key=True)
     schedule_enabled: Mapped[bool] = mapped_column(default=False, server_default="0")
     schedule_override_active: Mapped[bool | None]
@@ -119,3 +142,75 @@ def set_default_scene_dwell(database: Database, value: int) -> None:
     with database.transaction(write=True) as session:
         read_playback_settings(session)
         session.get(ApplicationSettings, 1).default_scene_dwell_seconds = value
+
+
+@dataclass(frozen=True)
+class DisplayPowerSettings:
+    """Durable panel policy; enforcement belongs to the later runtime owner."""
+
+    display_power_backend: str
+    display_wake_delay_seconds: int
+    maximum_static_dwell_seconds: int
+
+    def __post_init__(self):
+        if type(
+            self.display_power_backend
+        ) is not str or self.display_power_backend not in (
+            "auto",
+            "cec",
+            "ddc",
+            "signal",
+        ):
+            raise ValueError("Display power backend must be auto, cec, ddc or signal.")
+        if (
+            type(self.display_wake_delay_seconds) is not int
+            or not 0 <= self.display_wake_delay_seconds <= 30
+        ):
+            raise ValueError("Wake delay must be an integer from 0 to 30 seconds.")
+        if (
+            type(self.maximum_static_dwell_seconds) is not int
+            or not 300 <= self.maximum_static_dwell_seconds <= 14400
+        ):
+            raise ValueError(
+                "Maximum static dwell must be an integer from 300 to 14400 seconds."
+            )
+
+
+def read_display_power_settings(session) -> DisplayPowerSettings:
+    """Detach validated policy within a caller-owned short database transaction."""
+    row = session.get(ApplicationSettings, 1)
+    if row is None:
+        raise DatabaseError("Application settings row is missing.")
+    try:
+        return DisplayPowerSettings(
+            row.display_power_backend,
+            row.display_wake_delay_seconds,
+            row.maximum_static_dwell_seconds,
+        )
+    except ValueError as error:
+        raise DatabaseError(
+            "Application display power settings are damaged."
+        ) from error
+
+
+def get_display_power_settings(database: Database) -> DisplayPowerSettings:
+    with database.transaction() as session:
+        return read_display_power_settings(session)
+
+
+def set_display_power_settings(
+    database: Database,
+    display_power_backend: str,
+    display_wake_delay_seconds: int,
+    maximum_static_dwell_seconds: int,
+) -> None:
+    """Validate the complete replacement before acquiring the short write transaction."""
+    policy = DisplayPowerSettings(
+        display_power_backend, display_wake_delay_seconds, maximum_static_dwell_seconds
+    )
+    with database.transaction(write=True) as session:
+        read_display_power_settings(session)
+        row = session.get(ApplicationSettings, 1)
+        row.display_power_backend = policy.display_power_backend
+        row.display_wake_delay_seconds = policy.display_wake_delay_seconds
+        row.maximum_static_dwell_seconds = policy.maximum_static_dwell_seconds

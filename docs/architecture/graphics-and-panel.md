@@ -200,13 +200,35 @@ Stopping playback is not sufficient. During configured sleep periods PostcardSce
 
 Power control remains a separate subsystem from the Linux graphics session.
 
-Preferred methods:
+### Persisted policy (#110)
 
-1. HDMI-CEC for compatible TVs.
-2. DDC/CI for compatible monitors.
-3. DRM/KMS or HDMI-signal control as a fallback where supported.
+`ApplicationSettings` owns three durable fields, added by explicit migration
+`0011_display_power_settings` after `0010_operating_schedule`. Existing appliance,
+domain, catalog and schedule state is preserved. Frozen `DisplayPowerSettings`
+snapshots and database-only getters/setters in `postcardscene.settings` validate
+complete replacements before mutation, use short transactions, and report damaged
+persisted values as `DatabaseError` rather than substituting defaults.
 
-Settings should allow automatic capability discovery where practical, preferred backend, fallback, wake/handshake delay, test actions, and schedule configuration.
+- `display_power_backend`: closed `auto|cec|ddc|signal`, default `auto`.
+  Automatic selection uses the first usable capability in CEC -> DDC/CI -> signal
+  order. Explicit selection is strict, with no fallback. Automatic selection does
+  not authorize stacking commands after an uncertain operation. There is no
+  disabled mode or plugin registry; no usable backend means degraded/unavailable.
+- `display_wake_delay_seconds`: integer 0–30, default 5; booleans rejected.
+  This is the post-wake handshake allowance before presentation release after an
+  actual wake transition. Already-authoritatively-on state may return immediately;
+  there is no sleep delay or per-backend delay matrix.
+- `maximum_static_dwell_seconds`: integer 300–14400, default 1800; booleans
+  rejected. This non-disableable safety ceiling is independent of Scene duration,
+  membership overrides and the application default playback dwell.
+
+SQLite enforces non-null values, backend vocabulary, integer storage and ranges.
+These settings are durable appliance state for backup/restore. CEC/DDC selectors
+remain trusted host/install authority, outside these administrator policy fields.
+#110 implements configuration only: backend commands/discovery, runtime ownership,
+schedule/playback actions, Display UI and physical evidence belong to later children.
+The V0 signal backend will use Wayland output signal power (`wlopm`) on the
+#63-authorized output; signal state cannot prove physical panel standby.
 
 The host/runtime remains alive while the panel sleeps so administration, scheduling, catalog reconciliation, and later provider refresh can continue.
 
@@ -216,13 +238,19 @@ A failed power operation should surface degraded/unknown state rather than false
 
 Panel protection is separate from scheduled sleep.
 
-Potential configurable protections include:
+The #110 ceiling freezes these rules for later runtime enforcement:
 
-- maximum dwell time for static web/dashboard scenes
-- optional subtle position/pixel shifting for appropriate static content
-- avoidance of unnecessary permanent overlays
-- renderer/player watchdog
-- safe blanking if the renderer stalls
-- eventual standby after prolonged severe failure
+- Newly presented content resets safety age, including successful Previous/Next
+  while paused. Ordinary Pause does not stop safety accounting.
+- Revealing/updating the control overlay does not reset safety age, and temporary
+  schedule Keep active never bypasses protection.
+- Images, portrait pairs and web steps are conservatively potentially static;
+  V0 does not inspect pixels or DOM animation.
+- Actively progressing unpaused video is not static merely because its Scene
+  identity is unchanged. Paused/stalled-video handling belongs to later protection
+  work, alongside suppression of content/audio before panel sleep.
 
-Ordinary changing photography should not be subjected to distracting movement solely for burn-in prevention.
+V0 adds no pixel shifting, per-Widget thresholds, protection-disable switches or
+multiple safety profiles. Ordinary changing photography should not be subjected
+to distracting movement solely for burn-in prevention. No live protection or
+renderer watchdog is implemented by the persisted settings boundary.
