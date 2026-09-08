@@ -192,10 +192,13 @@ def test_missing_settings_is_storage_failure(database):
         resolve_active_sequence(database)
 
 
-def test_migration_preserves_complete_existing_state(tmp_path):
+@pytest.mark.parametrize(
+    "revision", ["0008_catalog_requests", "0009_playback_settings"]
+)
+def test_migration_preserves_complete_existing_state(tmp_path, revision):
     db = Database(tmp_path / "old.sqlite3", create=True)
     with db.engine.begin() as connection:
-        command.upgrade(migration_config(connection), "0008_catalog_requests")
+        command.upgrade(migration_config(connection), revision)
         for sql in (
             "INSERT INTO administrator VALUES (1, 'admin', 'hash', 'identity')",
             "UPDATE application_settings SET timezone='Europe/Athens'",
@@ -209,6 +212,10 @@ def test_migration_preserves_complete_existing_state(tmp_path):
             "INSERT INTO media_catalog_state VALUES (1, 1, 1, 'ready', 20, 20, 2, 1)",
         ):
             connection.exec_driver_sql(sql)
+        if revision == "0009_playback_settings":
+            connection.exec_driver_sql(
+                "UPDATE application_settings SET active_sequence_id=1, default_scene_dwell_seconds=47"
+            )
         tables = [
             row[0]
             for row in connection.exec_driver_sql(
@@ -228,11 +235,28 @@ def test_migration_preserves_complete_existing_state(tmp_path):
             )
         assert connection.exec_driver_sql(
             "SELECT * FROM application_settings"
-        ).one() == (1, "Europe/Athens", None, 30)
+        ).one() == (
+            1,
+            "Europe/Athens",
+            1 if revision == "0009_playback_settings" else None,
+            47 if revision == "0009_playback_settings" else 30,
+            0,
+            None,
+            None,
+        )
+        assert connection.exec_driver_sql("SELECT * FROM operating_window").all() == []
         assert {
             row[1]
             for row in connection.exec_driver_sql(
                 "PRAGMA table_info(application_settings)"
             )
-        } == {"id", "timezone", "active_sequence_id", "default_scene_dwell_seconds"}
+        } == {
+            "id",
+            "timezone",
+            "active_sequence_id",
+            "default_scene_dwell_seconds",
+            "schedule_enabled",
+            "schedule_override_active",
+            "schedule_override_until_utc",
+        }
     db.engine.dispose()

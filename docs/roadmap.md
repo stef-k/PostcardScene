@@ -147,14 +147,21 @@ remain later #8 children; #93/#94 retain their image/physical prerequisite gates
 
 ### Operating schedule
 
-- configurable display on/off periods
-- support for more than one active/off span where practical
-- weekday/weekend or day-specific rules
-- one configured application timezone
-- deterministic DST skipped/repeated-time behavior
-- temporary/manual override with explicit persistence/expiry semantics
-- safe convergence after reboot, NTP/manual clock correction, or timezone change
-- scheduling independent of browser requests
+#101 implements durable weekly active windows and pure IANA-timezone evaluation:
+
+- at most 64 same-day half-open active windows, Monday 0 through Sunday 6;
+- OR semantics, overlaps allowed, full day 0–1440 minutes;
+- overnight spans require two explicit adjacent-day rows;
+- disabled means active; enabled with no windows means sleep;
+- current UTC instant converted through the application timezone: skipped DST
+  minutes never occur, repeated minutes obey the same rule both times;
+- one durable active/sleep override for integer 1–10080 minutes, absolute UTC
+  expiry and compare-clear cleanup of observed expiration;
+- atomic configuration replacement and detached immutable snapshots.
+
+Runtime convergence (#102), authenticated configuration UI (#103), and live
+playback/panel integration (#104) remain later children. No transition queue,
+calendar engine, worker or panel command is part of #101.
 
 ### Display power and panel protection
 

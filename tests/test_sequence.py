@@ -59,11 +59,7 @@ def test_upgrade_preserves_existing_state(tmp_path):
             ).all()
             for table in tables
         }
-    assert (
-        upgrade_database(database.path).schema_revision
-        == SCHEMA_REVISION
-        == "0009_playback_settings"
-    )
+    assert upgrade_database(database.path).schema_revision == SCHEMA_REVISION
     with database.transaction() as session:
         for table in tables:
             assert (

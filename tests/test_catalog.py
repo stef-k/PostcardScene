@@ -20,7 +20,7 @@ from postcardscene.filesystem_source import (
     ScanCancelled,
     SourceUnavailable,
 )
-from postcardscene.persistence import Base, Database
+from postcardscene.persistence import SCHEMA_REVISION, Base, Database
 from postcardscene.schema import migration_config, upgrade_database
 
 
@@ -89,7 +89,7 @@ def test_migration_preserves_full_configuration(tmp_path):
             ).all()
             for table in tables
         }
-    assert upgrade_database(db.path).schema_revision == "0009_playback_settings"
+    assert upgrade_database(db.path).schema_revision == SCHEMA_REVISION
     with db.engine.connect() as connection:
         for table in tables:
             assert (

@@ -6,6 +6,7 @@ from postcardscene import (  # noqa: F401 -- register migration metadata
     accounts,
     catalog,
     domain,
+    operating_schedule,
     settings,
 )
 from postcardscene.persistence import Base
