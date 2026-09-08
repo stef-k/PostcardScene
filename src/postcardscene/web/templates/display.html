@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% from "composition_fields.html" import field %}
+{% block title %}Display{% endblock %}
+{% block content %}
+<div class="row"><div class="col-lg-10 col-xl-9">
+  <p class="eyebrow mb-3">Your ambient display</p>
+  <h1 class="mb-4">Display</h1>
+  <p class="lead text-body-secondary">Panel policy, observed power and temporary diagnostics.</p>
+  {% for message in get_flashed_messages() %}<p class="alert alert-info" role="status">{{ message }}</p>{% endfor %}
+  {% if error %}<p class="alert alert-danger" role="alert">{{ error }}</p>{% endif %}
+  <section class="card mt-4" aria-labelledby="policy-title"><div class="card-body p-4 p-md-5">
+    <h2 id="policy-title" class="h4">Panel power policy</h2>
+    <p>Automatic tries usable capabilities in fixed priority: HDMI-CEC → DDC/CI → signal. Explicit backend selection is strict and does not silently fall through.</p>
+    <p>Signal only can confirm output signal power, but may not prove physical TV or monitor standby.</p>
+    <p>Wake delay applies after an actual wake transition before presentation release. Saving sends no runtime command; the runtime reads policy on its bounded reconciliation cadence.</p>
+    <form method="post" action="{{ url_for('display.index') }}">
+      {{ form.hidden_tag() }}
+      {{ field(form.display_power_backend) }}
+      {{ field(form.display_wake_delay_seconds) }}
+      {{ field(form.maximum_static_dwell_seconds) }}
+      <p>Maximum static dwell is a safety ceiling of 300–14400 seconds and cannot be disabled. It is separate from Scene playback duration.</p>
+      <button class="btn btn-primary" type="submit">Save display policy</button>
+    </form>
+  </div></section>
+  <section class="card mt-4" aria-labelledby="status-title"><div class="card-body p-4 p-md-5">
+    <h2 id="status-title" class="h4">Live panel status</h2>
+    <p>Snapshot at page load. Configured policy is separate from observed physical state.</p>
+    {% set s = live.status %}
+    {% if not s or live.outcome != 'accepted' %}
+      <p role="status">Runtime panel status unavailable</p>
+      {% if live.outcome == 'cleanup_failed' %}<p>Runtime panel failure; runtime recovery is required.</p>{% endif %}
+    {% else %}
+      {% if s.evidence == 'physical' and s.physical != 'unknown' %}
+        <p class="fw-semibold">Physical state confirmed: {{ s.physical }}</p>
+      {% elif s.evidence == 'signal_only' %}
+        <p class="fw-semibold">Signal output {{ s.signal }}; physical panel unknown</p>
+      {% else %}<p class="fw-semibold">Unknown/degraded — physical panel state cannot be established.</p>{% endif %}
+      {% set backends = {'auto': 'Automatic', 'cec': 'HDMI-CEC', 'ddc': 'DDC/CI', 'signal': 'Signal only', none: 'None'} %}
+      <dl class="row mb-0">
+        <dt class="col-sm-5">Runtime configured backend</dt><dd class="col-sm-7">{{ backends[s.configured_backend] }}</dd>
+        <dt class="col-sm-5">Currently selected backend</dt><dd class="col-sm-7">{{ backends[s.active_backend] }}</dd>
+        <dt class="col-sm-5">Effective intent</dt><dd class="col-sm-7">{{ 'Active' if s.desired_active else 'Sleep' }}</dd>
+        <dt class="col-sm-5">Protection requires sleep</dt><dd class="col-sm-7">{{ 'Yes' if s.protection_sleep else 'No' }}</dd>
+        <dt class="col-sm-5">Diagnostic test target</dt><dd class="col-sm-7">{{ 'None' if s.diagnostic_active is none else ('Wake' if s.diagnostic_active else 'Sleep') }}</dd>
+        <dt class="col-sm-5">Observed physical state</dt><dd class="col-sm-7">{{ s.physical }}</dd>
+        <dt class="col-sm-5">Signal state</dt><dd class="col-sm-7">{{ s.signal }}</dd>
+        <dt class="col-sm-5">Evidence</dt><dd class="col-sm-7">{{ s.evidence|replace('_', ' ') }}</dd>
+        <dt class="col-sm-5">Lifecycle / reason</dt><dd class="col-sm-7">{{ s.state }} / {{ s.reason|replace('_', ' ') }}</dd>
+      </dl>
+    {% endif %}
+    <a class="btn btn-outline-secondary mt-3" href="{{ url_for('display.index') }}">Refresh live status</a>
+  </div></section>
+  <section class="card mt-4" aria-labelledby="tests-title"><div class="card-body p-4 p-md-5">
+    <h2 id="tests-title" class="h4">Diagnostic tests</h2>
+    <p>Tests are temporary diagnostics for five seconds, not scheduling or manual overrides. They change no saved settings or schedule. The runtime automatically returns to current policy after five seconds.</p>
+    <p>Test wake may temporarily override ordinary operating sleep, but never protection sleep. Backend unavailability may prevent a transition even when a test is submitted.</p>
+    <div class="d-flex flex-wrap gap-3">
+      <form method="post" action="{{ url_for('display.test_wake') }}">{{ test_form.hidden_tag() }}<button class="btn btn-outline-primary" type="submit">Test wake</button></form>
+      <form method="post" action="{{ url_for('display.test_sleep') }}">{{ test_form.hidden_tag() }}<button class="btn btn-outline-primary" type="submit">Test sleep</button></form>
+    </div>
+  </div></section>
+  <section class="card mt-4" aria-labelledby="protection-title"><div class="card-body p-4 p-md-5">
+    <h2 id="protection-title" class="h4">Panel protection</h2>
+    {% if policy %}<p>Configured maximum static dwell: {{ policy.maximum_static_dwell_seconds }} seconds.</p>{% endif %}
+    <p>Playback Pause and schedule Keep active do not disable panel protection. Live static-content and stalled-video protection enforcement is not implemented yet.</p>
+    <p>Live schedule/playback integration is also pending. These settings and diagnostics make no physical hardware support claim.</p>
+  </div></section>
+</div></div>
+{% endblock %}

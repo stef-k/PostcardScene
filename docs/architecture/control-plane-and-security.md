@@ -142,8 +142,17 @@ provisioning. Invalid authority and existing endpoints fail startup; application
 code never creates/chowns the parent or deletes a foreign/stale socket. Clients
 have 100 ms I/O bounds and the single listener joins within five seconds.
 
-#114 will connect authenticated Display actions through this seam. Flask still
-performs no panel calls, and general runtime/playback IPC remains #29 authority.
+#114 adds authenticated **Display** with atomic #110 policy replacement and
+separate POST/CSRF Test wake/Test sleep actions. The ordinary-Python `panel_client`
+uses the fixed path/version and three closed actions, one connection/packet per
+request, 1024-byte receive bound and 100 ms connect/read/write timeouts without
+retries. Invalid responses and socket failures become sanitized unavailable
+feedback. Only validated fixed vocabulary reaches templates. Settings saves send
+no socket command; unavailable runtime status leaves durable management usable.
+Flask never imports/constructs panel hardware owners or invokes their tools.
+Accepted tests mean submitted, not completed physical transitions; cleanup failure
+requires runtime recovery and is never retried from Flask. General runtime/playback
+IPC remains #29 authority. See [Display guidance](../operations.md#display-settings-status-and-tests).
 See [wire protocol and operations](../operations.md#live-panel-runtime-and-local-control-113).
 
 ## Authentication, network exposure, and secrets

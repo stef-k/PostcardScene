@@ -225,10 +225,9 @@ persisted values as `DatabaseError` rather than substituting defaults.
 SQLite enforces non-null values, backend vocabulary, integer storage and ranges.
 These settings are durable appliance state for backup/restore. CEC/DDC selectors
 remain trusted host/install authority, outside these administrator policy fields.
-#110 implements configuration only: backend commands/discovery, runtime ownership,
-schedule/playback actions, Display UI and physical evidence belong to later children.
-The #111 capability boundary below supplies backend execution; runtime ownership,
-live enforcement and Display UI remain later work.
+#111 supplies backend execution, #112/#113 runtime ownership, and #114 the
+authenticated Display policy/status/test page. Schedule/playback integration,
+live protection enforcement and physical evidence remain #104/#115/#116.
 
 The host/runtime remains alive while the panel sleeps so administration, scheduling, catalog reconciliation, and later provider refresh can continue.
 
@@ -301,8 +300,8 @@ Pi/display compatibility, actual standby or non-root permission claims.
 `runtime.panel.PanelCoordinator` is independently constructed with a database,
 shared stop Event and exclusive CEC/DDC/signal backend instances. Its one thread
 owns every backend call. #113 supplies live RuntimeHost construction and local
-transport below; Display UI, schedule/playback suppression and static-dwell
-enforcement remain later work.
+transport below; #114 supplies Display UI. Schedule/playback suppression and
+static-dwell enforcement remain later work.
 
 The closed hierarchy is protection sleep > transient diagnostic > operating
 intent. Operating defaults active, protection clear. `apply_operating(bool)`,
@@ -367,6 +366,18 @@ It is an ownership gate, not physical standby evidence. The local panel-only
 socket exposes this gate with the fixed #112 status and diagnostic intents; see
 [operations](../operations.md#live-panel-runtime-and-local-control-113). #104/#115
 retain scheduling, playback suppression and static-protection integration.
+
+### Display control page (#114)
+
+The authenticated server-rendered Display page edits the complete #110 policy
+atomically, independently of live runtime availability. It separates persisted
+policy, best-effort #113 status, fixed five-second diagnostics and configured panel
+protection. Physical confirmation requires physical evidence; signal-only status
+explicitly leaves physical state unknown, and unknown/degraded results make no
+standby claim. Test wake cannot bypass the coordinator's protection latch; tests
+change no durable policy or schedule. Flask sends only the fixed local socket
+actions and never executes hardware commands or exposes trusted host selectors.
+The page explicitly labels pending schedule/playback and protection enforcement.
 
 ## Burn-in and static-content protection
 

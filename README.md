@@ -138,7 +138,7 @@ local control interface with:
 uv run flask --app postcardscene.web:create_app run --host 127.0.0.1 --no-debug
 ```
 
-Open <http://127.0.0.1:5000/> and log in. Authentication protects Overview, Settings, Sources, Widgets, Scenes, Sequences and Schedule. Overview shows the application
+Open <http://127.0.0.1:5000/> and log in. Authentication protects Overview, Settings, Sources, Widgets, Scenes, Sequences, Schedule and Display. Overview shows the application
 version, database/schema health and unavailable runtime status; playback controls
 are not implemented.
 The command starts only the web process. Stop it with Ctrl-C.
