@@ -24,6 +24,10 @@ CEC_INFO = b"""Driver Info:
       Logical Address          : 4 (Playback Device 1)
 """
 DDC_ONE = b"Display 1\n   I2C bus: /dev/i2c-7\n   Monitor: MFG:MODEL:PRIVATE-SERIAL\n"
+DDC_ONE = DDC_ONE.replace(
+    b"   Monitor:",
+    b"   DRM connector: card1-HDMI-A-1\n   drm_connector_id: 42\n   Monitor:",
+)
 DDC_TWO = (
     DDC_ONE + b"\nDisplay 2\n   I2C bus: /dev/i2c-8\n   Monitor: OTHER:MODEL:PRIVATE\n"
 )
@@ -327,3 +331,16 @@ def test_signal_requires_matching_protocol_mode_not_default_off(monkeypatch, raw
     result = backend.observe(lambda: False)
     assert result.signal == result.physical == State.UNKNOWN
     assert result.evidence == "none"
+
+
+def test_ddc_ignores_complete_unresponsive_display_entry(monkeypatch):
+    backend = DdcBackend()
+    invalid = (
+        b"Invalid display\n   I2C bus: /dev/i2c-9\n   Monitor: INTERNAL:LCD:PRIVATE\n"
+    )
+    scripted(
+        monkeypatch,
+        backend,
+        [DDC_ONE + invalid, b"VCP D6 SNC x01\n", b"VCP D6 SNC x01\n"],
+    )
+    assert backend.probe(lambda: False).status == Status.PHYSICAL

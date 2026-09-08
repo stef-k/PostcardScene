@@ -570,7 +570,6 @@ wiring remain #104; physical power and panel protection remain #10. Saving a
 schedule or override does not yet control or prove panel standby/wake, playback,
 or audio suppression. The page sends no runtime commands or hardware probes.
 
-
 ## Panel power capabilities (#111)
 
 The ordinary-Python CEC, DDC and signal capabilities are implemented independently
@@ -608,8 +607,8 @@ cancellation polling, followed by at most 250 ms kill/reap cleanup. Public resul
 contain only closed state/reason values; raw output, stderr, selectors, display
 serials and environment values are discarded from status. Stderr is discarded
 except query-only Wayland trace, which shares the same capture cap and is parsed
-privately before being discarded. A timeout or uncertain
-request must not trigger another backend. Cleanup failure is separately marked,
+privately before being discarded. A timeout or uncertain request must not trigger
+another backend. Cleanup failure is separately marked,
 blocks further calls on that capability, and requires restart through the later
 runtime owner. These direct tools must not be replaced with shell wrappers.
 

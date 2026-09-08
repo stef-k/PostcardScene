@@ -6,6 +6,17 @@ from ._backend import Backend
 from ._types import Kind, PowerError, Reason, State
 
 
+# Older brief output omits DRM fields; current ddcutil includes them. Only
+# these bounded fields are accepted, and no EDID/connector data enters status.
+_ENTRY = re.compile(
+    rb"(?:Display ([1-9][0-9]{0,3})|Invalid display)\n"
+    rb"[ \t]+I2C bus:[ \t]+/dev/i2c-([0-9]{1,4})\n"
+    rb"(?:[ \t]+DRM connector:[ \t]+card[0-9]{1,4}-[A-Za-z0-9-]{1,64}\n)?"
+    rb"(?:[ \t]+drm_connector_id:[ \t]+(?:-1|[0-9]{1,10})\n)?"
+    rb"[ \t]+Monitor:[ \t]+[^\r\n]{1,512}(?:\n|$)"
+)
+
+
 class DdcBackend(Backend):
     def __init__(self, display: int | None = None):
         super().__init__(Kind.DDC)
@@ -65,18 +76,11 @@ class DdcBackend(Backend):
 def _displays(raw: bytes) -> list[tuple[int, int]]:
     if not raw.strip() or raw.strip() == b"No displays found":
         return []
-    blocks = re.findall(
-        rb"Display ([1-9][0-9]{0,3})\n[ \t]+I2C bus:[ \t]+/dev/i2c-([0-9]{1,4})\n[ \t]+Monitor:[ \t]+[^\r\n]{1,512}(?:\n|$)",
-        raw,
-    )
-    residue = re.sub(
-        rb"Display [1-9][0-9]{0,3}\n[ \t]+I2C bus:[ \t]+/dev/i2c-[0-9]{1,4}\n[ \t]+Monitor:[ \t]+[^\r\n]{1,512}(?:\n|$)",
-        b"",
-        raw,
-    )
+    blocks = _ENTRY.findall(raw)
+    residue = _ENTRY.sub(b"", raw)
     if residue.strip() or not blocks or len(blocks) > 16:
         raise PowerError(Reason.MALFORMED)
-    displays = [(int(number), int(bus)) for number, bus in blocks]
+    displays = [(int(number), int(bus)) for number, bus in blocks if number]
     if len({number for number, _ in displays}) != len(displays) or len(
         {bus for _, bus in displays}
     ) != len(displays):

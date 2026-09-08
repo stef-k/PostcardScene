@@ -275,7 +275,8 @@ after standby; unavailable readback never triggers rediscovery or another backen
 Only D6 `0x01`/`0x04` are written, with a separate bounded readback. Standard
 observed values 1 mean on, 2/3/4 mean non-on, and all others (including write-only
 5) remain unknown. The parser follows ddcutil's
-[brief discovery](https://www.ddcutil.com/command_detect/) and
+[brief discovery](https://www.ddcutil.com/command_detect/) (including current
+optional DRM fields and complete nonresponsive `Invalid display` entries) and
 [non-continuous VCP output](https://www.ddcutil.com/command_getvcp/).
 
 Signal power consumes `WaylandSession` readiness/client environment and one ready
