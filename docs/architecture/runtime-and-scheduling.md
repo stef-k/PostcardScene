@@ -257,4 +257,3 @@ panel/static-content protection; physical power capability remains separate.
 Later content rules may control which sequence/scenes are appropriate at a given time. Rich conditional scenes are primarily V2 work.
 
 Scheduling logic belongs to the long-running application runtime, not Flask request handlers.
-

@@ -226,4 +226,3 @@ Potential configurable protections include:
 - eventual standby after prolonged severe failure
 
 Ordinary changing photography should not be subjected to distracting movement solely for burn-in prevention.
-

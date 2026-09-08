@@ -420,4 +420,3 @@ Use the simplest transport that satisfies the required update cadence. Ordinary 
 If a concrete V1/V2 requirement demonstrates that server push materially improves behavior, evaluate the smallest suitable mechanism at that time, such as SSE or WebSockets. Do not preselect Flask-Sock, Socket.IO, an ASGI migration, a message broker, or other event infrastructure without evidence that the simpler path is insufficient.
 
 The renderer transport is distinct from the control-plane/runtime IPC boundary: live state remains authoritative in the runtime/player process, so changing browser transport must not collapse the process separation defined elsewhere in this architecture.
-

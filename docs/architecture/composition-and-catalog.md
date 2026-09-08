@@ -554,4 +554,3 @@ The long-running runtime process owns these jobs initially, just as it owns file
 Refresh intervals should be configurable where appropriate. A provider outage should leave the last valid cached state usable when sensible and should expose stale/error state without breaking unrelated scene content.
 
 The exact general cache implementation remains open.
-

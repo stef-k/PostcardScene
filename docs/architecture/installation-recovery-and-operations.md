@@ -175,4 +175,3 @@ The V0 tracker/release issue owns exact-candidate closure evidence for:
 - security review
 - operator docs/license/notices
 - no known release blocker
-
