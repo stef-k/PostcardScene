@@ -1,4 +1,4 @@
-"""Private, bounded compositor-command channel, not final transport mapping."""
+"""Private, bounded compositor-command channel for fixed playback actions."""
 
 import socket
 import stat
@@ -7,8 +7,9 @@ from xml.etree import ElementTree
 
 from . import WaylandSession
 from ._capability import CapabilityError, CapabilityStatus, Deadline
+from .control_protocol import Action
 
-EVENTS = frozenset({b"activity", b"probe_action"})
+EVENTS = frozenset(action.value.encode("ascii") for action in Action)
 SOCKET_NAME = "postcardscene-input.sock"
 
 
@@ -87,7 +88,7 @@ def emit(session, event):
     """Fixed emitter destination under validated application runtime authority."""
     import os
 
-    if not isinstance(event, str) or event not in {"activity", "probe_action"}:
+    if not isinstance(event, str) or event not in Action._value2member_map_:
         raise CapabilityError("invalid_event")
     try:
         session.validate_directory()
@@ -122,7 +123,7 @@ def probe_keybinding(emitter: Path):
         raise CapabilityError("invalid_spec")
     binding = ElementTree.Element("keybind", key="W-F12")
     action = ElementTree.SubElement(binding, "action", name="Execute")
-    ElementTree.SubElement(action, "command").text = f"{emitter} probe_action"
+    ElementTree.SubElement(action, "command").text = f"{emitter} activity"
     return ElementTree.tostring(binding, encoding="unicode")
 
 

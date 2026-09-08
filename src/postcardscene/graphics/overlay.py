@@ -11,6 +11,7 @@ from ._capability import (
     client_environment,
     command_words,
 )
+from .control_protocol import Action, ControlState
 
 
 class Overlay:
@@ -42,6 +43,7 @@ class Overlay:
                 [*self.command, str(Path(__file__).with_name("overlay_helper.py"))],
                 environment,
             )
+            self._process.max_line_bytes = 1023
             self._expect(b"ready", deadline)
             self._reason = "ready"
         except CapabilityError as error:
@@ -52,7 +54,7 @@ class Overlay:
             line = self._process.line(deadline)
             if line == expected:
                 return
-            if line in (b"activity", b"probe_action"):
+            if line in {action.value.encode("ascii") for action in Action}:
                 self._events.append(line.decode("ascii"))
             else:
                 raise CapabilityError("protocol_failed")
@@ -66,6 +68,12 @@ class Overlay:
             self._expect(reply, deadline)
         except CapabilityError as error:
             self._fail(error)
+
+    def update(self, state: ControlState, **kwargs):
+        if not isinstance(state, ControlState):
+            raise ValueError("invalid_state")
+        self._command(state.encode(), b"updated", **kwargs)
+        self.visible = state.visible
 
     def show(self, **kwargs):
         self._command("show", b"shown", **kwargs)
@@ -82,7 +90,7 @@ class Overlay:
             if not self.status.available:
                 raise CapabilityError("unavailable")
             line = self._process.line(Deadline(timeout_seconds, cancelled))
-            if line not in (b"activity", b"probe_action"):
+            if line not in {action.value.encode("ascii") for action in Action}:
                 raise CapabilityError("protocol_failed")
             return line.decode("ascii")
         except CapabilityError as error:

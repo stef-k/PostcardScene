@@ -22,8 +22,8 @@ def channel(tmp_path):
 
 def test_private_input_delivery_and_cancellation(channel):
     assert channel.path.stat().st_mode & 0o777 == 0o600
-    emit(channel.session, "probe_action")
-    assert channel.receive() == "probe_action"
+    emit(channel.session, "activity")
+    assert channel.receive() == "activity"
     emit(channel.session, "activity")
     assert channel.receive() == "activity"
     assert channel.receive(timeout_seconds=0.01) is None
@@ -32,14 +32,14 @@ def test_private_input_delivery_and_cancellation(channel):
     channel.stop()
     assert not channel.path.exists()
     with pytest.raises(CapabilityError, match="input_unavailable"):
-        emit(channel.session, "probe_action")
+        emit(channel.session, "activity")
 
 
 def test_input_rejects_unknown_oversized_and_foreign_socket(channel):
     with pytest.raises(CapabilityError, match="invalid_event"):
-        emit(channel.session, "next")
+        emit(channel.session, "raw_key")
     with socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM) as sender:
-        sender.sendto(b"probe_action" + b"x" * 100, str(channel.path))
+        sender.sendto(b"activity" + b"x" * 100, str(channel.path))
     with pytest.raises(CapabilityError, match="protocol_failed"):
         channel.receive()
     contender = InputChannel(channel.session)
@@ -70,7 +70,7 @@ def test_probe_binding_direct_fixed_helper_and_production_stays_inert():
     binding = ElementTree.fromstring(probe_keybinding(path))
     assert binding.attrib == {"key": "W-F12"}
     assert binding.find("action").attrib == {"name": "Execute"}
-    assert binding.findtext("action/command") == f"{path} probe_action"
+    assert binding.findtext("action/command") == f"{path} activity"
     production = ElementTree.parse("src/postcardscene/graphics/labwc/rc.xml")
     assert all(
         action.get("name") == "None" for action in production.findall(".//action")

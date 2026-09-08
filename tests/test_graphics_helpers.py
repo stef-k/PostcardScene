@@ -31,7 +31,7 @@ def helper(tmp_path):
     script.write_text(
         "import sys\nprint('ready', flush=True)\n"
         "for line in sys.stdin:\n"
-        " if line == 'show\\n': print('probe_action\\nshown', flush=True)\n"
+        " if line == 'show\\n': print('activity\\nshown', flush=True)\n"
         " elif line == 'hide\\n': print('hidden', flush=True)\n"
     )
     return script
@@ -67,7 +67,7 @@ def test_overlay_protocol_repeated_show_hide_action_and_cleanup(overlay):
     for _ in range(2):
         overlay.show()
         assert overlay.visible
-        assert overlay.receive() == "probe_action"
+        assert overlay.receive() == "activity"
         overlay.hide()
         assert not overlay.visible
     assert overlay.receive(timeout_seconds=0.02) is None
