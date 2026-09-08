@@ -52,6 +52,7 @@ def run_passes(database, times, *, before=None, target=None):
     worker.start()
     worker.thread.join(3)
     worker.join()
+    assert worker.status.state == "stopped"
     assert waits == [15.0] * len(times)
     return calls, statuses
 
@@ -220,3 +221,50 @@ def test_precancelled_worker_does_no_work(database):
     worker.join()
     assert stop.is_set()
     assert worker.status.applied_active is None
+
+
+def test_poll_budget_includes_operation_time(database):
+    stop = Event()
+    waits = []
+    elapsed = iter((100.0, 102.0))
+
+    def wait(seconds):
+        waits.append(seconds)
+        stop.set()
+
+    worker = ScheduleWorker(
+        database,
+        lambda *_: OperatingResult.APPLIED,
+        stop,
+        elapsed=lambda: next(elapsed),
+        wait=wait,
+    )
+    worker.start()
+    worker.thread.join(2)
+    worker.join()
+    assert waits == [13.0]
+
+
+def test_uncooperative_target_shutdown_is_fatal(database, monkeypatch):
+    entered, release, stop = Event(), Event(), Event()
+
+    def target(active, cancelled):
+        entered.set()
+        release.wait(2)
+        return OperatingResult.APPLIED
+
+    worker = ScheduleWorker(database, target, stop)
+    assert schedule.JOIN_SECONDS == 5.0
+    monkeypatch.setattr(schedule, "JOIN_SECONDS", 0.01)
+    worker.start()
+    try:
+        assert entered.wait(2)
+        with pytest.raises(RuntimeError, match="shutdown_timeout"):
+            worker.join()
+        assert stop.is_set()
+        assert worker.status.state == "error"
+    finally:
+        release.set()
+        worker.thread.join(2)
+    assert worker.status.applied_active is None
+    assert worker.failure == "shutdown_timeout"

@@ -99,7 +99,9 @@ class ScheduleWorker:
         self.thread.start()
 
     def request_shutdown(self):
-        self._publish(state="stopping")
+        with self._lock:
+            if self._status.state not in {"stopped", "error"}:
+                self._status = replace(self._status, state="stopping")
         self.stop_event.set()
 
     def join(self):
