@@ -250,7 +250,7 @@ through the authenticated Sources area described below.
 Ordinary Python callers use `postcardscene.domain` create/update/get/list/remove
 functions within the existing `Database.transaction()` context. Updates supply
 all fields and replace configuration as a whole; invalid input raises
-`DomainError` before mutation. See [architecture](docs/architecture.md#source-and-widget-persistence)
+`DomainError` before mutation. See [architecture](docs/architecture/composition-and-catalog.md#source-and-widget-persistence)
 for kinds, limits, relationships and the configuration trust boundary.
 
 ### Scene domain
@@ -272,7 +272,7 @@ an integer 1–86400; `enabled` is a boolean.
 
 Referenced Widgets cannot be deleted. Unreferenced Scene removal deletes only placements,
 preserving Widgets and Sources; disable preserves references. See
-[Scene architecture](docs/architecture.md#scene) for the complete contract.
+[Scene architecture](docs/architecture/composition-and-catalog.md#scene) for the complete contract.
 
 ### Composition management
 
@@ -336,7 +336,7 @@ daemonic only to preserve that process-exit bound, not another service.
 
 Catalog state is regenerable. Whole-database backups may contain it, but restored
 catalog freshness must be re-established from external Sources by reconciliation.
-See [catalog architecture](docs/architecture.md#persistent-catalog-and-reconciliation-30)
+See [catalog architecture](docs/architecture/composition-and-catalog.md#persistent-catalog-and-reconciliation-30)
 for API, failure and metadata limitations.
 
 ### Sources control UI
@@ -370,7 +370,7 @@ Disabled Scenes remain valid references; disabling either object preserves
 membership configuration. Referenced Scenes cannot be deleted. Sequence deletion
 removes only its memberships, preserving Scenes, Widgets and Sources, and clears
 active selection to Idle if applicable. The authenticated Sequence editor uses
-these operations; playback integration remains #93 and operating schedules #9. See [Sequence architecture](docs/architecture.md#sequence).
+these operations; playback integration remains #93 and operating schedules #9. See [Sequence architecture](docs/architecture/composition-and-catalog.md#sequence).
 
 ### Application settings and status
 
