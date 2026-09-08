@@ -48,15 +48,15 @@
         <dt class="col-sm-5">Lifecycle / reason</dt><dd class="col-sm-7">{{ s.state }} / {{ s.reason|replace('_', ' ') }}</dd>
       </dl>
     {% endif %}
-    <a class="btn btn-outline-secondary mt-3" href="{{ url_for('display.index') }}">Refresh live status</a>
+    <a class="btn btn-theme mt-3" href="{{ url_for('display.index') }}">Refresh live status</a>
   </div></section>
   <section class="card mt-4" aria-labelledby="tests-title"><div class="card-body p-4 p-md-5">
     <h2 id="tests-title" class="h4">Diagnostic tests</h2>
     <p>Tests are temporary diagnostics for five seconds, not scheduling or manual overrides. They change no saved settings or schedule. The runtime automatically returns to current policy after five seconds.</p>
     <p>Test wake may temporarily override ordinary operating sleep, but never protection sleep. Backend unavailability may prevent a transition even when a test is submitted.</p>
     <div class="d-flex flex-wrap gap-3">
-      <form method="post" action="{{ url_for('display.test_wake') }}">{{ test_form.hidden_tag() }}<button class="btn btn-outline-primary" type="submit">Test wake</button></form>
-      <form method="post" action="{{ url_for('display.test_sleep') }}">{{ test_form.hidden_tag() }}<button class="btn btn-outline-primary" type="submit">Test sleep</button></form>
+      <form method="post" action="{{ url_for('display.test_wake') }}">{{ test_form.hidden_tag() }}<button class="btn btn-theme" type="submit">Test wake</button></form>
+      <form method="post" action="{{ url_for('display.test_sleep') }}">{{ test_form.hidden_tag() }}<button class="btn btn-theme" type="submit">Test sleep</button></form>
     </div>
   </div></section>
   <section class="card mt-4" aria-labelledby="protection-title"><div class="card-body p-4 p-md-5">

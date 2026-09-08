@@ -225,3 +225,33 @@ def test_untrusted_status_never_reaches_page(display_ui, panel_peer):
         "Runtime panel status unavailable"
         in exchange(lambda: client.get("/display")).text
     )
+
+
+def test_silent_runtime_is_bounded_and_not_retried(tmp_path, monkeypatch):
+    from threading import Event
+    from time import monotonic
+
+    path = str(tmp_path / "silent.sock")
+    monkeypatch.setattr(panel_client, "SOCKET_PATH", path)
+    release = Event()
+    requests = []
+    with socket.socket(socket.AF_UNIX, socket.SOCK_SEQPACKET) as server:
+        server.bind(path)
+        server.listen(1)
+        server.settimeout(2)
+
+        def silent_peer():
+            with server.accept()[0] as peer:
+                requests.append(peer.recv(1024))
+                release.wait(2)
+
+        thread = Thread(target=silent_peer)
+        thread.start()
+        try:
+            started = monotonic()
+            assert panel_client.read_status() == panel_client.PanelResponse()
+            assert monotonic() - started < 1
+        finally:
+            release.set()
+            thread.join(3)
+        assert len(requests) == 1
