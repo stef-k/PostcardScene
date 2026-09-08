@@ -39,6 +39,7 @@ class PlaybackStatus:
     state: str = "idle"
     reason: str = "idle"
     paused: bool = False
+    output_suppressed: bool = False
     sequence_id: int | None = None
     membership_id: int | None = None
     scene_id: int | None = None

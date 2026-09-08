@@ -94,6 +94,7 @@ class HelperProcess:
         os.set_blocking(self.reader.fileno(), False)
         os.set_blocking(self.child.stdin.fileno(), False)
         self.buffer = bytearray()
+        self.max_line_bytes = 4096
         self.reaped = False
 
     def exited(self):
@@ -118,10 +119,10 @@ class HelperProcess:
             if b"\n" in self.buffer:
                 line, _, rest = self.buffer.partition(b"\n")
                 self.buffer = bytearray(rest)
-                if len(line) > 4096:
+                if len(line) > self.max_line_bytes:
                     raise CapabilityError("protocol_failed")
                 return bytes(line)
-            if len(self.buffer) > 4096:
+            if len(self.buffer) > self.max_line_bytes:
                 raise CapabilityError("protocol_failed")
             if not select.select([self.reader], [], [], wait)[0]:
                 continue

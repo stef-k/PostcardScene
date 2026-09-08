@@ -1,0 +1,12 @@
+<?xml version="1.0"?>
+<!-- Version 1: #26 installs these inside rc.xml keyboard, retaining None defaults. -->
+<keyboard>
+  <keybind key="Left"><action name="Execute"><command>/opt/postcardscene/venv/bin/postcardscene-input-emitter previous</command></action></keybind>
+  <keybind key="Right"><action name="Execute"><command>/opt/postcardscene/venv/bin/postcardscene-input-emitter next</command></action></keybind>
+  <keybind key="space"><action name="Execute"><command>/opt/postcardscene/venv/bin/postcardscene-input-emitter toggle_pause</command></action></keybind>
+  <keybind key="C-Left"><action name="Execute"><command>/opt/postcardscene/venv/bin/postcardscene-input-emitter seek_back_10</command></action></keybind>
+  <keybind key="C-Right"><action name="Execute"><command>/opt/postcardscene/venv/bin/postcardscene-input-emitter seek_forward_10</command></action></keybind>
+  <keybind key="m"><action name="Execute"><command>/opt/postcardscene/venv/bin/postcardscene-input-emitter toggle_mute</command></action></keybind>
+  <keybind key="Up"><action name="Execute"><command>/opt/postcardscene/venv/bin/postcardscene-input-emitter volume_up_10</command></action></keybind>
+  <keybind key="Down"><action name="Execute"><command>/opt/postcardscene/venv/bin/postcardscene-input-emitter volume_down_10</command></action></keybind>
+</keyboard>

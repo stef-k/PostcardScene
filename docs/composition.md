@@ -7,8 +7,8 @@ places a Widget on the display; a Sequence orders Scenes and controls progressio
 The authenticated control interface currently manages Sources, all four V0 Widget
 kinds, single Scenes, Sequences and active playback selection. Saving these forms
 configures durable state; it does not start playback, preview content or test
-content availability. Actual playback integration (#93) and on-display controls
-(#92) remain separate, unfinished work.
+content availability. Actual playback integration (#93) remains unfinished. The
+#92 local controls component is implemented separately and awaits that wiring.
 
 ## Configure a Widget
 
@@ -125,3 +125,35 @@ media catalog. Neither action deletes original media.
 Deleting a Sequence deletes only that Sequence and its owned occurrences. Scenes,
 Widgets, Sources and media are preserved. Deleting the active Sequence clears
 selection to **None / Idle**; no replacement Sequence is chosen.
+
+## Local playback controls
+
+The common on-display panel provides **Previous**, **Play/Pause** and **Next**
+above images, video and web content. Previous retraces bounded transient playback
+history; Next moves forward using the shared planner. Pause holds automatic
+progression and remaining dwell: images remain static, web pages keep their own
+scripts/timers running, and video pauses. Previous/Next while paused select and
+hold the target; a new video starts paused. Restart begins a fresh unpaused epoch.
+
+Controls are hidden initially and hide after **5 seconds** without local activity,
+even while paused. Keyboard/button activity reveals and resets the timer; playback
+status updates do not. Move the pointer to, click, or touch the **bottom 8 logical
+pixels** to reveal the panel. Pointer movement elsewhere on content does not reveal
+it. The edge hotspot is disabled while the panel is visible or output is suppressed.
+
+| Key | Action |
+| --- | --- |
+| Left / Right | Previous / Next |
+| Space | Play/Pause |
+| Ctrl+Left / Ctrl+Right | Seek back / forward 10 seconds |
+| M | Toggle mute |
+| Up / Down | Volume +10 / -10, capped at 0–100 |
+
+Seek buttons appear only for seekable active video; mute and volume buttons appear
+only when video audio control is available. Unsupported actions do not interrupt
+image/web playback. Unknown mute/volume state is unavailable rather than guessed.
+The compositor reserves these keys for playback regardless of content focus;
+general web-page keyboard interaction is outside V0. There is no remote web
+playback API. #26 owns keymap installation and #93 connects the component to real
+runtime playback; physical HDMI, keyboard and touch usability remain evidence
+gates, not claims established by the software tests.
