@@ -3,6 +3,7 @@
 import re
 
 from postcardscene.graphics import WaylandSession
+from postcardscene.graphics.mutation import DisplayMutationGuard
 from postcardscene.graphics.output import DisplayStatus, select_connector
 from postcardscene.graphics.output_probe import CONNECTOR, ProbeError, read_connectors
 
@@ -17,6 +18,7 @@ class SignalBackend(Backend):
         display: DisplayStatus | None = None,
         *,
         connector_override: str | None = None,
+        mutation_guard: DisplayMutationGuard | None = None,
     ):
         super().__init__(Kind.SIGNAL)
         # Retain the selected identity across intentional off. Reconciliation
@@ -38,8 +40,17 @@ class SignalBackend(Backend):
         self._discover_output = display is None
         self._connector_override = connector_override
         self._session = session
+        self.mutation_guard = mutation_guard or DisplayMutationGuard()
 
     def _operate(self, requested, cancelled):
+        if not self.mutation_guard.acquire(cancelled):
+            raise PowerError(Reason.CANCELLED)
+        try:
+            return self._operate_guarded(requested, cancelled)
+        finally:
+            self.mutation_guard.release()
+
+    def _operate_guarded(self, requested, cancelled):
         if not self._session.inspect().available:
             raise PowerError(Reason.UNAVAILABLE)
         try:

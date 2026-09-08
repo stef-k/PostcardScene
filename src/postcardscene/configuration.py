@@ -34,7 +34,7 @@ def load_runtime_config():
         type(connector) is not str or not CONNECTOR.fullmatch(connector)
     ):
         raise ValueError("Invalid trusted display connector.")
-    if not enabled and any(value is not None for value in (cec, ddc, connector)):
+    if not enabled and any(value is not None for value in (cec, ddc)):
         raise ValueError("Panel selectors require explicit runtime enablement.")
     return {
         "PANEL_POWER_RUNTIME_ENABLED": enabled,

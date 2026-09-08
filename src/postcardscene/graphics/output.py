@@ -1,6 +1,6 @@
 """One HDMI display policy and cancellable reconciliation; no panel power control."""
 
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import asdict, dataclass, replace
 from threading import Event
 
@@ -201,16 +201,26 @@ def reconcile_display(
 
 
 def monitor_display(
-    session: WaylandSession, stop_event: Event, *, connector_override: str | None = None
-) -> Iterator[DisplayStatus]:
+    session: WaylandSession,
+    stop_event: Event,
+    *,
+    connector_override: str | None = None,
+    reconcile: Callable[[], DisplayStatus | None] | None = None,
+) -> Iterator[DisplayStatus | None]:
     """Blocking snapshots for a runtime-owned consumer; one interruptible second between polls.
 
     The owner must consume promptly and share its shutdown Event. No thread,
     compositor, renderer, database or service is created by this component.
+    A runtime owner may supply a guarded pass returning None while suspended.
+    The cadence and cancellation remain owned here.
     """
     while not stop_event.is_set():
-        status = reconcile_display(
-            session, connector_override=connector_override, stop_event=stop_event
+        status = (
+            reconcile()
+            if reconcile is not None
+            else reconcile_display(
+                session, connector_override=connector_override, stop_event=stop_event
+            )
         )
         if stop_event.is_set():
             return

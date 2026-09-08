@@ -307,6 +307,9 @@ def test_occupied_panel_endpoint_prevents_hardware_start(
     monkeypatch.setattr(
         host.panel_coordinator, "start", lambda: pytest.fail("hardware started")
     )
+    monkeypatch.setattr(
+        host.output_monitor, "start", lambda: pytest.fail("output started")
+    )
     with pytest.raises(OSError):
         host.run()
     assert path.read_text() == "existing owner"
