@@ -147,7 +147,9 @@ The web/control and runtime/player processes must be independently restartable.
 #122 freezes `postcardscene-runtime.service`, weak graphics startup ordering,
 shared installed `/etc/postcardscene/config.py` consumption, and journald lifecycle
 logging; see the [installed service contract](operations.md#installed-runtime-service-122).
-#26 retains installation and provisioning ownership.
+#26 retains installation and provisioning ownership. #124 connects one shared
+output monitor with [serialized signal-power coordination](architecture/graphics-and-panel.md#shared-display-mutation-124);
+physical graphics validation remains #66.
 
 A Chromium, mpv, cataloging, source, or media failure must be recoverable without losing access to the web administration interface. Restarting the control plane should not unnecessarily destroy the active display session.
 

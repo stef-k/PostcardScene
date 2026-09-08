@@ -58,11 +58,17 @@ class OutputMonitor:
                 and self.panel_coordinator.intentional_signal_sleep
             ):
                 return None
+            if self.stop_event.is_set():
+                return None
             return reconcile_display(
                 self.session,
                 connector_override=self.connector_override,
                 stop_event=self.stop_event,
             )
+        except BaseException:
+            # Publish fatal cancellation before the other owner can acquire.
+            self.stop_event.set()
+            raise
         finally:
             self.mutation_guard.release()
 

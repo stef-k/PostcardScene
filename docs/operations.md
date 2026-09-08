@@ -237,7 +237,8 @@ The graphical/runtime user calls
 and, when necessary, configure the one HDMI output. This is a mutating Python
 operation, not a read-only doctor command. Its frozen `DisplayStatus` has
 `public_diagnostics()` for safe serialization; the existing session CLI remains
-session-only. The runtime executable does not yet start output monitoring.
+session-only. #124 starts one output monitor in the configured runtime executable,
+including when panel power is disabled; no additional feature switch is required.
 
 #26 must provision `/usr/bin/wlr-randr` with working `--json` support and the
 wlr-output-management protocol on labwc. The same executable path, session
@@ -287,9 +288,9 @@ loss. No monitor serial, model/description text, raw EDID, environment or comman
 output is retained. Snapshots and this policy have no durable state to back up.
 
 Unit/process tests prove software decisions and bounded tool behavior. Physical
-Pi/HDMI/4K/hotplug claims remain #66. Panel standby/wake stays with #10; its later
-runtime integration must suspend this reconciliation while intentionally disabling
-outputs. Renderer lifecycle and shared surfaces remain #64/#65.
+Pi/HDMI/4K/hotplug claims remain #66. Panel standby/wake stays with #10; #124
+suspends and serializes this reconciliation against intentional signal sleep.
+Renderer lifecycle and shared surfaces remain #64/#65.
 
 ## Isolated Chromium control (#64)
 
@@ -716,7 +717,10 @@ catalog refresh. Trusted `POSTCARDSCENE_CONFIG` accepts:
 | `DDC_DISPLAY` | Optional integer 1–9999, never bool |
 | `DISPLAY_CONNECTOR` | Optional exact `HDMI-A-N`, N 1–9999, using #63 rules |
 
-Selectors without explicit enablement fail configuration. Enabled hosts may omit
+`DISPLAY_CONNECTOR` is graphics authority and is valid without panel enablement.
+The output monitor and enabled signal backend receive the same validated value.
+CEC/DDC selectors without explicit panel enablement fail configuration.
+Enabled hosts may omit
 selectors: CEC is then unavailable, DDC requires one unambiguous display, and
 signal uses #63's unambiguous HDMI selection. Invalid values fail before workers
 start. These inputs never come from SQLite or web requests. The existing
@@ -762,11 +766,24 @@ continues catalog cleanup without requesting on/off. Panel unavailability degrad
 locally; cleanup uncertainty stops the host and returns nonzero for supervisor
 recovery. The control plane is independently restartable.
 
-Signal selection reuses #63 inside the existing panel pass, with no mode/output
-monitor. The selected output survives intentional off. Future #11 output-monitor
-integration must refrain from reconciliation while `intentional_signal_sleep`
-is true, including uncertain sleep/wake ownership. Wlopm changes power without
-requiring a mode reapply. #104 retains schedule/playback suppression wiring, #115
+Signal selection reuses #63 inside the existing panel pass without mode reapply.
+The selected output survives intentional off. The #124 output monitor and signal
+backend share one non-reentrant `DisplayMutationGuard`: acquire in cancellable
+slices of at most 50 ms, then recheck `intentional_signal_sleep` before any
+reconciliation. Signal holds that guard through every bounded wlopm operation
+and readback; CEC/DDC remain outside it. A pass already in progress finishes
+before signal off; a waiting pass skips until retained sleep/wake authority clears.
+Neither poll waits, DB work nor wake delays hold the guard.
+
+Startup reserves panel control and starts the coordinator before the monitor.
+Shutdown sets shared cancellation, stops control requests and joins the monitor,
+panel and catalog within existing bounds. Missing session, no display and ordinary
+tool degradation are nonfatal; uncertain output-tool cleanup stops the runtime
+with nonzero exit rather than replacing the owner. In-process
+`host.display_status` retains the last immutable #63 snapshot (initially `None`);
+`host.output_monitor_status` separately reports fixed suspension without rewriting
+that snapshot as on/off/ready. No new status IPC, renderer or labwc configuration
+is introduced. Wlopm changes power without requiring a mode reapply. #104 retains schedule/playback suppression wiring, #115
 static protection, and #116 physical support evidence. These local
 software checks make no physical standby/wake or Raspberry Pi support claim.
 

@@ -19,6 +19,7 @@ class SignalBackend(Backend):
         *,
         connector_override: str | None = None,
         mutation_guard: DisplayMutationGuard | None = None,
+        stop_event=None,
     ):
         super().__init__(Kind.SIGNAL)
         # Retain the selected identity across intentional off. Reconciliation
@@ -41,12 +42,21 @@ class SignalBackend(Backend):
         self._connector_override = connector_override
         self._session = session
         self.mutation_guard = mutation_guard or DisplayMutationGuard()
+        self._stop_event = stop_event
 
     def _operate(self, requested, cancelled):
         if not self.mutation_guard.acquire(cancelled):
             raise PowerError(Reason.CANCELLED)
         try:
             return self._operate_guarded(requested, cancelled)
+        except PowerError as error:
+            if error.cleanup_failed and self._stop_event is not None:
+                self._stop_event.set()
+            raise
+        except BaseException:
+            if self._stop_event is not None:
+                self._stop_event.set()
+            raise
         finally:
             self.mutation_guard.release()
 

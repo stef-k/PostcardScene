@@ -77,6 +77,7 @@ class RuntimeHost:
                     session,
                     connector_override=config.get("DISPLAY_CONNECTOR"),
                     mutation_guard=mutation_guard,
+                    stop_event=self.stop_event,
                 ),
             )
             self.panel_control = PanelControl(self.panel_coordinator, self.stop_event)

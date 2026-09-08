@@ -102,8 +102,8 @@ Server LTS and Raspberry Pi OS 64-bit**, using native Wayland/labwc. Versioned
 appliance configuration, service/PAM templates and a bounded Python readiness
 probe are implemented in #62. See [appliance operations](docs/operations.md) for
 provisioning ownership and validation limits. #63 implements the shared one-HDMI
-mode policy, bounded hotplug polling seam and safe diagnostics; the runtime does
-not yet start that monitor. #64 provides one packaging-neutral isolated Chromium
+mode policy, bounded hotplug polling seam and safe diagnostics; #124 runs one
+monitor in RuntimeHost, serialized with intentional signal power operations. #64 provides one packaging-neutral isolated Chromium
 lifecycle/navigation controller; image/web adapters and runtime playback are not
 yet connected. Managed installation and physical support evidence remain with
 their owning issues.
@@ -178,8 +178,10 @@ Initialize/migrate the shared database first, as described below. Web and runtim
 read `DATABASE_PATH` and `MEDIA_ALLOWED_ROOTS` from the same optional operator-owned
 Python file selected by `POSTCARDSCENE_CONFIG`; the runtime loader does not import
 Flask. A configured missing/unreadable file or incompatible database fails runtime
-startup. The runtime performs only explicitly requested catalog refreshes, with no
-playback, automatic scans, scheduling or display-power operations.
+startup. The runtime performs explicitly requested catalog refreshes and monitors the
+shared graphics output. Trusted configuration optionally enables panel power;
+see [panel runtime operations](docs/operations.md#live-panel-runtime-and-local-control-113).
+Playback, automatic scans and scheduling are not connected.
 Web and runtime restart independently; Overview still reports runtime unavailable
 until a later issue chooses and connects IPC.
 

@@ -10,8 +10,7 @@ from postcardscene.graphics import WaylandSession
 from postcardscene.graphics.mutation import DisplayMutationGuard
 from postcardscene.graphics.output import DisplayStatus
 from postcardscene.power import SignalBackend, State
-from postcardscene.runtime import Lifecycle, RuntimeHost
-from postcardscene.runtime import output
+from postcardscene.runtime import Lifecycle, RuntimeHost, output
 
 
 def test_configured_host_shares_one_session_guard_and_selector(catalog):
@@ -263,3 +262,47 @@ def test_output_join_uncertainty_is_fatal_and_cleanup_continues(catalog, monkeyp
     assert host.status.state == Lifecycle.ERROR
     assert monitor.status.reason == "cleanup_failed"
     assert not host.catalog_worker.thread.is_alive()
+
+
+@pytest.mark.parametrize("owner", ["monitor", "signal"])
+def test_fatal_owner_stops_waiter_before_releasing_guard(monkeypatch, owner):
+    from postcardscene.graphics.output_probe import ProbeCleanupError
+    from postcardscene.power import Reason
+    from postcardscene.power._types import PowerError
+
+    stop = Event()
+    guard = DisplayMutationGuard()
+    monitor = output.OutputMonitor(object(), stop, guard)
+    signal = SignalBackend(object(), mutation_guard=guard, stop_event=stop)
+    original_release = guard.release
+    releases = []
+
+    def release():
+        # At this exact handoff a competing waiter may start acquiring.
+        releases.append(stop.is_set())
+        original_release()
+
+    monkeypatch.setattr(guard, "release", release)
+
+    def fail_monitor(*args, **kwargs):
+        raise ProbeCleanupError("Output tool cleanup failed.")
+
+    def fail_signal(*args):
+        raise PowerError(Reason.CLEANUP_FAILED, cleanup_failed=True)
+
+    if owner == "monitor":
+        monkeypatch.setattr(output, "reconcile_display", fail_monitor)
+        with pytest.raises(ProbeCleanupError):
+            monitor.reconcile()
+        monkeypatch.setattr(
+            signal, "_operate_guarded", lambda *a: pytest.fail("signal")
+        )
+        assert signal.probe(stop.is_set).status == "cancelled"
+    else:
+        monkeypatch.setattr(signal, "_operate_guarded", fail_signal)
+        assert signal.probe(stop.is_set).cleanup_failed
+        monkeypatch.setattr(
+            output, "reconcile_display", lambda *a, **kw: pytest.fail("monitor")
+        )
+        assert monitor.reconcile() is None
+    assert releases == [True]
