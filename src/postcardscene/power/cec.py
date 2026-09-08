@@ -50,7 +50,7 @@ class CecBackend(Backend):
         # echoed request, a successful exit, or another adapter's traffic.
         replies = re.findall(
             rb"Received from TV \(0\):\s*REPORT_POWER_STATUS \(0x90\):\n"
-            rb"[ \t]+power-status: [^\r\n]{1,80}\n"
+            rb"[ \t]+pwr-state: [^\r\n]{1,80}\n"
             rb"[ \t]+Raw: 0x([0-9a-f]{2}) 0x90 0x([0-9a-f]{2}) \([^\r\n]{3}\)\n",
             raw,
         )

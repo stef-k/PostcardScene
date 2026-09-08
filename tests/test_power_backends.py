@@ -34,12 +34,13 @@ DDC_TWO = (
 
 
 def cec_reply(value):
+    # cec-funcs.h pwr_state becomes pwr-state in cec-gen.pl output.
     return (
         "Transmit from Playback Device 1 to TV (4 to 0):\n"
         "GIVE_DEVICE_POWER_STATUS (0x8f)\n"
         "\tRaw: 0x40 0x8f (@ )\n"
         "    Received from TV (0):\n    REPORT_POWER_STATUS (0x90):\n"
-        f"\tpower-status: on (0x{value:02x})\n"
+        f"\tpwr-state: on (0x{value:02x})\n"
         f"\tRaw: 0x04 0x90 0x{value:02x} (   )\n"
         "\tSequence: 1 Tx Timestamp: 1.000s Rx Timestamp: 1.001s\n"
     ).encode()
