@@ -115,6 +115,16 @@ separate POST/CSRF forms using #87 typed setters. Active Sequence deletion clear
 selection through the existing FK. These operations are DB-only, with no schema,
 transient playback persistence or runtime IPC; #92/#93 retain controls/integration.
 
+Issue #103 adds authenticated **Schedule** with weekly enablement/windows,
+server-rendered draft Add/Remove, complete atomic Save, bounded temporary
+Keep active/Sleep override and Resume schedule now. All actions are POST/CSRF;
+#101 owns persistence and pure request-time evaluation. Local HH:MM conversion
+happens only at the web boundary, with end 00:00 representing minute 1440.
+Settings remains the timezone authority. The page labels configured intent and
+local override expiry, without claiming actual runtime/panel state. Errors are
+sanitized; there are no probes, runtime commands, schema or scheduler additions.
+See [operations](../operations.md#weekly-schedule-and-temporary-overrides).
+
 ## Authentication, network exposure, and secrets
 
 Initial authentication should be simple and appropriate to a self-hosted appliance.

@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% from "composition_fields.html" import field, checkbox %}
+{% block title %}Schedule{% endblock %}
+{% block content %}
+<div class="row justify-content-center"><div class="col-lg-10 col-xl-9">
+  <h1>Schedule</h1>
+  <p>Application timezone: <strong>{{ snapshot.timezone }}</strong>. <a href="{{ url_for('settings.index') }}">Change in Settings</a>.</p>
+  {% for category, message in get_flashed_messages(with_categories=true) %}<div class="alert alert-{{ category }}" role="status">{{ message }}</div>{% endfor %}
+  <section class="card mb-4"><div class="card-body p-4">
+    <h2 class="h4">Current configured decision</h2>
+    <p class="lead">{{ 'Active' if decision.active else 'Sleep' }} — {{ reasons[decision.reason] }}</p>
+    <p>Saved weekly schedule: <strong>{{ 'Enabled' if snapshot.enabled else 'Disabled' }}</strong>. This decision uses saved settings at page load; unsaved edits do not affect it.</p>
+    <p class="mb-0">The runtime schedule worker consumes changes on its next reevaluation, within 15 seconds once connected. Live playback and physical panel power are not yet connected. This page does not report actual panel state.</p>
+  </div></section>
+  <form method="post" class="card mb-4" aria-describedby="schedule-rules time-rules">
+    {{ form.hidden_tag() }}
+    <div class="card-body p-4">
+      <h2 class="h4">Weekly active windows</h2>
+      <p id="schedule-rules">Disabled means normally active all the time. Enabled means active only inside these windows; enabled with no windows means intentionally sleep all the time. Multiple and overlapping windows are allowed: any matching window means active.</p>
+      <p id="time-rules">Use local HH:MM times. End 00:00 means end of day (24:00); 00:00 to 00:00 is a full local day. Enter overnight activity as two windows on adjacent days, for example Monday 22:00 to 00:00 and Tuesday 00:00 to 06:00.</p>
+      <p>During daylight saving changes, skipped wall-clock minutes never occur; repeated minutes follow the same window both times.</p>
+      {{ checkbox(form.enabled) }}
+      {% if error %}<p class="text-danger-emphasis" role="alert">{{ error }}</p>{% endif %}
+      {% for message in form.windows.errors if message is string %}<p class="text-danger-emphasis" role="alert">{{ message }}</p>{% endfor %}
+      {% for entry in form.windows %}
+      <fieldset class="border rounded p-3 mb-3">
+        <legend class="float-none w-auto px-2 h6">Window {{ loop.index }}</legend>
+        <div class="row"><div class="col-md-4">{{ field(entry.weekday) }}</div><div class="col-md-4">{{ field(entry.start) }}</div><div class="col-md-4">{{ field(entry.end) }}</div></div>
+        <button class="btn btn-outline-danger" name="action" value="remove:{{ loop.index0 }}" type="submit" formnovalidate aria-label="Remove window {{ loop.index }}">Remove window</button>
+      </fieldset>
+      {% else %}<p role="status">No active windows in this draft.</p>{% endfor %}
+      <p>Add and Remove change only this draft. Save commits enablement and all windows together. Maximum 64 windows.</p>
+      <div class="d-flex flex-wrap gap-3">
+        <button class="btn btn-outline-primary" name="action" value="add" type="submit" formnovalidate>Add window</button>
+        <button class="btn btn-primary" name="action" value="save" type="submit">Save schedule</button>
+        <a class="btn btn-outline-secondary" href="{{ url_for('schedule.index') }}">Discard draft</a>
+      </div>
+    </div>
+  </form>
+  <section class="card"><div class="card-body p-4">
+    <h2 class="h4">Temporary override</h2>
+    {% if expiry %}
+    <p>{{ 'Expired' if decision.override_expired else 'Current' }} override: <strong>{{ 'Keep active' if snapshot.override_active else 'Sleep' }}</strong>. {{ 'Expired at' if decision.override_expired else 'Expires at' }} {{ expiry }} ({{ snapshot.timezone }}).{% if decision.override_expired %} It no longer affects the decision.{% endif %}</p>
+    {% else %}<p>No temporary override.</p>{% endif %}
+    <p id="override-rules">Keep active or Sleep for 1–10080 minutes (up to seven days), including across restarts. Overrides leave weekly windows and enablement unchanged. Keep active never disables panel/static-content protection.</p>
+    <p>Save or resume below acts on the saved configuration; it does not save an unsaved weekly draft.</p>
+    <form method="post" action="{{ url_for('schedule.override') }}" aria-describedby="override-rules">
+      {{ override_form.hidden_tag() }}
+      {{ field(override_form.state) }}
+      {{ field(override_form.duration_minutes) }}
+      <button class="btn btn-primary" type="submit">Save temporary override</button>
+    </form>
+    <form method="post" action="{{ url_for('schedule.resume') }}" class="mt-3">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button class="btn btn-outline-secondary" type="submit">Resume schedule now</button>
+    </form>
+  </div></section>
+</div></div>
+{% endblock %}

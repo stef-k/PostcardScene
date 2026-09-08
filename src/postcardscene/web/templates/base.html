@@ -23,6 +23,7 @@
             <a class="nav-link py-2" href="{{ url_for('widgets.index') }}"{% if request.blueprint == 'widgets' %} aria-current="page"{% endif %}>Widgets</a>
             <a class="nav-link py-2" href="{{ url_for('scenes.index') }}"{% if request.blueprint == 'scenes' %} aria-current="page"{% endif %}>Scenes</a>
             <a class="nav-link py-2" href="{{ url_for('sequences.index') }}"{% if request.blueprint == 'sequences' %} aria-current="page"{% endif %}>Sequences</a>
+            <a class="nav-link py-2" href="{{ url_for('schedule.index') }}"{% if request.blueprint == 'schedule' %} aria-current="page"{% endif %}>Schedule</a>
             <form method="post" action="{{ url_for('auth.logout') }}">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <button class="btn btn-theme" type="submit">Log out all sessions</button>

@@ -163,8 +163,10 @@ remain later #8 children; #93/#94 retain their image/physical prerequisite gates
 current-state evaluation, a fixed 15-second polling budget, cooperative shutdown,
 and one bounded injected operating target. Ordinary failures degrade/retry; target
 cleanup uncertainty stops the runtime. No transition replay or queue is added.
-Authenticated configuration UI (#103) and live playback/panel RuntimeHost wiring
-(#104) remain later children; physical panel behavior is not claimed.
+#103 adds authenticated server-rendered weekly configuration and bounded
+temporary overrides, with a request-time configured decision and DB-only saves.
+Live playback/panel RuntimeHost wiring (#104) remains later work; physical panel
+behavior is not claimed.
 
 ### Display power and panel protection
 

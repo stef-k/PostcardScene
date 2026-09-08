@@ -524,3 +524,48 @@ Intentional Idle is normal; disabled/no eligible configuration is degraded and
 reevaluated boundedly. Public snapshots expose composition IDs and safe progress,
 never source paths or URLs. They describe the last worker update rather than a
 continuously refreshed clock. Restart discards Pause, current step, dwell and history.
+
+## Weekly schedule and temporary overrides
+
+Open **Schedule** after logging in. The page shows the saved configuration's
+current Active/Sleep decision at page load, evaluated in the application timezone.
+Change that single IANA timezone in **Settings**; Schedule has no separate zone.
+The decision describes configured intent, not measured playback or panel power.
+
+- **Disabled** means normally active all the time, preserving any saved windows.
+- **Enabled** means active inside any matching weekly window and asleep outside.
+- **Enabled with no windows** intentionally means sleep all the time.
+
+Use **Add window** and **Remove window** to edit a draft of up to 64 weekday rows.
+Multiple spans per day and overlaps are allowed; any matching span means active.
+**Save schedule** replaces enablement and the complete window list together.
+Invalid rows leave the saved configuration intact. **Discard draft** reloads the
+saved state. Draft changes do not affect the displayed current decision.
+
+Enter local times as `HH:MM`, from `00:00` through `23:59`. An **end of `00:00`**
+means end of that day (`24:00`), so `00:00` to `00:00` is a full local day.
+A window includes its start minute and excludes its end. Overnight activity needs
+two explicit rows: for example Monday `22:00` to `00:00`, then Tuesday `00:00`
+to `06:00`. A single `22:00` to `06:00` row is rejected. Sunday overnight activity
+continues in a Monday row. Windows are never automatically merged or split.
+
+Daylight saving follows the local wall-clock minutes that actually occur:
+spring-forward skipped minutes never match; repeated fall-back minutes obey the
+same window in both occurrences. Timezone changes and clock corrections cause a
+fresh current-state evaluation, without replaying missed transitions.
+
+The separate **Temporary override** form offers **Keep active** or **Sleep** for
+an integer **1–10080 minutes** (at most seven days). It replaces any prior override,
+persists across web/runtime restarts, and leaves weekly windows and enablement
+unchanged. Expiry is stored as an absolute UTC instant and displayed in the
+application timezone, including its UTC offset. Expired overrides no longer affect
+the decision. **Resume schedule now** clears the override and returns to the saved
+baseline. These actions do not save an unsaved weekly draft. There is no indefinite
+override; Keep active never disables panel/static-content protection.
+
+Flask only saves durable configuration. The schedule worker reevaluates within
+15 seconds once connected, including after restarts and clock/timezone changes.
+The worker capability exists, but its live playback/panel target and RuntimeHost
+wiring remain #104; physical power and panel protection remain #10. Saving a
+schedule or override does not yet control or prove panel standby/wake, playback,
+or audio suppression. The page sends no runtime commands or hardware probes.

@@ -138,7 +138,7 @@ local control interface with:
 uv run flask --app postcardscene.web:create_app run --host 127.0.0.1 --no-debug
 ```
 
-Open <http://127.0.0.1:5000/> and log in. Authentication protects Overview, Settings, Sources, Widgets and Scenes. Overview shows the application
+Open <http://127.0.0.1:5000/> and log in. Authentication protects Overview, Settings, Sources, Widgets, Scenes, Sequences and Schedule. Overview shows the application
 version, database/schema health and unavailable runtime status; playback controls
 are not implemented.
 The command starts only the web process. Stop it with Ctrl-C.
@@ -383,8 +383,10 @@ Log in and open **Settings** to save an IANA timezone such as `Europe/Athens` or
 `UTC`. Names are validated against Python `zoneinfo` and the host timezone database;
 invalid input leaves the previous value unchanged and shows form feedback. Keep
 the host timezone database installed and current. This stores appliance
-configuration only: it does not change the host clock or implement schedules/DST
-behavior (#9). The dark/light toggle remains a browser-local presentation choice.
+configuration only: it does not change the host clock. **Schedule** uses this
+timezone for weekly active windows and bounded temporary active/sleep overrides;
+see the [schedule operator guide](docs/operations.md#weekly-schedule-and-temporary-overrides).
+Schedule shows configured intent; live playback/panel integration remains pending. The dark/light toggle remains a browser-local presentation choice.
 
 **Overview** shows the installed application version and the exact schema revision
 only after the shared database health check succeeds. An unsuccessful check shows
