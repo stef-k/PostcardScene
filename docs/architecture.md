@@ -1402,9 +1402,28 @@ are ignored and `clear_expired_override` compare-clears the observed state/expir
 pair so a different concurrent override survives. Once cleared, a backward clock
 jump cannot resurrect it. Each mutation owns a short database-only transaction.
 
-The runtime coordinator (#102), authenticated UI (#103), and live playback/panel
-join (#104) remain unimplemented here. No worker, timer, playback suppression or
-panel command is started by this module. Keep-active intent never bypasses #10
+#102 adds independently constructible `runtime.schedule.ScheduleWorker`: one
+stdlib thread sharing RuntimeHost cancellation, immediate evaluation and a fixed
+15-second monotonic polling budget including operation time. Every pass reads a
+fresh detached snapshot and the current aware UTC clock; missed transitions are
+never queued or replayed. Waits are interruptible and shutdown joins within five
+seconds. Injected synchronous targets must bound their work and honor cancellation;
+an uncooperative call causes a fixed fatal shutdown timeout rather than a clean
+shutdown claim. The daemon thread preserves process exit in that case.
+
+The sole target takes active intent and a cancellation predicate, returning
+`applied`, `unavailable`, or `cleanup_failed`. Successful unchanged state is not
+reapplied. Read/evaluation and ordinary target failures retain the last successful
+state and retry at the bounded cadence. Expired overrides use the baseline now
+and compare-clear the exact observed authority; failed durable cleanup degrades
+without reversing that decision. Target cleanup uncertainty is fatal, sets the
+shared stop event, and prevents further transitions. Frozen lock-protected status
+contains lifecycle, desired/applied booleans and fixed reasons only. No runtime
+schedule status is persisted.
+
+Authenticated UI (#103) and live playback/panel join (#104) remain unimplemented.
+RuntimeHost does not construct this worker until its real operating target exists;
+there is no temporary playback or panel owner. Keep-active intent never bypasses #10
 panel/static-content protection; physical power capability remains separate.
 
 ### Content scheduling
@@ -1884,7 +1903,6 @@ The following are intentionally unresolved until the owning issue has enough evi
 5. **Wayfarer native integration** — API endpoints/authentication and whether Wayfarer provides a dedicated display-oriented page.
 6. **Provider/plugin registration** — whether a formal plugin mechanism ever becomes worthwhile.
 7. **Frontend enhancement** — whether HTMX or another small enhancement is justified after the basic Flask/Jinja UI exists.
-8. **Scheduling implementation primitive** — exact library/timer implementation behind the frozen scheduling semantics.
 9. **Graphics output and renderer integration** — Wayland/labwc session, output/hotplug policy and shared Chromium control and surface/overlay/input capability are frozen by #62–#65; physical validation remains with #66.
 10. **Kiosk authenticated-session persistence** — whether V0 persists third-party web-session cookies and how that state is isolated/recovered.
 11. **Release artifact format** — wheel/archive/other small managed-native distribution shape, owned by #26.

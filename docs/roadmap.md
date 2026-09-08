@@ -159,9 +159,12 @@ remain later #8 children; #93/#94 retain their image/physical prerequisite gates
   expiry and compare-clear cleanup of observed expiration;
 - atomic configuration replacement and detached immutable snapshots.
 
-Runtime convergence (#102), authenticated configuration UI (#103), and live
-playback/panel integration (#104) remain later children. No transition queue,
-calendar engine, worker or panel command is part of #101.
+#102 adds one independently constructible runtime schedule thread: immediate
+current-state evaluation, a fixed 15-second polling budget, cooperative shutdown,
+and one bounded injected operating target. Ordinary failures degrade/retry; target
+cleanup uncertainty stops the runtime. No transition replay or queue is added.
+Authenticated configuration UI (#103) and live playback/panel RuntimeHost wiring
+(#104) remain later children; physical panel behavior is not claimed.
 
 ### Display power and panel protection
 
