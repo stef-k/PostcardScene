@@ -5,7 +5,6 @@ import re
 from ._backend import Backend
 from ._types import Kind, PowerError, Reason, State
 
-
 # Older brief output omits DRM fields; current ddcutil includes them. Only
 # these bounded fields are accepted, and no EDID/connector data enters status.
 _ENTRY = re.compile(
