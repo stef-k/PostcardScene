@@ -103,6 +103,8 @@ def test_native_panel_buttons_and_exclusive_edge_input_geometry():
         assert settings[window]["set_exclusive_zone"] == [(0,)]
         assert settings[window]["set_layer"] == [("overlay",)]
         assert window.properties["set_visual"] == ("rgba",)
+        assert window.properties["set_decorated"] == (False,)
+        assert "set_app_paintable" not in window.properties
     assert b"background-color: transparent" in css[0]
     panel.update(ControlState(enabled=True))
     assert panel.hotspot.visible and not panel.panel.visible

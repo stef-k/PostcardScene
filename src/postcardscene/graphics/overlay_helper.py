@@ -42,14 +42,15 @@ class Panel:
         for event in ("enter-notify-event", "button-press-event", "touch-event"):
             self.hotspot.connect(event, self.reveal)
         for window in (self.panel, self.hotspot):
-            window.set_app_paintable(True)
+            # GTK paints the CSS background; app-paintable would skip that scrim.
             visual = window.get_screen().get_rgba_visual()
             if visual is None:
                 raise RuntimeError("unavailable")
             window.set_visual(visual)
         css = Gtk.CssProvider()
         css.load_from_data(b"""
-            #psc-edge { background-color: transparent; background-image: none; }
+            #psc-edge { background-color: transparent; background-image: none;
+                        border: none; box-shadow: none; padding: 0; margin: 0; }
             #psc-controls { background: rgba(20, 25, 32, 0.94); color: #f5f7fa;
                             border: 1px solid #687481; border-radius: 8px; }
             #psc-controls button { background: #293440; color: #f5f7fa;
@@ -65,6 +66,7 @@ class Panel:
     @staticmethod
     def window(Gtk, layer, title):
         window = Gtk.Window(title=title)
+        window.set_decorated(False)
         layer.init_for_window(window)
         layer.set_layer(window, layer.Layer.OVERLAY)
         layer.set_anchor(window, layer.Edge.BOTTOM, True)
