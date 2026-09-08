@@ -1538,21 +1538,32 @@ Readiness requires a configured, buffer-backed Wayland surface commit, not merel
 a live process. Probe-only Wayland trace is capped, consumed and discarded. No
 media loading, JSON IPC, codec/hwdec or playback controls are implemented.
 
-`graphics.overlay.Overlay` launches a self-contained system-Python GTK3 helper
-using distro `python3-gi`, GTK3 and `gtk-layer-shell` introspection. GI stays out
-of the main application imports and uv dependency graph. A small layer-shell
-OVERLAY window with zero exclusive zone presents a probe button above ordinary
-content without DOM cooperation. Private bounded stdio provides ready/show/hide/
-stop and typed probe actions. Hide genuinely unmaps the panel. No edge hotspot
-is implemented, and no transparent fullscreen input surface remains mapped.
+`graphics.overlay.Overlay` launches the system-Python GTK3/gtk-layer-shell
+helper; GI remains outside main application imports and uv dependencies. #92
+extends #65 with common Previous/Play-Pause/Next and capability-aware video
+seek/audio controls. Closed target-free state travels over inherited ASCII JSON
+pipes (maximum 1024 bytes including newline); only closed actions return.
+The bottom panel uses OVERLAY with zero exclusive zone and genuinely unmaps on
+hide. A separate transparent **8 logical-pixel bottom-edge** surface enables
+pointer/touch reveal only while controls are hidden and output is not suppressed.
+There is no full-screen hidden interceptor or global pointer observation.
 
-`graphics.local_input.InputChannel` receives only `activity` or `probe_action`
-over a private runtime-directory datagram socket. A test-only labwc keybinding
-executes the fixed absolute input-emitter directly, independently of content
-focus. Production keybindings remain inert; #8 owns final key choices and control
-semantics. Arbitrary pointer movement over third-party content cannot reveal
-hidden controls globally. Visible controls accept GTK pointer/touch activation;
-a future explicitly bounded edge hotspot remains optional.
+`graphics.local_input.InputChannel` carries the same nine typed actions through
+an owner-only runtime-directory socket. The versioned `playback-keybindings.xml`
+snippet maps fixed compositor keys directly to one absolute emitter plus one
+allowlisted action; #26 owns installation. No shell, raw key stream, DOM/CDP
+injection, browser control API or additional renderer authority is involved.
+
+`runtime.controls.Controls` owns one cancellable control/input thread suitable
+for #93 integration. It forwards actions to #89's bounded mailbox, reads its
+snapshot and owns only chrome visibility: hidden initially, valid activity reveals,
+five monotonic seconds without activity hides even when paused. Status updates
+never reset this timer. Suppression disables both panel and hotspot. Modest bounded
+polling services both private event sources; only needed state changes reach the
+helper. One pending command outcome provides small local feedback without another
+queue. Unavailable controls retire locally and playback can continue; uncertain
+cleanup sets shared cancellation and a fixed fatal failure for #93. Join is bounded
+to five seconds. This does not construct or modify RuntimeHost/content execution.
 
 [Operations](operations.md#shared-surface-and-overlay-capability-65) records the
 protocol, software smoke and limits. #8 owns runtime/control UI integration, #6

@@ -354,41 +354,51 @@ not inherited application secrets or X11 state.
 ### Overlay and local input protocol
 
 The helper writes `ready` after toolkit/layer-shell initialization and a Wayland
-round trip, initially with no mapped panel. Parent commands are newline-terminated
-ASCII `show`, `hide`, `stop`; show/hide replies are `shown`/`hidden` after the
-Wayland round trip. Show/hide are idempotent. The small bottom-centered GTK button
-emits `probe_action` on activation. The layer is OVERLAY, exclusive zone is zero,
-and keyboard interactivity is NONE. The [GTK layer-shell API](https://wmww.github.io/gtk-layer-shell/)
-keeps this surface above ordinary toplevels without reserving layout space.
+round trip, initially with neither input surface mapped. The parent sends closed
+JSON state with exactly `enabled`, `visible`, `paused`, `seekable`, `audio`, `muted`
+and `volume`. The first five fields are booleans, `muted` is boolean/null, and
+`volume` is integer 0–100/null. Updates reply `updated` after a Wayland round trip.
+No title/path/URL/HTML/progress payload is needed. Frames are ASCII and bounded to
+1024 bytes including newline; duplicate/unknown keys and wrong types are rejected.
+The original idempotent `show`/`hide` commands (`shown`/`hidden` replies) remain
+for controlled diagnostics; `stop` exits. Nonblocking output, malformed input,
+EOF and parent disconnect cause retirement, with bounded process-group cleanup.
 
-The helper limits pending commands to 256 bytes and uses nonblocking output;
-a disconnected/non-consuming parent or invalid command ends the helper. The
-parent caps lines at 4096 bytes and pending typed events at 16 (oldest activity
-is discarded when full). Startup defaults to five seconds; commands to two;
-cancellation is checked at most every 50 ms. Stop requests helper exit and then
-uses bounded group TERM/KILL/reap. EOF also ends the GTK loop on normal parent
-death. A stuck helper remains bounded by group cleanup and outer systemd policy.
+Helper output and the private socket accept only `activity`, `previous`,
+`toggle_pause`, `next`, `seek_back_10`, `seek_forward_10`, `toggle_mute`,
+`volume_down_10`, `volume_up_10`. The inherited-pipe parent retains at most 16
+events. `InputChannel` binds `postcardscene-input.sock` with mode 0600 in #62's
+validated 0700 runtime directory, rejects existing endpoints and removes only its
+owned inode. Unknown/oversized datagrams fail closed. The emitter has a 100 ms
+send bound and prints no raw diagnostics.
 
-Hide calls GTK hide/unmap, not opacity or an off-screen move. There is **no edge
-hotspot** in this proof. Hidden controls intercept no pointer/touch region.
-Arbitrary pointer movement over Chromium/mpv is not globally observable by this
-helper. Keyboard reveal is available through the compositor; #8 must work within
-that boundary or deliberately add an optional small edge hotspot later.
+The visible compact dark panel is separate from a transparent bottom-edge hotspot
+of 8 logical pixels, with zero exclusive zone. Hide unmaps the panel; the hotspot
+maps only while enabled and hidden. Pointer enter/click/touch **at that bottom
+edge** reveals controls. Arbitrary motion over Chromium/mpv does not. Suppression
+disables both surfaces. No full-screen transparent surface intercepts content.
 
-`InputChannel` binds `postcardscene-input.sock` with mode 0600 inside #62's
-validated non-root-owned 0700 runtime directory. It rejects an existing endpoint,
-never adopts/removes a stale or foreign socket, and removes only its own socket
-inode on stop. `receive` accepts only `activity` and `probe_action`; unknown or
-oversized datagrams become `protocol_failed`. There is no raw keyboard stream.
-`postcardscene-input-emitter probe_action` sends to that fixed runtime authority
-with a 100 ms bound. An unavailable channel fails without printing diagnostics.
+`graphics/labwc/playback-keybindings.xml` is the version-1 production snippet for
+#26 to install inside `rc.xml`'s keyboard element, preserving its inert desktop
+fallback binding. Each entry invokes `/opt/postcardscene/venv/bin/postcardscene-input-emitter`
+directly with one fixed action: Left/Right navigate, Space toggles pause,
+Ctrl+Left/Right seek ±10 seconds, M toggles mute, Up/Down adjust volume ±10.
+No shell, environment expansion or user-configurable command is used. The existing
+`probe_keybinding` now emits only `activity` for disposable W-F12 smoke tests.
+These reserved keys are appliance playback policy; arbitrary web-page keyboard
+interaction is not a V0 goal. No installed compositor configuration is modified
+by runtime or Flask.
 
-`probe_keybinding(Path(absolute_emitter))` returns a **test-only** W-F12 binding
-fragment. Add it only to an isolated smoke copy of labwc's rc.xml. It invokes
-one absolute emitter command plus the fixed `probe_action` argument via labwc's
-[direct Execute action](https://labwc.github.io/labwc-actions.5.html), with no
-shell, terminal, path expansion or configured command text. Production rc.xml
-remains unchanged. #8 decides eventual transport keys and behavior.
+`runtime.controls.Controls(playback, overlay, channel, stop_event)` starts once
+and joins within five seconds. It alternates bounded socket/pipe reads on one
+thread, sends changed state only as needed, and forwards to #89 rather than
+executing media work. Controls start hidden and auto-hide five monotonic seconds
+after local activity, including while paused; snapshot refresh does not prolong
+visibility. Capability actions unavailable in current playback return small local
+feedback; unknown mute/volume values are not guessed. Ordinary helper/input
+failure retires both endpoints and reports unavailable; cleanup uncertainty is
+fatal and wakes shared host cancellation. #93 still owns actual construction,
+shutdown integration and runtime restart on fatal failure.
 
 ### Diagnostics and evidence limits
 
@@ -424,7 +434,7 @@ crash-to-none behavior, same-class reuse, native launcher flags/environment,
 configured buffer-backed mpv readiness, capped malformed/timeout helper protocol,
 cancellation, process-group descendant cleanup and private typed input/config.
 No tests claim physical touch, Pi/HDMI/4K, acceleration, audio or packaged-distro
-installation support. #66 must supply that evidence; #8 owns real controls,
+installation support. #66 must supply that evidence; #92 supplies software controls and #93 wiring,
 #6 video, #7 web policy and #10 panel power/protection.
 
 ### Supervised video capability (#73)

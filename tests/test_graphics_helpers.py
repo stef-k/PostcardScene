@@ -10,6 +10,7 @@ from types import SimpleNamespace
 import pytest
 
 from postcardscene.graphics._capability import CapabilityError, Deadline, HelperProcess
+from postcardscene.graphics.control_protocol import ControlState
 from postcardscene.graphics.mpv_probe import PROBE_FLAGS, MpvSurfaceProbe
 from postcardscene.graphics.overlay import Overlay
 
@@ -33,6 +34,7 @@ def helper(tmp_path):
         "for line in sys.stdin:\n"
         " if line == 'show\\n': print('activity\\nshown', flush=True)\n"
         " elif line == 'hide\\n': print('hidden', flush=True)\n"
+        " elif line.startswith('{'): print('toggle_pause\\nupdated', flush=True)\n"
     )
     return script
 
@@ -70,6 +72,12 @@ def test_overlay_protocol_repeated_show_hide_action_and_cleanup(overlay):
         assert overlay.receive() == "activity"
         overlay.hide()
         assert not overlay.visible
+    overlay.update(ControlState(enabled=True, visible=True, paused=True))
+    assert overlay.visible
+    assert overlay.receive() == "toggle_pause"
+    overlay.update(ControlState())
+    assert not overlay.visible
+    assert overlay.receive() == "toggle_pause"
     assert overlay.receive(timeout_seconds=0.02) is None
     overlay.stop()
     with pytest.raises(ProcessLookupError):
@@ -81,7 +89,7 @@ def test_overlay_protocol_repeated_show_hide_action_and_cleanup(overlay):
     "response, reason",
     [
         ("secret URL", "protocol_failed"),
-        ("x" * 9000, "protocol_failed"),
+        ("x" * 1024, "protocol_failed"),
         (None, "timeout"),
     ],
 )

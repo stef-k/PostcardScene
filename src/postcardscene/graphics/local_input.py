@@ -88,7 +88,7 @@ def emit(session, event):
     """Fixed emitter destination under validated application runtime authority."""
     import os
 
-    if not isinstance(event, str) or event not in Action._value2member_map_:
+    if not isinstance(event, str) or event not in {action.value for action in Action}:
         raise CapabilityError("invalid_event")
     try:
         session.validate_directory()

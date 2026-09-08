@@ -1,4 +1,4 @@
-"""Private compositor input proof; no production transport key assignments."""
+"""Owner-only compositor input carries only the closed playback vocabulary."""
 
 import socket
 from pathlib import Path
@@ -8,6 +8,7 @@ import pytest
 
 from postcardscene.graphics import WaylandSession
 from postcardscene.graphics._capability import CapabilityError
+from postcardscene.graphics.control_protocol import Action
 from postcardscene.graphics.local_input import InputChannel, emit, probe_keybinding
 
 
@@ -22,10 +23,9 @@ def channel(tmp_path):
 
 def test_private_input_delivery_and_cancellation(channel):
     assert channel.path.stat().st_mode & 0o777 == 0o600
-    emit(channel.session, "activity")
-    assert channel.receive() == "activity"
-    emit(channel.session, "activity")
-    assert channel.receive() == "activity"
+    for action in Action:
+        emit(channel.session, action.value)
+        assert channel.receive() == action.value
     assert channel.receive(timeout_seconds=0.01) is None
     with pytest.raises(CapabilityError, match="cancelled"):
         channel.receive(cancelled=lambda: True)

@@ -54,6 +54,24 @@ information panels white. Later widgets/scenes may deliberately override this
 baseline where their content requires it. This issue supplies design guidance,
 not renderer code or speculative overlay components.
 
+## Transient projected playback controls
+
+#92 uses one compact bottom GTK3 layer-shell panel above image/video/web content,
+with a charcoal translucent background, light text, visible labels and generous
+button padding. Previous, Play/Pause and Next are always present when visible;
+seek ±10 seconds appears only for seekable video, and mute/volume ±10 only with
+audio capability. Play/Pause reflects logical pause; no filenames, URLs, scrubber
+or permanent dashboard chrome is shown. Native button activation emits one typed
+action; compositor keys provide focus-independent keyboard operation.
+
+Controls start hidden. Local actions reveal/reset a fixed five-second timer;
+pause and status refresh do not prevent auto-hide. A separate transparent
+8-logical-pixel bottom-edge hotspot accepts pointer enter/click/touch only while
+the main panel is hidden. Suppression disables both surfaces. Arbitrary pointer
+motion over content does not reveal controls. Physical touch/keyboard/display
+practicality remains unverified until the owning hardware evidence gates, and
+RuntimeHost wiring remains #93.
+
 ## Typography, surfaces and interaction
 
 - Use the local system sans-serif stack; no remote fonts are required.
