@@ -75,6 +75,8 @@ def test_runtime_rejects_invalid_roots_before_host_start(tmp_path, monkeypatch, 
     [
         "PANEL_POWER_RUNTIME_ENABLED = 1",
         "PANEL_POWER_RUNTIME_ENABLED = 'true'",
+        "DDC_DISPLAY = 2",
+        "DISPLAY_CONNECTOR = 'DP-1'",
         "CEC_DEVICE = '/dev/cec0'",
         "PANEL_POWER_RUNTIME_ENABLED = True\nCEC_DEVICE = '/dev/cec01'",
         "PANEL_POWER_RUNTIME_ENABLED = True\nDDC_DISPLAY = True",
@@ -104,3 +106,12 @@ def test_valid_panel_configuration(tmp_path, monkeypatch):
     assert result["CEC_DEVICE"] == "/dev/cec0"
     assert result["DDC_DISPLAY"] == 2
     assert result["DISPLAY_CONNECTOR"] == "HDMI-A-1"
+
+
+def test_graphics_connector_independent_of_panel_enablement(tmp_path, monkeypatch):
+    config = tmp_path / "operator.py"
+    config.write_text("DISPLAY_CONNECTOR = 'HDMI-A-2'\n")
+    monkeypatch.setenv("POSTCARDSCENE_CONFIG", str(config))
+    result = load_runtime_config()
+    assert result["PANEL_POWER_RUNTIME_ENABLED"] is False
+    assert result["DISPLAY_CONNECTOR"] == "HDMI-A-2"

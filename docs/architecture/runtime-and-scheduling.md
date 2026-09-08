@@ -45,16 +45,35 @@ They share the host stop
 Event and Database; one `WaylandSession` uses #62's existing directory. Backend
 unavailability remains panel degradation without stopping catalog work. Fatal
 panel cleanup or worker failure propagates to nonzero process exit. Shutdown
-stops accepting and joins panel control first, joins the panel owner within five
-seconds, then joins catalog work. Every cleanup is attempted even if an earlier
+stops accepting and joins panel control first, then joins output monitoring,
+the panel owner and catalog work, each with a five-second bound. Every cleanup is attempted even if an earlier
 one fails; the primary error is preserved. Shutdown itself requests no panel
 transition. Disabled development hosts construct neither backends nor listener;
 `host.panel_status` reports configured false/unavailable. See the
 [panel protocol](../operations.md#live-panel-runtime-and-local-control-113).
 
-This starts no schedule/playback/protection worker or output monitor. #104 owns
-the schedule/playback join; #115 owns static protection. Future #11 output
-reconciliation must honor `panel_coordinator.intentional_signal_sleep`.
+#124 adds exactly one `runtime.output.OutputMonitor` whenever trusted runtime
+configuration is supplied, including the packaged CLI with panel power disabled.
+A bare `RuntimeHost()` performs no graphics work. Startup order is catalog,
+exclusive panel listener, panel coordinator, then output monitor. An occupied
+panel endpoint prevents output-monitor startup too. The monitor shares the #62
+session, connector selector and process stop Event; there is no display-enable
+switch, renderer startup or replacement owner inside the process.
+
+The monitor consumes #63's immediate pass and interruptible one-second cadence.
+Ordinary no-display/session/tool/connector degradation is recoverable data and
+leaves catalog/panel work running. Unexpected worker failure or output-tool
+cleanup uncertainty requests shared stop and propagates nonzero exit. Normal
+shutdown issues no panel transition and starts no new reconciliation.
+
+`host.display_status` exposes the latest frozen #63 snapshot, initially `None`.
+`host.output_monitor_status` separately reports running/suspended/stopped/error;
+suspension uses fixed reason `intentional_signal_sleep` and retains the last
+truthful display snapshot. Both properties are in-process only, for later #26
+use, without general IPC or web API. Suspension does not prove physical standby.
+See the [shared mutation ordering](graphics-and-panel.md#shared-display-mutation-124).
+#104 owns schedule/playback wiring; #115 owns static protection; #66 retains
+physical Raspberry Pi/HDMI/hotplug evidence.
 
 ## Scene/sequence runtime behavior
 

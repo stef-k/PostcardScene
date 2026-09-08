@@ -80,14 +80,13 @@ state/reason; no raw environment, tool output or display serial is public.
 
 `monitor_display(session, stop_event, connector_override=...)` is a blocking
 snapshot iterator with an interruptible one-second wait after each reconcile.
-The later runtime owner consumes it and supplies its existing shutdown Event;
-this change starts no runtime thread/service. Tool waits observe cancellation
+#124 supplies one RuntimeHost consumer and its existing shutdown Event. Tool waits observe cancellation
 at most every 50 ms, with a 250 ms kill/reap allowance. Repeated polls recover
 from no-display/connect/disconnect/reconnect and failures without busy retry.
 No-display skips the unnecessary Wayland output command and leaves labwc alive.
 These are software contracts; #66 owns physical HDMI/4K/hotplug evidence and
-#10 owns panel standby/wake. Future power coordination must suspend output
-reconciliation while intentionally disabling an output so it is not re-enabled.
+#10 owns panel standby/wake. #124 serializes and suspends output reconciliation
+under intentional signal ownership as described below.
 
 ### Supervised Chromium controller (#64)
 
@@ -287,8 +286,8 @@ object and an actual matching mode event, without failure/hotplug. This follows
 wlopm's default off value as observation when no mode event arrived (see
 [upstream query implementation](https://sources.debian.org/src/wlopm/1.0.0-1/wlopm.c)).
 Matching readback proves signal state only; physical state always remains unknown.
-The later runtime owner must coordinate intentional signal sleep with #63
-reconciliation. It must not re-enable the output while panel intent requires off.
+The RuntimeHost output monitor coordinates intentional signal sleep with #63
+through the shared mutation guard below.
 
 [Operations](../operations.md#panel-power-capabilities-111) records host-tool
 prerequisites and evidence limits. #26 owns provisioning; #112/#113 own convergence
@@ -361,11 +360,44 @@ retain output configuration. No second output loop or mode policy is introduced.
 
 `intentional_signal_sleep` covers pending signal sleep and latches attempted off
 until confirmed signal on, including cancelled/uncertain readback and wake. The
-later #11 integration must suspend #63 mode reconciliation while this gate holds.
+#124 output monitor suspends #63 mode reconciliation while this gate holds.
 It is an ownership gate, not physical standby evidence. The local panel-only
 socket exposes this gate with the fixed #112 status and diagnostic intents; see
 [operations](../operations.md#live-panel-runtime-and-local-control-113). #104/#115
 retain scheduling, playback suppression and static-protection integration.
+
+### Shared display mutation (#124)
+
+RuntimeHost constructs one `DisplayMutationGuard` before its signal backend and
+output monitor. It contains one non-reentrant `threading.Lock`, with no thread,
+policy, durable state or retry mechanism. Both owners acquire it in at most
+50 ms slices, observing their existing operation cancellation predicate; cancelled
+acquisition issues no command. CEC/DDC never acquire this guard.
+
+Every output pass acquires the guard and **then** rereads the coordinator's
+`intentional_signal_sleep`. If true, it skips all #63 reconciliation and reports
+suspended while preserving the last snapshot. Otherwise it performs exactly one
+existing bounded reconciliation under the guard. Signal `probe`, `observe`,
+`request_on` and `request_off` hold the same guard across session/connector checks
+and bounded wlopm command/readback, releasing on success or failure.
+
+A reconciliation already holding the guard may finish before signal sleep;
+the subsequent off operation is the final mutation. A monitor waiting behind
+signal off must recheck and skip. During wake it still skips until #112 releases
+retained signal ownership after confirmed on. There is no concurrent wlr-randr
+mutation and wlopm operation. The guard never spans the one-second poll wait,
+status publication, database work, Future completion, CEC/DDC, panel wake-delay
+waits or unrelated cleanup. Failed output-tool kill/reap is fatal ownership
+uncertainty, not an ordinary degraded snapshot permitting another pass. Either
+owner publishes shared cancellation before releasing the guard on fatal failure,
+so a waiting owner cannot begin work during the failure handoff.
+
+`DISPLAY_CONNECTOR` is the single optional trusted graphics selector, validated
+as `HDMI-A-N` independently of panel enablement and supplied identically to both
+owners. `CEC_DEVICE`/`DDC_DISPLAY` remain panel-bound. No schema/UI selector,
+second power policy, distro fork or labwc auto-output workaround is added.
+No-display and ordinary #63 degradation remain nonfatal. #66 retains physical
+HDMI/hotplug/4K evidence; signal off never proves physical panel standby.
 
 ### Display control page (#114)
 

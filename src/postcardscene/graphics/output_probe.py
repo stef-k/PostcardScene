@@ -23,6 +23,10 @@ class ProbeError(Exception):
     """Contains only a fixed public failure reason."""
 
 
+class ProbeCleanupError(RuntimeError):
+    """Fatal output-tool ownership uncertainty; the runtime must stop."""
+
+
 @dataclass(frozen=True)
 class Mode:
     width: int
@@ -110,7 +114,7 @@ def run_command(
 
     No communicate() capture: its memory use would precede the JSON size check.
     The packaged local executable does not spawn children. Kernel-uninterruptible
-    process cleanup can exceed the reap bound and is reported as tool_failed.
+    process cleanup can exceed the reap bound and raises ProbeCleanupError.
     """
     if stop_event is not None and stop_event.is_set():
         raise ProbeError("cancelled")
@@ -127,10 +131,8 @@ def run_command(
         raise ProbeError("tool_missing") from error
     except OSError as error:
         raise ProbeError("tool_failed") from error
-    failed = True
     try:
         captured = _capture(process, stop_event)
-        failed = False
     except OSError as error:
         raise ProbeError("tool_failed") from error
     finally:
@@ -140,8 +142,9 @@ def run_command(
             process.stdout.close()
             process.wait(timeout=0.25)
         except (OSError, subprocess.TimeoutExpired) as error:
-            if not failed:  # Preserve the primary failure when cleanup also fails.
-                raise ProbeError("tool_failed") from error
+            # The exception chain retains any primary capture failure. Ordinary
+            # degraded snapshots must never authorize retry after lost ownership.
+            raise ProbeCleanupError("Output tool cleanup failed.") from error
     return captured
 
 

@@ -389,3 +389,28 @@ def test_live_signal_uses_63_ambiguity_and_strict_override(monkeypatch):
     backend = SignalBackend(session, connector_override="HDMI-A-1")
     scripted(monkeypatch, backend, [signal_reply("on")])
     assert backend.probe(lambda: False).signal == State.ON
+
+
+@pytest.mark.parametrize("operation", ["probe", "observe", "request_on", "request_off"])
+def test_signal_guard_covers_command_and_readback_and_releases_on_failure(
+    monkeypatch, operation
+):
+    backend = signal_backend()
+    guard = backend.mutation_guard
+    calls = []
+
+    def command(arguments, environment, cancelled):
+        # Non-reentrant acquisition must time out, then cancellation exits.
+        checks = iter([False, True])
+        assert not guard.acquire(lambda: next(checks))
+        calls.append(arguments)
+        if arguments:
+            return b""
+        raise PowerError(Reason.UNKNOWN)
+
+    monkeypatch.setattr(backend._command, "run", command)
+    result = getattr(backend, operation)(lambda: False)
+    assert result.reason == Reason.UNKNOWN
+    assert len(calls) == (2 if operation.startswith("request") else 1)
+    assert guard.acquire(lambda: False)
+    guard.release()

@@ -6,8 +6,10 @@ from enum import StrEnum
 from threading import Event
 
 from postcardscene.graphics import WaylandSession
+from postcardscene.graphics.mutation import DisplayMutationGuard
 from postcardscene.power import CecBackend, DdcBackend, SignalBackend
 from postcardscene.runtime.catalog_refresh import CatalogRefreshWorker
+from postcardscene.runtime.output import OutputMonitor
 from postcardscene.runtime.panel import PanelCoordinator
 from postcardscene.runtime.panel_control import PanelControl, panel_status
 
@@ -58,22 +60,44 @@ class RuntimeHost:
             else None
         )
 
+        self.output_monitor = None
+        mutation_guard = DisplayMutationGuard()
+        session = WaylandSession() if config is not None else None
         self.panel_coordinator = None
         self.panel_control = None
         if config is not None and config.get("PANEL_POWER_RUNTIME_ENABLED", False):
             if database is None:
                 raise ValueError("Panel runtime requires Database.")
-            session = WaylandSession()
             self.panel_coordinator = PanelCoordinator(
                 database,
                 self.stop_event,
                 cec=CecBackend(config.get("CEC_DEVICE")),
                 ddc=DdcBackend(config.get("DDC_DISPLAY")),
                 signal=SignalBackend(
-                    session, connector_override=config.get("DISPLAY_CONNECTOR")
+                    session,
+                    connector_override=config.get("DISPLAY_CONNECTOR"),
+                    mutation_guard=mutation_guard,
+                    stop_event=self.stop_event,
                 ),
             )
             self.panel_control = PanelControl(self.panel_coordinator, self.stop_event)
+
+        if config is not None:
+            self.output_monitor = OutputMonitor(
+                session,
+                self.stop_event,
+                mutation_guard,
+                connector_override=config.get("DISPLAY_CONNECTOR"),
+                panel_coordinator=self.panel_coordinator,
+            )
+
+    @property
+    def display_status(self):
+        return self.output_monitor.status.display if self.output_monitor else None
+
+    @property
+    def output_monitor_status(self):
+        return self.output_monitor.status if self.output_monitor else None
 
     @property
     def panel_status(self):
@@ -111,6 +135,9 @@ class RuntimeHost:
                     self.panel_control.start()
                     self.panel_coordinator.start()
                     started.append(self.panel_coordinator)
+                if self.output_monitor is not None:
+                    self.output_monitor.start()
+                    started.append(self.output_monitor)
                 self._set_state(Lifecycle.RUNNING)
                 logging.getLogger("postcardscene.runtime.lifecycle").info(
                     "Runtime entering normal service operation."

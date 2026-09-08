@@ -71,3 +71,32 @@ def test_missing_tool_and_cancelled_command(monkeypatch):
     finally:
         timer.join()
     assert processes[0].poll() is not None
+
+
+@pytest.mark.parametrize("capture_fails", [False, True])
+def test_cleanup_uncertainty_is_fatal_even_after_capture_failure(
+    monkeypatch, capture_fails
+):
+    from io import BytesIO
+    from types import SimpleNamespace
+
+    def wait(timeout):
+        raise subprocess.TimeoutExpired("private tool", timeout)
+
+    process = SimpleNamespace(
+        poll=lambda: None, kill=lambda: None, stdout=BytesIO(), wait=wait
+    )
+    monkeypatch.setattr(probe.subprocess, "Popen", lambda *a, **kw: process)
+
+    def capture(*args):
+        if capture_fails:
+            raise probe.ProbeError("tool_timeout")
+        return b"[]"
+
+    monkeypatch.setattr(probe, "_capture", capture)
+    with pytest.raises(
+        probe.ProbeCleanupError, match="^Output tool cleanup failed"
+    ) as failure:
+        probe.run_command([], {})
+    if capture_fails:
+        assert str(failure.value.__cause__.__context__) == "tool_timeout"
