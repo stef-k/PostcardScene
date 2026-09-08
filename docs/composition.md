@@ -7,8 +7,8 @@ places a Widget on the display; a Sequence orders Scenes and controls progressio
 The authenticated control interface currently manages Sources, all four V0 Widget
 kinds, single Scenes, Sequences and active playback selection. Saving these forms
 configures durable state; it does not start playback, preview content or test
-content availability. Actual playback integration (#93) remains unfinished. The #92 local controls
-component is implemented separately and awaits that runtime wiring.
+content availability. Actual playback integration (#93) remains unfinished. The
+#92 local controls component is implemented separately and awaits that wiring.
 
 ## Configure a Widget
 
