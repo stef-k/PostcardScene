@@ -1364,19 +1364,48 @@ Scheduling has two related but distinct responsibilities.
 
 ### Display operating schedule
 
-Controls when the panel should be awake.
+#101 implements the durable configuration and pure current-instant evaluator in
+`postcardscene.operating_schedule`. Migration `0010_operating_schedule` preserves
+existing settings/domain/catalog data and defaults to schedule disabled, no
+windows and no override. These fields and windows are durable appliance state.
 
-V0 should support:
+V0 stores at most 64 weekly **active windows**, OR-composed, with Monday = 0
+through Sunday = 6. Each row is a same-day half-open interval: start minute
+0–1439, end minute 1–1440, start strictly before end. Full day is 0–1440;
+overnight activity requires two explicit adjacent-day rows. Overlap is allowed.
+Disabled means normally active; enabled with no matching windows means sleep.
+Python validation and SQLite constraints enforce ranges; a SQLite insert trigger
+also enforces the complete-set limit. Replacement validates all inputs before
+changing enabled/windows together in one short write transaction.
 
-- daily on/off periods
-- multiple periods where practical
-- day-specific/weekday-weekend rules
-- one configured application timezone
-- temporary/manual override with explicit persistence/expiry semantics
+`OperatingSchedule` and `WeeklyWindow` are frozen detached records.
+`get_operating_schedule` (or caller-owned `read_operating_schedule`) reads one
+bounded snapshot, including the existing `ApplicationSettings.timezone` IANA key.
+Malformed persisted state raises `DatabaseError`, never an invented active/sleep
+fallback. The evaluator accepts an aware UTC instant and returns active intent,
+a fixed reason (`schedule_disabled`, `schedule`, `override`) and expired-override
+cleanup eligibility. It reads no clock or database and performs no side effects.
 
-Schedule evaluation must define DST skipped/repeated local times and recover safely after reboot, host downtime, NTP correction, manual clock jumps, or timezone changes.
+Evaluation converts the supplied absolute instant to the application timezone.
+Spring-forward skipped wall minutes never occur; repeated fall-back minutes obey
+the same window in both occurrences. Seconds do not change minute membership.
+Fresh snapshots consume timezone changes without rewriting windows. Clock jumps
+and downtime converge directly to the current rule, with no future transition
+jobs, missed-event replay or persisted runtime history.
 
-After long downtime, the scheduler should converge to the state that should be active now rather than replay every missed transition.
+One optional temporary bool override wins over either schedule baseline until
+its absolute UTC Unix-second expiry. Its two settings fields are both null or
+both populated. `set_temporary_override` accepts integer 1–10080 minutes (seven
+days maximum) and an optional aware UTC instant; expiry uses whole Unix seconds.
+`clear_temporary_override` resumes the schedule immediately. Expired overrides
+are ignored and `clear_expired_override` compare-clears the observed state/expiry
+pair so a different concurrent override survives. Once cleared, a backward clock
+jump cannot resurrect it. Each mutation owns a short database-only transaction.
+
+The runtime coordinator (#102), authenticated UI (#103), and live playback/panel
+join (#104) remain unimplemented here. No worker, timer, playback suppression or
+panel command is started by this module. Keep-active intent never bypasses #10
+panel/static-content protection; physical power capability remains separate.
 
 ### Content scheduling
 

@@ -15,6 +15,22 @@ class ApplicationSettings(Base):
     __table_args__ = (
         CheckConstraint("id = 1", name="single_settings"),
         CheckConstraint(
+            "typeof(schedule_enabled) = 'integer' AND schedule_enabled IN (0, 1)",
+            name="schedule_enabled_bool",
+        ),
+        CheckConstraint(
+            "schedule_override_active IS NULL OR (typeof(schedule_override_active) = 'integer' AND schedule_override_active IN (0, 1))",
+            name="schedule_override_bool",
+        ),
+        CheckConstraint(
+            "schedule_override_until_utc IS NULL OR (typeof(schedule_override_until_utc) = 'integer' AND schedule_override_until_utc >= 0)",
+            name="schedule_override_expiry",
+        ),
+        CheckConstraint(
+            "(schedule_override_active IS NULL) = (schedule_override_until_utc IS NULL)",
+            name="schedule_override_pair",
+        ),
+        CheckConstraint(
             "typeof(default_scene_dwell_seconds) = 'integer' AND "
             "default_scene_dwell_seconds BETWEEN 1 AND 86400",
             name="default_scene_dwell_range",
@@ -22,6 +38,9 @@ class ApplicationSettings(Base):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    schedule_enabled: Mapped[bool] = mapped_column(default=False, server_default="0")
+    schedule_override_active: Mapped[bool | None]
+    schedule_override_until_utc: Mapped[int | None]
     timezone: Mapped[str] = mapped_column(String(255))
     active_sequence_id: Mapped[int | None] = mapped_column(
         ForeignKey("sequence.id", ondelete="SET NULL")
