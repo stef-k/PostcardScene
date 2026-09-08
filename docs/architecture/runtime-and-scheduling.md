@@ -31,7 +31,12 @@ belong here, outside Flask requests, and must observe the shared event without
 clearing it and bound their work and cleanup. This freezes ownership/cancellation,
 not a general concurrency framework. #52 uses one dedicated catalog thread with
 a bounded join; no job framework or third service is added.
-Managed systemd installation remains owned by #11/#26.
+#122 packages `postcardscene-runtime.service` with non-root `Type=exec`,
+five-second failure restart, five starts per minute, and a 30-second cgroup stop
+bound. Weak After/Wants graphics ordering preserves independent runtime lifetime.
+The CLI emits fixed stdlib lifecycle events to journald without exception text or
+tracebacks. See [installed service operations](../operations.md#installed-runtime-service-122)
+for exact values and installed path ownership. #26 installs/enables/provisions it.
 
 #113 optionally constructs one `PanelCoordinator` and one panel-only local
 listener from validated trusted runtime configuration. The socket is reserved

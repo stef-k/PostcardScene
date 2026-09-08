@@ -204,7 +204,7 @@ protection/playback enforcement, Display UI and physical evidence remain later
 
 ### Linux graphics/runtime and unattended operation
 
-- separate `postcardscene-web` and runtime/player systemd services
+- separate `postcardscene-web.service` and `postcardscene-runtime.service` systemd services
 - service ordering and restart behavior
 - standard runtime user/group and durable-state/cache/log/device ownership expectations
 - shared native Wayland/labwc session on Raspberry Pi 4/5 ARM64 with Ubuntu Server LTS and Raspberry Pi OS 64-bit as primary V0 targets (#62)
@@ -218,6 +218,12 @@ protection/playback enforcement, Display UI and physical evidence remain later
 - bounded cache/log growth and disk-space diagnostics
 - host reboot/power-loss and runtime failure recovery
 - representative Raspberry Pi-class ARM64 physical evidence for hardware-specific support claims
+
+#122 packages the RuntimeHost unit with five-second failure restart, five starts
+per minute, a 30-second cleanup bound and weak graphics ordering. Installed
+services share `/etc/postcardscene/config.py`; durable/cache/transient roots and
+journald-only logs follow the [operations contract](operations.md#installed-runtime-service-122).
+#26 installs/enables/provisions these assets; physical recovery evidence is #127.
 
 This work owns the behavior of an already-installed runtime. Physical panel standby is a separate subsystem, and release packaging/install/update is owned separately.
 

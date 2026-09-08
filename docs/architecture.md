@@ -144,6 +144,10 @@ SQLite keeps installation and recovery simple. Original media remains in filesys
 ```
 
 The web/control and runtime/player processes must be independently restartable.
+#122 freezes `postcardscene-runtime.service`, weak graphics startup ordering,
+shared installed `/etc/postcardscene/config.py` consumption, and journald lifecycle
+logging; see the [installed service contract](operations.md#installed-runtime-service-122).
+#26 retains installation and provisioning ownership.
 
 A Chromium, mpv, cataloging, source, or media failure must be recoverable without losing access to the web administration interface. Restarting the control plane should not unnecessarily destroy the active display session.
 

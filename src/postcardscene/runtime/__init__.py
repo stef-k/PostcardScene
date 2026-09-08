@@ -1,5 +1,6 @@
 """Transport-independent runtime lifecycle; no web or hardware initialization."""
 
+import logging
 from dataclasses import dataclass
 from enum import StrEnum
 from threading import Event
@@ -111,6 +112,9 @@ class RuntimeHost:
                     self.panel_coordinator.start()
                     started.append(self.panel_coordinator)
                 self._set_state(Lifecycle.RUNNING)
+                logging.getLogger("postcardscene.runtime.lifecycle").info(
+                    "Runtime entering normal service operation."
+                )
                 self.stop_event.wait()
             except BaseException as error:
                 try:
@@ -129,6 +133,9 @@ class RuntimeHost:
     def _stop_components(self, started):
         self.request_shutdown()
         self._set_state(Lifecycle.STOPPING)
+        logging.getLogger("postcardscene.runtime.lifecycle").info(
+            "Runtime shutdown beginning."
+        )
         failure = None
         # Always attempt remaining cleanup, preserving the first failure.
         cleanup = []

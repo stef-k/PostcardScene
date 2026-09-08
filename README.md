@@ -169,7 +169,10 @@ error responses omit exception details; protected server logs remain diagnostic.
 After `uv sync --locked`, run `uv run postcardscene-runtime`. The packaged
 `postcardscene-runtime` executable starts only the runtime host and waits until
 Ctrl-C (SIGINT) or SIGTERM requests cooperative shutdown. Normal exit is zero;
-fatal failure exits nonzero with a safe diagnostic.
+fatal failure exits nonzero with fixed, sanitized stdlib lifecycle diagnostics.
+The packaged [installed runtime service](docs/operations.md#installed-runtime-service-122)
+uses the shared trusted `/etc/postcardscene/config.py` path and journald logging;
+#26 owns installation and enablement.
 
 Initialize/migrate the shared database first, as described below. Web and runtime
 read `DATABASE_PATH` and `MEDIA_ALLOWED_ROOTS` from the same optional operator-owned

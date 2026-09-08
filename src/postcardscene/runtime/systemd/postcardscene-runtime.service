@@ -1,0 +1,24 @@
+[Unit]
+Description=PostcardScene runtime
+After=postcardscene-graphics.service
+Wants=postcardscene-graphics.service
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=exec
+User=postcardscene
+Group=postcardscene
+Environment=POSTCARDSCENE_CONFIG=/etc/postcardscene/config.py
+ExecStart=/opt/postcardscene/venv/bin/postcardscene-runtime
+Restart=on-failure
+RestartSec=5
+TimeoutStartSec=15
+TimeoutStopSec=30
+KillMode=control-group
+SendSIGKILL=yes
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

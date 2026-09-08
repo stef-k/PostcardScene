@@ -5,6 +5,64 @@ updates and production control-plane serving remain with #26/#29. The templates
 below are versioned provisioning inputs, not an installer or a claim of a
 physically validated release.
 
+## Installed runtime service (#122)
+
+The package asset `postcardscene/runtime/systemd/postcardscene-runtime.service`
+is the canonical RuntimeHost unit. #26 supplies the managed environment at
+`/opt/postcardscene/venv`, installs/enables the unit for `multi-user.target`, and
+provisions users, groups, directories and protected configuration. These assets
+perform no installation or host mutation themselves. The later production web
+service remains #29/#125.
+
+The unit executes `/opt/postcardscene/venv/bin/postcardscene-runtime` directly as
+`postcardscene:postcardscene`, with `Type=exec`. Its only application environment
+setting is `POSTCARDSCENE_CONFIG=/etc/postcardscene/config.py`; both installed
+application services use that trusted operator Python file. Never populate it
+from ordinary web input. A specified missing/unreadable file fails startup.
+
+Supervision is `Restart=on-failure`, `RestartSec=5`,
+`StartLimitIntervalSec=60`, `StartLimitBurst=5`, `TimeoutStartSec=15`, and
+`TimeoutStopSec=30`. `KillMode=control-group` and `SendSIGKILL=yes` bound remaining
+process cleanup after cooperative SIGTERM. Thirty seconds accommodates sequential
+component joins; the graphics service's five-second stop limit is insufficient
+for the runtime. Clean SIGTERM exits zero without crash restart; fatal startup,
+worker or cleanup failure exits nonzero. Repeated failures eventually hit the
+start limit and require operator diagnosis. Boot activation requires #26 enablement.
+
+`After=postcardscene-graphics.service` and `Wants=postcardscene-graphics.service`
+order startup without coupling lifetimes. There is no `Requires`, `BindsTo` or
+`PartOf`: graphics absence/recovery must leave catalog/background work alive.
+Graphics clients check readiness before use. Renderers remain runtime-owned and
+are never placed in labwc autostart. `Type=exec` confirms process execution,
+not completion of application startup checks.
+
+| Installed authority | Responsibility |
+| --- | --- |
+| `/etc/postcardscene/config.py` | Shared trusted operator configuration; #26 provisions/protects the file and parent. |
+| `/var/lib/postcardscene` | Durable database and session key; never automatically cleaned. |
+| `/var/cache/postcardscene` | Replaceable/regenerable application caches; later children own bounded use/cleanup. |
+| `/run/postcardscene` | Transient state including panel-control socket; systemd/installer ownership, never durable or backed up. |
+| `/run/postcardscene-wayland` | Independent graphics-service runtime directory. |
+| Logs | Journald only in V0; no duplicate application `/var/log/postcardscene` tree. |
+
+Application startup never recursively creates, changes ownership of, or deletes
+these roots. Missing/foreign/unsafe authority fails or degrades at its owning
+capability. #26 owns provisioning; #27 owns backup destinations and recovery.
+
+The runtime CLI uses stdlib logging to stderr, captured by journald along with
+stdout. Fixed messages report startup beginning, entry into normal service,
+shutdown beginning/completion and fatal failure. Default diagnostics omit raw
+exceptions/tracebacks, media paths, URLs, device selectors, environment values,
+secrets and subprocess output. No UI status parses journal text. Inspect with
+`journalctl -u postcardscene-runtime.service`; distro/systemd journal limits own
+persistence/rotation. The application does not mutate `journald.conf`; #26/#28
+retain host journal usage documentation/checks.
+
+Restart constructs a fresh RuntimeHost and discards transient playback state.
+Startup checks existing database compatibility/integrity without auto-migration
+or repair. Unit/text/process tests establish software behavior only; actual Pi
+boot, abrupt power-loss recovery and complete unattended evidence remain #127.
+
 ## Linux graphical session (#62)
 
 Raspberry Pi 4/5-class ARM64 is the primary V0 hardware class. **Ubuntu Server LTS
