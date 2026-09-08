@@ -1,4 +1,4 @@
-"""Single, independently constructed panel owner; no playback or host wiring."""
+"""Single panel owner; no playback or scheduling policy."""
 
 from concurrent.futures import Future
 from dataclasses import dataclass, replace
@@ -35,6 +35,7 @@ class PanelStatus:
     operating_active: bool = True
     protection_sleep: bool = False
     diagnostic_active: bool | None = None
+    signal_sleep_owned: bool = False
     physical: State = State.UNKNOWN
     signal: State = State.UNKNOWN
     evidence: Literal["physical", "signal_only", "none"] = "none"
@@ -76,6 +77,18 @@ class PanelCoordinator:
     def status(self):
         with self._lock:
             return self._status
+
+    @property
+    def intentional_signal_sleep(self):
+        """Gate future output reconciliation through uncertain sleep/wake too."""
+        with self._lock:
+            s = self._status
+            return s.active_backend == Kind.SIGNAL and (
+                s.protection_sleep
+                or s.diagnostic_active is False
+                or (s.diagnostic_active is None and not s.operating_active)
+                or s.signal_sleep_owned
+            )
 
     @property
     def failure(self):
@@ -217,6 +230,7 @@ class PanelCoordinator:
                 self._command_issued = False
                 self._usable = result.status in {Status.PHYSICAL, Status.SIGNAL_ONLY}
                 self._selection_choice = choice
+                self._publish(active_backend=backend.kind)
                 return result
         return result
 
@@ -249,6 +263,8 @@ class PanelCoordinator:
             self._usable = True
         if self._selected is not None and not self._matches(result, active):
             if self._usable and result.status != Status.CANCELLED:
+                if self._selected.kind == Kind.SIGNAL and not active:
+                    self._publish(signal_sleep_owned=True)
                 self._command_issued = True
                 self._wake_pending = active
                 self._wake_ready_at = None
@@ -268,6 +284,8 @@ class PanelCoordinator:
 
     def _readiness(self, result, active, wake_delay):
         matched = self._matches(result, active)
+        if matched and active and result.backend == Kind.SIGNAL:
+            self._publish(signal_sleep_owned=False)
         if not active:
             self._wake_pending = False
             self._wake_ready_at = None

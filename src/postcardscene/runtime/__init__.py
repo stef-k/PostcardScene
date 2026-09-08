@@ -4,7 +4,11 @@ from dataclasses import dataclass
 from enum import StrEnum
 from threading import Event
 
+from postcardscene.graphics import WaylandSession
+from postcardscene.power import CecBackend, DdcBackend, SignalBackend
 from postcardscene.runtime.catalog_refresh import CatalogRefreshWorker
+from postcardscene.runtime.panel import PanelCoordinator
+from postcardscene.runtime.panel_control import PanelControl, panel_status
 
 
 class Lifecycle(StrEnum):
@@ -38,10 +42,10 @@ class RuntimeHost:
     Control callers may read status and request shutdown. Lifecycle changes and
     optional-failure reporting belong to the owning thread. Future components
     observe stop_event (never clear it) and must bound work and cleanup.
-    Panel power is separate from this lifecycle.
+    Panel intent is separate from this lifecycle; shutdown never requests power.
     """
 
-    def __init__(self, database=None, policy=None):
+    def __init__(self, database=None, policy=None, config=None):
         self.stop_event = Event()
         self._status = RuntimeStatus(Lifecycle.STARTING, _SUMMARIES[Lifecycle.STARTING])
         self._has_run = False
@@ -52,6 +56,27 @@ class RuntimeHost:
             if database is not None
             else None
         )
+
+        self.panel_coordinator = None
+        self.panel_control = None
+        if config is not None and config.get("PANEL_POWER_RUNTIME_ENABLED", False):
+            if database is None:
+                raise ValueError("Panel runtime requires Database.")
+            session = WaylandSession()
+            self.panel_coordinator = PanelCoordinator(
+                database,
+                self.stop_event,
+                cec=CecBackend(config.get("CEC_DEVICE")),
+                ddc=DdcBackend(config.get("DDC_DISPLAY")),
+                signal=SignalBackend(
+                    session, connector_override=config.get("DISPLAY_CONNECTOR")
+                ),
+            )
+            self.panel_control = PanelControl(self.panel_coordinator, self.stop_event)
+
+    @property
+    def panel_status(self):
+        return panel_status(self.panel_coordinator)
 
     @property
     def status(self) -> RuntimeStatus:
@@ -74,35 +99,51 @@ class RuntimeHost:
         if self._has_run:
             raise RuntimeError("Runtime host can only run once.")
         self._has_run = True
+        started = []
         try:
-            if self.catalog_worker is not None:
-                self.catalog_worker.start()
-            self._set_state(Lifecycle.RUNNING)
             try:
+                if self.catalog_worker is not None:
+                    self.catalog_worker.start()
+                    started.append(self.catalog_worker)
+                if self.panel_coordinator is not None:
+                    self.panel_coordinator.start()
+                    started.append(self.panel_coordinator)
+                    self.panel_control.start()
+                self._set_state(Lifecycle.RUNNING)
                 self.stop_event.wait()
             except BaseException as error:
                 try:
-                    self._stop_catalog_worker()
-                except Exception:
-                    error.add_note("Catalog worker cleanup also failed.")
+                    self._stop_components(started)
+                except BaseException:
+                    error.add_note("Runtime component cleanup also failed.")
                 raise
             else:
-                self._stop_catalog_worker()
-            if (
-                self.catalog_worker is not None
-                and self.catalog_worker.failure is not None
-            ):
-                raise RuntimeError(
-                    "Catalog worker failed."
-                ) from self.catalog_worker.failure
+                self._stop_components(started)
             self._set_state(Lifecycle.STOPPED)
         except BaseException:
             self._set_state(Lifecycle.ERROR)
             self.request_shutdown()
             raise
 
-    def _stop_catalog_worker(self):
+    def _stop_components(self, started):
         self.request_shutdown()
         self._set_state(Lifecycle.STOPPING)
-        if self.catalog_worker is not None:
-            self.catalog_worker.join()
+        failure = None
+        # Always attempt remaining cleanup, preserving the first failure.
+        cleanup = []
+        if self.panel_control is not None:
+            cleanup.append(self.panel_control.stop)
+        cleanup.extend(component.join for component in reversed(started))
+        for stop in cleanup:
+            try:
+                stop()
+            except BaseException as error:
+                if failure is None:
+                    failure = error
+                else:
+                    failure.add_note("Another runtime component cleanup failed.")
+        if failure is not None:
+            raise failure
+        for component in started:
+            if component.failure is not None:
+                raise RuntimeError("Runtime component failed.")
