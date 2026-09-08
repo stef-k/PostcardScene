@@ -430,3 +430,35 @@ def test_auto_can_skip_newly_definitive_unavailability_before_any_command(rig):
     assert worker.status.active_backend == Kind.DDC
     assert all(call in {"probe", "observe"} for call in cec.calls)
     assert not signal.calls
+
+
+def test_signal_sleep_gate_survives_interrupted_off_and_uncertain_wake(rig):
+    worker, (cec, ddc, signal), db = rig
+    set_display_power_settings(db, "signal", 0, 1800)
+    worker._tick()
+    assert not worker.intentional_signal_sleep
+    worker.apply_operating(False)
+    assert worker.intentional_signal_sleep
+
+    def interrupt(method, cancelled):
+        if method == "off":
+            worker.apply_operating(True)
+
+    signal.hook = interrupt
+    worker._tick()
+    # The off call changed intent before readback publication. The old ON
+    # observation cannot permit output reconciliation during uncertain ownership.
+    assert worker.status.signal == State.ON
+    assert worker.intentional_signal_sleep
+    signal.failure = Status.DEGRADED
+    worker._tick()
+    assert worker.intentional_signal_sleep
+    signal.failure = None
+    signal.hook = None
+    worker._tick()
+    assert not worker.intentional_signal_sleep
+    assert not cec.calls and not ddc.calls
+    before = list(signal.calls)
+    worker.stop_event.set()
+    worker._tick()
+    assert signal.calls == before

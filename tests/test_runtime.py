@@ -278,3 +278,26 @@ def test_disabled_panel_constructs_no_capabilities(monkeypatch):
     }
     host.request_shutdown()
     host.run()
+
+
+def test_occupied_panel_endpoint_prevents_hardware_start(
+    catalog, tmp_path, monkeypatch
+):
+    import postcardscene.runtime as runtime
+    from postcardscene.runtime.panel_control import PanelControl
+
+    tmp_path.chmod(0o700)
+    path = tmp_path / "panel.sock"
+    path.write_text("existing owner")
+    monkeypatch.setattr(
+        runtime, "PanelControl", lambda owner, stop: PanelControl(owner, stop, path)
+    )
+    host = RuntimeHost(catalog[0], catalog[3], {"PANEL_POWER_RUNTIME_ENABLED": True})
+    monkeypatch.setattr(
+        host.panel_coordinator, "start", lambda: pytest.fail("hardware started")
+    )
+    with pytest.raises(OSError):
+        host.run()
+    assert path.read_text() == "existing owner"
+    assert not host.catalog_worker.thread.is_alive()
+    assert host.status.state == Lifecycle.ERROR

@@ -15,7 +15,7 @@ shared Database/PathPolicy and starts one catalog request thread; the executable
 checks the explicitly migrated database before starting. A bare host remains
 available for lifecycle tests. It starts no renderers or schedules. `host.status` returns a frozen
 `RuntimeStatus` with lifecycle state and fixed safe summary; control callers can
-inspect it and call `request_shutdown()`. No transport or serialization is added.
+inspect it and call `request_shutdown()`. General RuntimeHost status IPC remains open.
 
 Lifecycle states are `starting`, `running`, `degraded`, `stopping`, `stopped`, and
 `error`. A host runs once: normal execution advances from starting through running,
@@ -32,6 +32,24 @@ clearing it and bound their work and cleanup. This freezes ownership/cancellatio
 not a general concurrency framework. #52 uses one dedicated catalog thread with
 a bounded join; no job framework or third service is added.
 Managed systemd installation remains owned by #11/#26.
+
+#113 optionally constructs one `PanelCoordinator` and one panel-only local
+listener from validated trusted runtime configuration. The socket is reserved
+before panel startup so an existing endpoint prevents competing hardware work.
+They share the host stop
+Event and Database; one `WaylandSession` uses #62's existing directory. Backend
+unavailability remains panel degradation without stopping catalog work. Fatal
+panel cleanup or worker failure propagates to nonzero process exit. Shutdown
+stops accepting and joins panel control first, joins the panel owner within five
+seconds, then joins catalog work. Every cleanup is attempted even if an earlier
+one fails; the primary error is preserved. Shutdown itself requests no panel
+transition. Disabled development hosts construct neither backends nor listener;
+`host.panel_status` reports configured false/unavailable. See the
+[panel protocol](../operations.md#live-panel-runtime-and-local-control-113).
+
+This starts no schedule/playback/protection worker or output monitor. #104 owns
+the schedule/playback join; #115 owns static protection. Future #11 output
+reconciliation must honor `panel_coordinator.intentional_signal_sleep`.
 
 ## Scene/sequence runtime behavior
 

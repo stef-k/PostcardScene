@@ -300,8 +300,9 @@ Pi/display compatibility, actual standby or non-root permission claims.
 
 `runtime.panel.PanelCoordinator` is independently constructed with a database,
 shared stop Event and exclusive CEC/DDC/signal backend instances. Its one thread
-owns every backend call. RuntimeHost construction, Display UI/local transport,
-schedule/playback suppression and static-dwell enforcement remain later work.
+owns every backend call. #113 supplies live RuntimeHost construction and local
+transport below; Display UI, schedule/playback suppression and static-dwell
+enforcement remain later work.
 
 The closed hierarchy is protection sleep > transient diagnostic > operating
 intent. Operating defaults active, protection clear. `apply_operating(bool)`,
@@ -342,6 +343,30 @@ only lifecycle, backend choices, three intent fields, effective target, physical
 and signal observations, evidence class and fixed reasons. Signal-only readiness
 always retains unknown physical state. No selector, tool output or exception text
 is exposed and no physical hardware support is claimed.
+
+### Live panel ownership (#113)
+
+Enabled RuntimeHost owns exactly one #112 coordinator, its #111 capabilities and
+one #62 WaylandSession. Trusted `POSTCARDSCENE_CONFIG` alone enables the group and
+supplies optional CEC/DDC/HDMI selectors; missing tools/session/panel degrade
+without replacing the coordinator or stopping catalog work. Managed installation
+must enable it on supported appliance hosts; the default false is development
+capability state, never a web protection-disable setting.
+
+The signal backend lazily calls #63 `select_connector(read_connectors(), override)`
+inside the coordinator's existing pass. Its fresh named wlopm protocol observation
+must establish matching Wayland identity before any command. No-display can retry
+on later passes; after selection the exact identity survives intentional sleep
+and outages. No mode reconciliation is necessary for wlopm power changes, which
+retain output configuration. No second output loop or mode policy is introduced.
+
+`intentional_signal_sleep` covers pending signal sleep and latches attempted off
+until confirmed signal on, including cancelled/uncertain readback and wake. The
+later #11 integration must suspend #63 mode reconciliation while this gate holds.
+It is an ownership gate, not physical standby evidence. The local panel-only
+socket exposes this gate with the fixed #112 status and diagnostic intents; see
+[operations](../operations.md#live-panel-runtime-and-local-control-113). #104/#115
+retain scheduling, playback suppression and static-protection integration.
 
 ## Burn-in and static-content protection
 

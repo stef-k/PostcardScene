@@ -106,9 +106,10 @@ class RuntimeHost:
                     self.catalog_worker.start()
                     started.append(self.catalog_worker)
                 if self.panel_coordinator is not None:
+                    # Reserve local ownership before any hardware work can run.
+                    self.panel_control.start()
                     self.panel_coordinator.start()
                     started.append(self.panel_coordinator)
-                    self.panel_control.start()
                 self._set_state(Lifecycle.RUNNING)
                 self.stop_event.wait()
             except BaseException as error:
@@ -144,6 +145,7 @@ class RuntimeHost:
                     failure.add_note("Another runtime component cleanup failed.")
         if failure is not None:
             raise failure
-        for component in started:
-            if component.failure is not None:
-                raise RuntimeError("Runtime component failed.")
+        if self.catalog_worker is not None and self.catalog_worker.failure is not None:
+            raise RuntimeError(
+                "Catalog worker failed."
+            ) from self.catalog_worker.failure
