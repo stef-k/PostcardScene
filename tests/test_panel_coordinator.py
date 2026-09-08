@@ -226,6 +226,7 @@ def test_poll_budget_and_shutdown_during_handshake(rig):
     worker.thread.join(2)
     worker.join()
     assert deadlines == [115]
+    assert worker.status.state == "stopped"
     assert cec.calls == ["probe"]
 
 

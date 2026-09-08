@@ -118,20 +118,22 @@ class PanelCoordinator:
             self._changed.set()
         return result
 
-    def apply_operating(self, active):
+    def apply_operating(self, active: bool) -> Future[Outcome]:
         return self._intent("operating_active", active)
 
-    def set_protection(self, sleep):
+    def set_protection(self, sleep: bool) -> Future[Outcome]:
         return self._intent("protection_sleep", sleep)
 
-    def request_test(self, active):
+    def request_test(self, active: bool) -> Future[Outcome]:
         return self._intent("diagnostic_active", active)
 
     def start(self):
         self.thread.start()
 
     def join(self):
-        self._publish(state="stopping")
+        with self._lock:
+            if self._status.state not in {"stopped", "error"}:
+                self._status = replace(self._status, state="stopping")
         self.stop_event.set()
         self._changed.set()
         self.thread.join(JOIN_SECONDS)
