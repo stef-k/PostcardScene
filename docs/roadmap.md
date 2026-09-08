@@ -170,6 +170,19 @@ behavior is not claimed.
 
 ### Display power and panel protection
 
+#110 persists configuration only in the singleton appliance settings: closed
+`auto|cec|ddc|signal` backend choice (default `auto`, capability priority CEC ->
+DDC -> signal; explicit selection is strict), integer wake handshake delay 0–30
+seconds (default 5), and non-disableable static safety ceiling 300–14400 seconds
+(default 1800). Invalid replacements preserve prior policy; damaged storage fails
+explicitly. Safety age is independent of playback dwell and continues during Pause;
+new presentations, including successful Previous/Next, reset it, while overlay
+reveal and schedule Keep active do not bypass it. Images/web are potentially static;
+progressing unpaused video is not static solely due to unchanged Scene identity.
+Backend execution, live enforcement, Display UI and physical evidence remain later
+#10 work, as defined in the [Graphics and panel contract](architecture/graphics-and-panel.md).
+
+
 - display-power abstraction
 - configurable backend selection
 - HDMI-CEC backend

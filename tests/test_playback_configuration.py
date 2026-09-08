@@ -193,7 +193,8 @@ def test_missing_settings_is_storage_failure(database):
 
 
 @pytest.mark.parametrize(
-    "revision", ["0008_catalog_requests", "0009_playback_settings"]
+    "revision",
+    ["0008_catalog_requests", "0009_playback_settings", "0010_operating_schedule"],
 )
 def test_migration_preserves_complete_existing_state(tmp_path, revision):
     db = Database(tmp_path / "old.sqlite3", create=True)
@@ -212,9 +213,17 @@ def test_migration_preserves_complete_existing_state(tmp_path, revision):
             "INSERT INTO media_catalog_state VALUES (1, 1, 1, 'ready', 20, 20, 2, 1)",
         ):
             connection.exec_driver_sql(sql)
-        if revision == "0009_playback_settings":
+        if revision != "0008_catalog_requests":
             connection.exec_driver_sql(
                 "UPDATE application_settings SET active_sequence_id=1, default_scene_dwell_seconds=47"
+            )
+        if revision == "0010_operating_schedule":
+            connection.exec_driver_sql(
+                "UPDATE application_settings SET schedule_enabled=1, "
+                "schedule_override_active=0, schedule_override_until_utc=2000000000"
+            )
+            connection.exec_driver_sql(
+                "INSERT INTO operating_window VALUES (1, 2, 600, 900)"
             )
         tables = [
             row[0]
@@ -233,30 +242,30 @@ def test_migration_preserves_complete_existing_state(tmp_path, revision):
                 connection.exec_driver_sql(f'SELECT * FROM "{table}"').all()
                 == before[table]
             )
-        assert connection.exec_driver_sql(
-            "SELECT * FROM application_settings"
-        ).one() == (
-            1,
-            "Europe/Athens",
-            1 if revision == "0009_playback_settings" else None,
-            47 if revision == "0009_playback_settings" else 30,
-            0,
-            None,
-            None,
-        )
-        assert connection.exec_driver_sql("SELECT * FROM operating_window").all() == []
-        assert {
-            row[1]
-            for row in connection.exec_driver_sql(
-                "PRAGMA table_info(application_settings)"
-            )
-        } == {
-            "id",
-            "timezone",
-            "active_sequence_id",
-            "default_scene_dwell_seconds",
-            "schedule_enabled",
-            "schedule_override_active",
-            "schedule_override_until_utc",
+        assert dict(
+            connection.exec_driver_sql("SELECT * FROM application_settings")
+            .mappings()
+            .one()
+        ) == {
+            "id": 1,
+            "timezone": "Europe/Athens",
+            "active_sequence_id": 1 if revision != "0008_catalog_requests" else None,
+            "default_scene_dwell_seconds": 47
+            if revision != "0008_catalog_requests"
+            else 30,
+            "schedule_enabled": 1 if revision == "0010_operating_schedule" else 0,
+            "schedule_override_active": 0
+            if revision == "0010_operating_schedule"
+            else None,
+            "schedule_override_until_utc": 2000000000
+            if revision == "0010_operating_schedule"
+            else None,
+            "display_power_backend": "auto",
+            "display_wake_delay_seconds": 5,
+            "maximum_static_dwell_seconds": 1800,
         }
+        if revision != "0010_operating_schedule":
+            assert (
+                connection.exec_driver_sql("SELECT * FROM operating_window").all() == []
+            )
     db.engine.dispose()
