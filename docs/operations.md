@@ -574,8 +574,8 @@ or audio suppression. The page sends no runtime commands or hardware probes.
 
 The ordinary-Python CEC, DDC and signal capabilities are implemented independently
 of the running appliance. #113 now constructs them when trusted host configuration
-enables the live panel group below. There is no Display page, schedule/playback
-connection or static-protection worker in this boundary.
+enables the live panel group below. Display management is described below;
+schedule/playback connection and static-protection enforcement remain pending.
 
 The future installation/doctor owner (#26) must provide the fixed trusted tools
 `/usr/bin/cec-ctl`, `/usr/bin/ddcutil` and `/usr/bin/wlopm`, with normal non-root
@@ -682,5 +682,40 @@ monitor. The selected output survives intentional off. Future #11 output-monitor
 integration must refrain from reconciliation while `intentional_signal_sleep`
 is true, including uncertain sleep/wake ownership. Wlopm changes power without
 requiring a mode reapply. #104 retains schedule/playback suppression wiring, #115
-static protection, #114 Display UI, and #116 physical support evidence. These local
+static protection, and #116 physical support evidence. These local
 software checks make no physical standby/wake or Raspberry Pi support claim.
+
+## Display settings, status and tests
+
+Open authenticated **Display** to save the backend, wake delay (0–30 seconds), and
+maximum static dwell (300–14400 seconds) together. Invalid input preserves the
+previous complete policy. Runtime/socket unavailability does not prevent saving.
+Automatic tries usable CEC -> DDC/CI -> signal capabilities in fixed order;
+explicit HDMI-CEC, DDC/CI or Signal only selection is strict with no silent fallback.
+Uncertain command authority never permits stacking another backend. Device selectors
+and permissions remain trusted host provisioning, outside this form.
+
+Wake delay follows an actual wake transition before presentation release; already
+confirmed on does not incur that delay. Maximum static dwell is a non-disableable
+safety ceiling, separate from playback dwell. Playback Pause and schedule Keep
+active do not disable panel protection. Live static-content/stalled-video enforcement
+remains #115 and schedule/playback integration remains #104; saving these settings
+does not implement either. The runtime reads saved policy on its bounded cadence;
+a save sends no runtime command.
+
+**Live panel status** is a page-load snapshot; use **Refresh live status** for a new
+bounded read. The runtime's configured/selected backend may lag saved policy.
+Physical state confirmed means physical CEC/DDC evidence. Signal output on/off
+leaves physical panel state unknown. Unknown/degraded status never proves standby;
+blank playback is not power evidence. Unavailable/not-configured runtime, malformed
+responses and socket failures show **Runtime panel status unavailable**, without
+local paths or raw errors.
+
+**Test wake** and **Test sleep** submit fixed five-second diagnostic intents through
+the local socket. Submission does not prove a transition succeeded; refresh status
+to observe convergence or backend degradation. Wake may override ordinary operating
+sleep but never protection sleep. After five seconds current policy resumes. Tests
+change no durable settings or schedule and are not manual scheduling overrides.
+Rejection cannot bypass protection; cleanup-authority failure requires runtime
+recovery and is not retried by the web process. Flask invokes no hardware tools.
+These controls make no physical-support claim; #116 retains hardware evidence.

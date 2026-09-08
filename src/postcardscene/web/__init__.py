@@ -13,6 +13,7 @@ from postcardscene.session_secret import DEFAULT_SECRET_PATH
 from postcardscene.web.auth import init_auth
 from postcardscene.web.control import control
 from postcardscene.web.database import init_database
+from postcardscene.web.display import display
 from postcardscene.web.scenes import scenes
 from postcardscene.web.schedule import schedule
 from postcardscene.web.sequences import sequences
@@ -52,6 +53,7 @@ def create_app(config: Mapping[str, Any] | None = None) -> Flask:
     app.register_blueprint(scenes)
     app.register_blueprint(sequences)
     app.register_blueprint(schedule)
+    app.register_blueprint(display)
     app.register_error_handler(HTTPException, render_http_error)
     return app
 
