@@ -179,8 +179,10 @@ explicitly. Safety age is independent of playback dwell and continues during Pau
 new presentations, including successful Previous/Next, reset it, while overlay
 reveal and schedule Keep active do not bypass it. Images/web are potentially static;
 progressing unpaused video is not static solely due to unchanged Scene identity.
-Backend execution, live enforcement, Display UI and physical evidence remain later
-#10 work, as defined in the [Graphics and panel contract](architecture/graphics-and-panel.md).
+#111 adds bounded CEC/DDC/signal capabilities with verified physical or signal-only
+observations and explicit cleanup uncertainty. Backend selection, live enforcement,
+Display UI and physical evidence remain later #10 work, as defined in the
+[Graphics and panel contract](architecture/graphics-and-panel.md).
 
 
 - display-power abstraction

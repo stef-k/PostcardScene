@@ -151,3 +151,22 @@ def test_launch_failure_is_sanitized(monkeypatch, error, reason):
         Command(Kind.SIGNAL).run([], {}, lambda: False)
     assert caught.value.reason == reason
     assert "PRIVATE" not in str(caught.value)
+
+
+def test_signal_query_trace_is_private_and_shares_output_bound(monkeypatch):
+    popen = subprocess.Popen
+    calls = []
+
+    def launch(argv, **kwargs):
+        calls.append((argv, kwargs))
+        return popen(
+            [sys.executable, "-c", "import os; os.write(2, b'x' * 20000)"], **kwargs
+        )
+
+    monkeypatch.setattr(commands.subprocess, "Popen", launch)
+    with pytest.raises(PowerError) as caught:
+        Command(Kind.SIGNAL).run([], {"WAYLAND_DISPLAY": "wayland-0"}, lambda: False)
+    assert caught.value.reason == Reason.OVERSIZED
+    assert calls[0][0] == ["/usr/bin/wlopm"]
+    assert calls[0][1]["env"]["WAYLAND_DEBUG"] == "client"
+    assert calls[0][1]["stderr"] == subprocess.STDOUT

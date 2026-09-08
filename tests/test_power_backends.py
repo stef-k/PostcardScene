@@ -133,7 +133,7 @@ def test_cec_lost_adapter_authority_does_not_send(monkeypatch):
     calls = scripted(
         monkeypatch, backend, [CEC_INFO.replace(b"0x0000010e", b"0x00000106")]
     )
-    assert backend.request_off(lambda: False).status == Status.UNAVAILABLE
+    assert backend.request_off(lambda: False).status == Status.DEGRADED
     assert len(calls) == 1
 
 
@@ -247,14 +247,22 @@ def signal_backend(state="ready", connector="HDMI-A-1"):
     return SignalBackend(session, DisplayStatus(True, state, state, connector))
 
 
+def signal_reply(mode):
+    value = 1 if mode == "on" else 0
+    return (
+        '[1.000] wl_output@5.name("HDMI-A-1")\n'
+        "[1.001]  -> zwlr_output_power_manager_v1@6.get_output_power(new id zwlr_output_power_v1@7, wl_output@5)\n"
+        f"[1.002] zwlr_output_power_v1@7.mode({value})\n"
+        f"HDMI-A-2 on\nHDMI-A-1 {mode}\n"
+    ).encode()
+
+
 @pytest.mark.parametrize("requested,mode", [(State.ON, "on"), (State.OFF, "off")])
 def test_signal_only_selected_output_and_session_environment(
     monkeypatch, requested, mode
 ):
     backend = signal_backend()
-    calls = scripted(
-        monkeypatch, backend, [b"", f"HDMI-A-2 on\nHDMI-A-1 {mode}\n".encode()]
-    )
+    calls = scripted(monkeypatch, backend, [b"", signal_reply(mode)])
     result = (backend.request_on if requested == State.ON else backend.request_off)(
         lambda: False
     )
@@ -268,7 +276,7 @@ def test_signal_only_selected_output_and_session_environment(
 @pytest.mark.parametrize(
     "raw,reason",
     [
-        (b"HDMI-A-1 on\n", Reason.MISMATCH),
+        (signal_reply("on"), Reason.MISMATCH),
         (b"HDMI-A-2 off\n", Reason.UNAVAILABLE),
         (b"HDMI-A-1 off\nHDMI-A-1 on\n", Reason.MALFORMED),
         (b"HDMI-A-1 unknown\n", Reason.MALFORMED),
@@ -301,3 +309,21 @@ def test_cleanup_failure_is_distinct_and_latches_no_further_commands(monkeypatch
         result = method(lambda: False)
         assert result.status == Status.CLEANUP_FAILED and result.cleanup_failed
     assert not calls
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        b"HDMI-A-1 off\n",
+        signal_reply("off").replace(b".mode(0)", b".failed()"),
+        signal_reply("off").replace(b".mode(0)", b".mode(1)"),
+        signal_reply("off").replace(b"wl_output@5.name", b"wl_output@9.name"),
+        signal_reply("off") + b"[2.000] wl_registry@2.global_remove(4)\n",
+    ],
+)
+def test_signal_requires_matching_protocol_mode_not_default_off(monkeypatch, raw):
+    backend = signal_backend()
+    scripted(monkeypatch, backend, [raw])
+    result = backend.observe(lambda: False)
+    assert result.signal == result.physical == State.UNKNOWN
+    assert result.evidence == "none"

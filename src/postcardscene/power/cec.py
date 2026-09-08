@@ -54,6 +54,10 @@ class CecBackend(Backend):
             rb"[ \t]+Raw: 0x([0-9a-f]{2}) 0x90 0x([0-9a-f]{2}) \([^\r\n]{3}\)\n",
             raw,
         )
-        if len(replies) != 1 or int(replies[0][0], 16) != address:
+        if (
+            raw.count(b"Received from ") != 1
+            or len(replies) != 1
+            or int(replies[0][0], 16) != address
+        ):
             return State.UNKNOWN
         return {0: State.ON, 1: State.OFF}.get(int(replies[0][1], 16), State.UNKNOWN)

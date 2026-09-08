@@ -34,13 +34,19 @@ class Command:
             raise PowerError(Reason.CLEANUP_FAILED, cleanup_failed=True)
         if cancelled():
             raise PowerError(Reason.CANCELLED)
+        # wlopm can print default off without receiving a mode event. Its
+        # query needs bounded private protocol evidence, as in graphics #65.
+        trace = self.kind == Kind.SIGNAL and not arguments
+        environment = {**environment, "LC_ALL": "C"}
+        if trace:
+            environment["WAYLAND_DEBUG"] = "client"
         try:
             self.process = subprocess.Popen(
                 [TOOLS[self.kind], *arguments],
-                env={**environment, "LC_ALL": "C"},
+                env=environment,
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
-                stderr=subprocess.DEVNULL,
+                stderr=subprocess.STDOUT if trace else subprocess.DEVNULL,
                 shell=False,
             )
         except FileNotFoundError:

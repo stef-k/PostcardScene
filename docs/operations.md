@@ -569,3 +569,52 @@ The worker capability exists, but its live playback/panel target and RuntimeHost
 wiring remain #104; physical power and panel protection remain #10. Saving a
 schedule or override does not yet control or prove panel standby/wake, playback,
 or audio suppression. The page sends no runtime commands or hardware probes.
+
+
+## Panel power capabilities (#111)
+
+The ordinary-Python CEC, DDC and signal capabilities are implemented independently
+of the running appliance. RuntimeHost does not call them yet; saving #110 policy
+still issues no hardware command. There is no Display page, diagnostic test action,
+schedule/playback connection or panel-protection worker in this boundary.
+
+The future installation/doctor owner (#26) must provide the fixed trusted tools
+`/usr/bin/cec-ctl`, `/usr/bin/ddcutil` and `/usr/bin/wlopm`, with normal non-root
+device/group permissions. No package installation, device discovery provisioning,
+udev rules or root application requirement is introduced here.
+
+- CEC needs a trusted canonical `/dev/cecN` selector and an already-configured
+  adapter with transmit support and one non-TV logical address. Missing selection
+  is unavailable; the application never guesses an adapter. It sends Image View
+  On first for wake and Standby for sleep, then queries TV power status. Physical
+  on/off is reported only from an actual matching stable status reply.
+- DDC optionally consumes a trusted positive display number. Without it, multiple
+  responsive displays are unavailable/ambiguous. Brief discovery must identify one
+  I2C bus and D6 must be readable before control. The capability retains that bus,
+  including across standby query loss, and writes only D6 on `0x01` or off `0x04`.
+  It disables user tool configuration and implicit set verification, then performs
+  its own bounded readback. A successful set with missing readback is unknown;
+  a later explicit wake can address the same retained bus without rediscovery.
+- Signal power needs the existing private Wayland session and the exact ready
+  #63-selected HDMI output, plus working `wlopm` output-power protocol support.
+  Fresh `wlopm` output-mode readback confirms only compositor signal on/off.
+  The query also requires a matching output-power mode event from a private
+  `WAYLAND_DEBUG=client` trace; missing/failed events cannot masquerade as off.
+  **Signal off never confirms physical monitor/TV standby.** The future owner must
+  keep intentional signal sleep from conflicting with output reconciliation.
+
+Each command has a three-second deadline, 16 KiB capture limit and 50 ms
+cancellation polling, followed by at most 250 ms kill/reap cleanup. Public results
+contain only closed state/reason values; raw output, stderr, selectors, display
+serials and environment values are discarded from status. Stderr is discarded
+except query-only Wayland trace, which shares the same capture cap and is parsed
+privately before being discarded. A timeout or uncertain
+request must not trigger another backend. Cleanup failure is separately marked,
+blocks further calls on that capability, and requires restart through the later
+runtime owner. These direct tools must not be replaced with shell wrappers.
+
+Tests cover fake protocol responses and controlled child-process failure,
+cancellation and reaping. They do not prove tool/package compatibility, physical
+standby/wake, Raspberry Pi/HDMI support or device permissions. #26/#116 retain those
+installation and physical evidence gates; CEC/DDC availability can disappear on
+standby or HDMI disconnect without establishing the physical power state.

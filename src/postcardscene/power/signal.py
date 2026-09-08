@@ -40,15 +40,65 @@ class SignalBackend(Backend):
                 cancelled,
             )
         raw = self._command.run([], environment, cancelled)
-        lines = raw.splitlines()
-        if not lines or len(lines) > 64:
+        return _observation(raw, self._output)
+
+
+def _observation(raw: bytes, output: str) -> State:
+    """Match the printed query to an actual mode event for this output only.
+
+    wlopm's query branch can print calloc's off value after a protocol failed
+    event. WAYLAND_DEBUG evidence is private, capped with stdout and discarded.
+    Unknown trace formats or hotplug during the query fail closed.
+    """
+    lines = raw.splitlines()
+    printed = []
+    trace = []
+    for line in lines:
+        event = re.fullmatch(
+            rb"\[[ \t]*[0-9]+\.[0-9]+\] (?:\{[^}\r\n]{1,64}\} )?(.{1,2048})",
+            line,
+        )
+        if event:
+            trace.append(event[1].strip())
+        else:
+            printed.append(line)
+    modes = _printed_modes(printed)
+    target = output.encode("ascii")
+    if target not in modes:
+        raise PowerError(Reason.UNAVAILABLE)
+    events = b"\n".join(trace)
+    names = re.findall(
+        rb'(?m)^wl_output[@#]([0-9]+)\.name\("' + target + rb'"\)$', events
+    )
+    if len(names) != 1 or b".global_remove(" in events:
+        raise PowerError(Reason.UNKNOWN)
+    objects = re.findall(
+        rb"(?m)^-> zwlr_output_power_manager_v1[@#][0-9]+\.get_output_power\(new id zwlr_output_power_v1[@#]([0-9]+), wl_output[@#]"
+        + names[0]
+        + rb"\)$",
+        events,
+    )
+    if len(objects) != 1:
+        raise PowerError(Reason.UNKNOWN)
+    prefix = rb"(?m)^zwlr_output_power_v1[@#]" + objects[0]
+    if re.search(prefix + rb"\.failed\(\)$", events):
+        raise PowerError(Reason.UNAVAILABLE)
+    values = re.findall(prefix + rb"\.mode\(([0-9]+)\)$", events)
+    if not values or any(value not in (b"0", b"1") for value in values):
+        raise PowerError(Reason.UNKNOWN)
+    observed = State.ON if values[-1] == b"1" else State.OFF
+    if observed != modes[target]:
+        raise PowerError(Reason.MALFORMED)
+    return observed
+
+
+def _printed_modes(lines: list[bytes]) -> dict[bytes, State]:
+    if not lines or len(lines) > 64:
+        raise PowerError(Reason.MALFORMED)
+    modes = {}
+    for line in lines:
+        match = re.fullmatch(rb"([A-Za-z0-9_-]{1,128}) (on|off)", line)
+        if match is None or match[1] in modes:
             raise PowerError(Reason.MALFORMED)
-        modes = {}
-        for line in lines:
-            match = re.fullmatch(rb"([A-Za-z0-9_-]{1,128}) (on|off)", line)
-            if match is None or match[1] in modes:
-                raise PowerError(Reason.MALFORMED)
-            modes[match[1]] = State(match[2].decode("ascii"))
-        if self._output.encode("ascii") not in modes:
-            raise PowerError(Reason.UNAVAILABLE)
-        return modes[self._output.encode("ascii")]
+        modes[match[1]] = State(match[2].decode("ascii"))
+    return modes

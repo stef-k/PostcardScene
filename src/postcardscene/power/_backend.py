@@ -39,6 +39,10 @@ class Backend:
                 Reason.AMBIGUOUS,
             ):
                 status = Status.UNAVAILABLE
+            # A request may have completed before its readback lost authority.
+            # Its failure is never a capability-unavailable fallback invitation.
+            if requested is not None and error.reason != Reason.NOT_CONFIGURED:
+                status = Status.DEGRADED
             if error.reason == Reason.CANCELLED:
                 status = Status.CANCELLED
             if error.cleanup_failed:
