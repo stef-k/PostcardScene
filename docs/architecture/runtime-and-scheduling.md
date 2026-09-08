@@ -247,7 +247,11 @@ shared stop event, and prevents further transitions. Frozen lock-protected statu
 contains lifecycle, desired/applied booleans and fixed reasons only. No runtime
 schedule status is persisted.
 
-Authenticated UI (#103) and live playback/panel join (#104) remain unimplemented.
+#103 exposes authenticated server-rendered schedule configuration using these
+persistence helpers and request-time pure evaluation. Draft Add/Remove never
+writes; complete Save replaces enablement/windows atomically. Overrides use
+separate POST/CSRF actions. No request starts runtime work or sends commands.
+The live playback/panel join (#104) remains unimplemented.
 RuntimeHost does not construct this worker until its real operating target exists;
 there is no temporary playback or panel owner. Keep-active intent never bypasses #10
 panel/static-content protection; physical power capability remains separate.
