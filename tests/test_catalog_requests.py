@@ -151,7 +151,7 @@ def test_migration_preserves_application_and_catalog(tmp_path):
     from alembic.autogenerate import compare_metadata
     from alembic.migration import MigrationContext
 
-    from postcardscene.persistence import Base, Database
+    from postcardscene.persistence import SCHEMA_REVISION, Base, Database
     from postcardscene.schema import migration_config, upgrade_database
 
     db = Database(tmp_path / "old.sqlite3", create=True)
@@ -187,7 +187,7 @@ def test_migration_preserves_application_and_catalog(tmp_path):
             ).all()
             for table in tables
         }
-    assert upgrade_database(db.path).schema_revision == "0009_playback_settings"
+    assert upgrade_database(db.path).schema_revision == SCHEMA_REVISION
     with db.engine.connect() as connection:
         for table in tables:
             assert (
