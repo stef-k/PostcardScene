@@ -228,7 +228,14 @@ class PanelCoordinator:
             result = self._call(self._selected, "observe")
             # Never abandon sleeping or uncertain authority, even on settings edits.
             if (
-                choice != self._selection_choice
+                (
+                    choice != self._selection_choice
+                    or (
+                        choice == "auto"
+                        and not self._command_issued
+                        and result.status == Status.UNAVAILABLE
+                    )
+                )
                 and not self._wake_pending
                 and (
                     not self._command_issued or (active and self._matches(result, True))

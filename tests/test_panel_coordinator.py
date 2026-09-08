@@ -418,3 +418,15 @@ def test_diagnostic_expiry_during_io_reconverges_immediately(rig):
     worker.join()
     assert deadlines == [5.0, 20.0]
     assert cec.state == State.OFF
+
+
+def test_auto_can_skip_newly_definitive_unavailability_before_any_command(rig):
+    worker, (cec, ddc, signal), _ = rig
+    cec.failure = Status.DEGRADED
+    worker._tick()
+    assert not ddc.calls
+    cec.failure = Status.UNAVAILABLE
+    worker._tick()
+    assert worker.status.active_backend == Kind.DDC
+    assert all(call in {"probe", "observe"} for call in cec.calls)
+    assert not signal.calls
