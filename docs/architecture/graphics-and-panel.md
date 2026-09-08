@@ -296,6 +296,53 @@ prerequisites and evidence limits. #26 owns provisioning; #112/#113 own converge
 and live ownership; #116 owns real panel validation. Software tests make no
 Pi/display compatibility, actual standby or non-root permission claims.
 
+### Single panel coordinator (#112)
+
+`runtime.panel.PanelCoordinator` is independently constructed with a database,
+shared stop Event and exclusive CEC/DDC/signal backend instances. Its one thread
+owns every backend call. RuntimeHost construction, Display UI/local transport,
+schedule/playback suppression and static-dwell enforcement remain later work.
+
+The closed hierarchy is protection sleep > transient diagnostic > operating
+intent. Operating defaults active, protection clear. `apply_operating(bool)`,
+`set_protection(bool)` and `request_test(bool)` return generation-specific Futures;
+callers wait with a bounded `result(timeout=...)`. A new submission supersedes the
+pending generation without replaying a queue. READY means the effective policy
+converged, not that an operating Wake bypassed protection: callers must inspect
+status before releasing presentation. Diagnostic Wake is rejected under protection;
+otherwise a test replaces only the previous test and expires after five monotonic
+seconds, restoring current operating/protection policy. It is never persisted.
+Timeout does not retract an intent, and cancelling its Future is not supported.
+
+Startup probes immediately. Intent changes wake the thread; health reconciliation
+has a fixed 15-second budget including hardware operations. Backend cancellation
+also observes changed intents, test expiry and the pass deadline. Shared-stop
+checks occur within 50 ms during idle/handshake waits. Join cancels and waits at
+most five seconds; timeout, unexpected worker failure or backend cleanup uncertainty
+sets shared cancellation and a fixed fatal error. No replacement backend operation
+is allowed after cleanup authority loss. Normal shutdown issues no sleep command.
+
+Each pass reads fresh detached display settings before hardware I/O. A failed read
+holds the last applied physical/effective state and degrades. Explicit backend
+choice is strict. Auto probes CEC, DDC, then signal, skipping definitive unavailable
+capabilities; unknown capability holds selection rather than authorizing another
+owner. Once usable, the selected backend remains responsible through transient
+failures and uncertain request readback, including retrying wake when standby has
+removed query availability. No commands are issued on an unproven capability.
+Backend-setting changes while asleep retain the old owner through verified wake
+and its handshake; selection changes at an effectively active safe point, or
+after an explicit settings change before any command has been issued.
+
+Matching physical CEC/DDC or effective signal observations avoid repeated commands.
+A wake request from off/unknown must establish on and complete the configured
+wake delay before readiness; an initially confirmed on observation needs no delay.
+The allowance survives interrupted/uncertain wake readback until on is established.
+New sleep intent interrupts that allowance. Frozen lock-protected status reports
+only lifecycle, backend choices, three intent fields, effective target, physical
+and signal observations, evidence class and fixed reasons. Signal-only readiness
+always retains unknown physical state. No selector, tool output or exception text
+is exposed and no physical hardware support is claimed.
+
 ## Burn-in and static-content protection
 
 Panel protection is separate from scheduled sleep.

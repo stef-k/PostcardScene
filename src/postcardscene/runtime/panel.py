@@ -64,6 +64,7 @@ class PanelCoordinator:
         self._expires = None
         self._selected = None
         self._usable = False
+        self._command_issued = False
         self._selection_choice = None
         self._wake_ready_at = None
         self._wake_pending = False
@@ -81,15 +82,18 @@ class PanelCoordinator:
         with self._lock:
             return self._failure
 
-    def _publish(self, **changes):
+    def _publish(self, *, generation=None, **changes):
         with self._lock:
-            if self._failure is None:
+            if self._failure is None and (
+                generation is None or generation == self._generation
+            ):
                 self._status = replace(self._status, **changes)
 
     def _intent(self, field, value):
         if type(value) is not bool:
             raise ValueError("Panel intent must be boolean")
         result = Future()
+        result.set_running_or_notify_cancel()
         with self._lock:
             previous = self._pending
             if self.stop_event.is_set():
@@ -151,7 +155,7 @@ class PanelCoordinator:
         if pending is not None:
             pending.set_result(outcome)
 
-    def _target(self):
+    def _expire_test(self):
         expired = None
         with self._lock:
             if self._expires is not None and self._clock() >= self._expires:
@@ -159,6 +163,11 @@ class PanelCoordinator:
                 self._status = replace(self._status, diagnostic_active=None)
                 expired, self._pending = self._pending, None
                 self._generation += 1
+        if expired is not None:
+            expired.set_result(Outcome.SUPERSEDED)
+
+    def _target(self):
+        with self._lock:
             s = self._status
             active = not s.protection_sleep and (
                 s.operating_active
@@ -166,10 +175,7 @@ class PanelCoordinator:
                 else s.diagnostic_active
             )
             self._status = replace(s, desired_active=active)
-            generation = self._generation
-        if expired is not None:
-            expired.set_result(Outcome.SUPERSEDED)
-        return generation, active
+            return self._generation, active
 
     def _cancelled(self):
         with self._lock:
@@ -206,6 +212,7 @@ class PanelCoordinator:
             # Unknown capability is not permission to probe another owner.
             if result.status != Status.UNAVAILABLE or choice != "auto":
                 self._selected = backend
+                self._command_issued = False
                 self._usable = result.status in {Status.PHYSICAL, Status.SIGNAL_ONLY}
                 self._selection_choice = choice
                 return result
@@ -219,10 +226,11 @@ class PanelCoordinator:
             result = self._call(self._selected, "observe")
             # Never abandon sleeping or uncertain authority, even on settings edits.
             if (
-                active
-                and self._matches(result, True)
-                and choice != self._selection_choice
+                choice != self._selection_choice
                 and not self._wake_pending
+                and (
+                    not self._command_issued or (active and self._matches(result, True))
+                )
             ):
                 self._selected = None
                 result = self._select(choice)
@@ -232,6 +240,7 @@ class PanelCoordinator:
             self._usable = True
         if self._selected is not None and not self._matches(result, active):
             if self._usable and result.status != Status.CANCELLED:
+                self._command_issued = True
                 self._wake_pending = active
                 self._wake_ready_at = None
                 result = self._call(
@@ -240,11 +249,15 @@ class PanelCoordinator:
         if self._cancelled():
             return False
         self._publish(
+            generation=self._pass_generation,
             active_backend=self._selected.kind if self._selected else None,
             physical=result.physical,
             signal=result.signal,
             evidence=result.evidence,
         )
+        return self._readiness(result, active, settings.display_wake_delay_seconds)
+
+    def _readiness(self, result, active, wake_delay):
         matched = self._matches(result, active)
         if not active:
             self._wake_pending = False
@@ -252,17 +265,27 @@ class PanelCoordinator:
         elif not matched:
             self._wake_ready_at = None
         elif self._wake_pending and self._wake_ready_at is None:
-            self._wake_ready_at = self._clock() + settings.display_wake_delay_seconds
+            self._wake_ready_at = self._clock() + wake_delay
         if matched and active and self._wake_ready_at is not None:
             if self._clock() < self._wake_ready_at:
-                self._publish(state="starting", reason="wake_delay")
+                self._publish(
+                    generation=self._pass_generation,
+                    state="starting",
+                    reason="wake_delay",
+                )
                 return None
             self._wake_ready_at = None
             self._wake_pending = False
-        self._publish(state="ready" if matched else "degraded", reason=result.reason)
+        self._publish(
+            generation=self._pass_generation,
+            state="ready" if matched else "degraded",
+            reason=result.reason,
+        )
         return matched
 
     def _tick(self):
+        self._deadline = self._clock() + POLL_SECONDS
+        self._expire_test()
         try:
             settings = get_display_power_settings(self.database)
         except Exception:
@@ -272,9 +295,18 @@ class PanelCoordinator:
         self._publish(configured_backend=settings.display_power_backend)
         generation, active = self._target()
         self._pass_generation = generation
-        self._deadline = self._clock() + POLL_SECONDS
         ready = self._reconcile(active, settings)
         if self._cancelled():
+            if self._clock() >= self._deadline:
+                self._publish(
+                    generation=generation,
+                    state="degraded",
+                    reason=Reason.TIMEOUT,
+                    physical=State.UNKNOWN,
+                    signal=State.UNKNOWN,
+                    evidence="none",
+                )
+                self._settle(generation, Outcome.DEGRADED)
             return
         if ready is not None:
             self._settle(generation, Outcome.READY if ready else Outcome.DEGRADED)
@@ -295,7 +327,7 @@ class PanelCoordinator:
                 self._tick()
                 with self._lock:
                     deadlines = [started + POLL_SECONDS]
-                    if self._expires is not None and self._expires > self._clock():
+                    if self._expires is not None:
                         deadlines.append(self._expires)
                     if (
                         self._wake_ready_at is not None

@@ -180,8 +180,11 @@ new presentations, including successful Previous/Next, reset it, while overlay
 reveal and schedule Keep active do not bypass it. Images/web are potentially static;
 progressing unpaused video is not static solely due to unchanged Scene identity.
 #111 adds bounded CEC/DDC/signal capabilities with verified physical or signal-only
-observations and explicit cleanup uncertainty. Backend selection, live enforcement,
-Display UI and physical evidence remain later #10 work, as defined in the
+observations and explicit cleanup uncertainty. #112 adds the independently
+constructible single panel coordinator, closed protection/diagnostic/operating
+precedence, bounded convergence and wake readiness. RuntimeHost wiring, live
+protection/playback enforcement, Display UI and physical evidence remain later
+#10 work, as defined in the
 [Graphics and panel contract](architecture/graphics-and-panel.md).
 
 

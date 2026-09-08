@@ -329,3 +329,91 @@ def test_shutdown_interrupts_wake_delay(rig):
     worker.join()
     assert pending.result() == Outcome.STOPPED
     assert cec.calls.count("on") == 1
+
+
+def test_unavailable_uncommanded_backend_can_be_explicitly_replaced(rig):
+    worker, (cec, _, signal), db = rig
+    set_display_power_settings(db, "cec", 0, 1800)
+    cec.failure = Status.UNAVAILABLE
+    worker._tick()
+    set_display_power_settings(db, "signal", 0, 1800)
+    worker._tick()
+    assert worker.status.active_backend == Kind.SIGNAL
+    assert signal.calls == ["probe"]
+
+
+def test_wake_readback_cancelled_by_intent_keeps_handshake(rig):
+    worker, (cec, _, _), db = rig
+    set_display_power_settings(db, "cec", 5, 1800)
+    now = [0.0]
+    worker._clock = lambda: now[0]
+    cec.state = State.OFF
+
+    def interrupt(method, cancelled):
+        if method == "on":
+            worker.apply_operating(True)
+            cec.hook = None
+            assert cancelled()
+
+    cec.hook = interrupt
+    worker._tick()
+    worker._tick()
+    assert worker.status.reason == "wake_delay"
+    now[0] = 5
+    worker._tick()
+    assert worker.status.state == "ready"
+    assert cec.calls.count("on") == 1
+
+
+def test_pass_deadline_degrades_without_switching_owners(rig):
+    worker, (cec, ddc, signal), _ = rig
+    now = [0.0]
+    worker._clock = lambda: now[0]
+    pending = worker.apply_operating(True)
+
+    def timeout(method, cancelled):
+        now[0] = 15
+        assert cancelled()
+
+    cec.hook = timeout
+    worker._tick()
+    assert pending.result() == Outcome.DEGRADED
+    assert worker.status.reason == Reason.TIMEOUT
+    assert not ddc.calls and not signal.calls
+
+
+def test_precancelled_start_has_no_backend_calls(rig):
+    worker, backends, _ = rig
+    worker.stop_event.set()
+    worker.start()
+    worker.join()
+    assert all(not backend.calls for backend in backends)
+    assert worker.apply_operating(True).result() == Outcome.STOPPED
+
+
+def test_diagnostic_expiry_during_io_reconverges_immediately(rig):
+    worker, (cec, _, _), _ = rig
+    now = [0.0]
+    worker._clock = lambda: now[0]
+    worker.apply_operating(False)
+    worker.request_test(True)
+
+    def expire(method, cancelled):
+        now[0] = 5.0
+        cec.hook = None
+        assert cancelled()
+
+    cec.hook = expire
+    deadlines = []
+
+    def wait(deadline):
+        deadlines.append(deadline)
+        if len(deadlines) == 2:
+            worker.stop_event.set()
+
+    worker._wait = wait
+    worker.start()
+    worker.thread.join(2)
+    worker.join()
+    assert deadlines == [5.0, 20.0]
+    assert cec.state == State.OFF
