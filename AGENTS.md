@@ -7,10 +7,14 @@ This file defines PostcardScene-specific rules for coding agents. General develo
 Treat the repository as authoritative. Before implementing or materially hardening an issue, read:
 
 1. `README.md`
-2. `docs/architecture.md`
-3. `docs/roadmap.md`
-4. this file
-5. the owning epic and implementation issue
+2. [Architecture entry point](docs/architecture.md)
+3. the relevant subsystem architecture document(s), selected through the [Architecture map](docs/architecture.md#architecture-map)
+4. `docs/roadmap.md`
+5. this file and the owning epic and implementation issue
+
+For cross-cutting work, read every affected subsystem contract. The entry point
+and its linked subsystem documents collectively form architecture authority; no
+subsystem document is standalone authority detached from the overview.
 
 If implementation and documentation disagree, do not silently invent a new architecture. Resolve the inconsistency explicitly and update the relevant authority document in the same change when the decision is consequential.
 
@@ -20,7 +24,7 @@ The GitHub milestone/tracker/epic/child graph is the project execution authority
 
 For V0, start from tracker issue `#1` and use this algorithm:
 
-1. Read `#1`, the four repository authority documents above, and the current milestone state.
+1. Read `#1`, the repository authority documents and relevant subsystem contracts above, and the current milestone state.
 2. Walk the incomplete V0 epics in the order listed by `#1`.
 3. Cross-issue `Depends on`, `Blocks`, explicit prerequisite text, and authoritative architecture dependencies override display/list order. An item is **dependency-ready** only when every required prerequisite is complete or the owning issue explicitly permits parallel work.
 4. Select the first incomplete dependency-ready epic in tracker order.
@@ -388,4 +392,4 @@ Preserve these foundational PostcardScene boundaries:
 
 Some implementation choices are intentionally not frozen. The authoritative list is in `docs/architecture.md`.
 
-Do not resolve an open decision globally before its owning issue requires the decision and has enough evidence. When a consequential decision is made, update `docs/architecture.md` in the same change.
+Do not resolve an open decision globally before its owning issue requires the decision and has enough evidence. When a consequential decision is made, update `docs/architecture.md` and the affected subsystem contract in the same change.

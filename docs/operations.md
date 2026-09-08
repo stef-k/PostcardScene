@@ -462,7 +462,7 @@ seeks require a known positive duration and reject targets outside it. Unknown d
 disables the scrubber; non-seekable media disables all seeking. Operations default to
 a one-second deadline, support cancellation, and raise fixed `PlaybackError` reasons.
 Stop cancels pending IPC and retires the child. Successful load has no hidden playback
-time limit; the owner observes real EOF. See the architecture transport contract.
+time limit; the owner observes real EOF. See the [architecture transport contract](architecture/rendering.md#active-video-transport-74).
 
 Pass #71 Widget JSON to `prepare(fd, configuration=...)`. Omission is silent:
 `audio_enabled=false`, volume 50. Opt-in audio starts unmuted at its configured
@@ -472,7 +472,7 @@ transient mute/volume, a fixed reason and automatic versus explicit device polic
 changes are transient and reset on a newly prepared video.
 
 Trusted host callers may construct `MpvController(..., audio_device=...)` with
-`None`/`auto` or one bounded mpv `driver/device` value; see the architecture contract.
+`None`/`auto` or one bounded mpv `driver/device` value; see the [architecture audio contract](architecture/rendering.md#active-video-audio-75).
 There is no device setting/UI or enumeration. A missing track plays silently;
 [mpv's null-output fallback](https://mpv.io/manual/stable/#audio) preserves silent
 video when an intended device cannot open, without selecting another real device.
