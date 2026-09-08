@@ -95,7 +95,12 @@ def test_fatal_failure_propagates_and_executable_returns_nonzero(
     previous = {s: signal.getsignal(s) for s in (signal.SIGINT, signal.SIGTERM)}
     assert cli.main() == 1
     assert executable_host.status.state == Lifecycle.ERROR
-    assert capsys.readouterr().err == "Runtime failed and cannot continue.\n"
+    assert capsys.readouterr().err == (
+        "INFO Runtime startup beginning.\n"
+        "INFO Runtime entering normal service operation.\n"
+        "INFO Runtime shutdown beginning.\n"
+        "ERROR Runtime failed and cannot continue.\n"
+    )
     assert all(signal.getsignal(s) == handler for s, handler in previous.items())
 
 
@@ -166,7 +171,13 @@ sys.exit(entry.load()())
         process.send_signal(signum)
         stdout, stderr = process.communicate(timeout=5)
         assert process.returncode == 0, stderr
-        assert stdout == stderr == ""
+        assert stdout == ""
+        assert stderr == (
+            "INFO Runtime startup beginning.\n"
+            "INFO Runtime entering normal service operation.\n"
+            "INFO Runtime shutdown beginning.\n"
+            "INFO Runtime shutdown complete.\n"
+        )
         with catalog[0].transaction() as session:
             state = session.get(MediaCatalogState, catalog[1])
             assert state.last_result == "ready"

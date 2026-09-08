@@ -102,7 +102,20 @@ The runtime must tolerate:
 
 The control plane should remain reachable whenever the host itself is healthy.
 
-Use systemd for service supervision. Logs should be diagnosable but have bounded disk growth. Cache growth should be bounded/cleanable. Low disk-space state should be visible through status/doctor paths rather than discovered only after corruption/failure.
+#122 freezes `postcardscene-runtime.service` supervision and the installed
+[path/logging contract](../operations.md#installed-runtime-service-122).
+`/etc/postcardscene/config.py` is the shared trusted operator configuration for
+installed runtime and later web services. `/var/lib/postcardscene` is durable,
+`/var/cache/postcardscene` replaceable, `/run/postcardscene` transient, and
+`/run/postcardscene-wayland` independently graphics-owned. Application startup
+does not recursively provision or repair these roots; #26 owns provisioning.
+
+V0 runtime lifecycle logs use stdlib logging and journald only, with fixed safe
+messages and no raw exceptions/tracebacks or host/configuration values. Distro
+journal limits own persistence/rotation; no duplicate application log tree or
+global journald configuration mutation is introduced. Cache growth should be
+bounded/cleanable. Low disk-space state should be visible through status/doctor
+paths rather than discovered only after corruption/failure.
 
 ## Release, installation, and update boundary
 
