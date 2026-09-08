@@ -492,7 +492,7 @@ environment.
 ## Playback worker capability (#89)
 
 The independently constructible playback worker is tested with fake presenters.
-The packaged runtime still performs catalog work only; #93 will wire playback and
+The packaged runtime performs catalog work and optional #113 panel control; #93 will wire playback and
 real image/video/web presenters after #58. There are no new operator launch settings,
 Flask playback controls, display-power commands or hardware support claims here.
 
@@ -573,9 +573,9 @@ or audio suppression. The page sends no runtime commands or hardware probes.
 ## Panel power capabilities (#111)
 
 The ordinary-Python CEC, DDC and signal capabilities are implemented independently
-of the running appliance. RuntimeHost does not call them yet; saving #110 policy
-still issues no hardware command. There is no Display page, diagnostic test action,
-schedule/playback connection or panel-protection worker in this boundary.
+of the running appliance. #113 now constructs them when trusted host configuration
+enables the live panel group below. There is no Display page, schedule/playback
+connection or static-protection worker in this boundary.
 
 The future installation/doctor owner (#26) must provide the fixed trusted tools
 `/usr/bin/cec-ctl`, `/usr/bin/ddcutil` and `/usr/bin/wlopm`, with normal non-root
@@ -617,3 +617,70 @@ cancellation and reaping. They do not prove tool/package compatibility, physical
 standby/wake, Raspberry Pi/HDMI support or device permissions. #26/#116 retain those
 installation and physical evidence gates; CEC/DDC availability can disappear on
 standby or HDMI disconnect without establishing the physical power state.
+
+
+## Live panel runtime and local control (#113)
+
+`postcardscene-runtime` optionally starts exactly one panel coordinator alongside
+catalog refresh. Trusted `POSTCARDSCENE_CONFIG` accepts:
+
+| Key | Accepted value / default |
+| --- | --- |
+| `PANEL_POWER_RUNTIME_ENABLED` | Exact bool; default `False` |
+| `CEC_DEVICE` | Optional canonical `/dev/cecN`, N 0–9999 |
+| `DDC_DISPLAY` | Optional integer 1–9999, never bool |
+| `DISPLAY_CONNECTOR` | Optional exact `HDMI-A-N`, N 1–9999, using #63 rules |
+
+Selectors without explicit enablement fail configuration. Enabled hosts may omit
+selectors: CEC is then unavailable, DDC requires one unambiguous display, and
+signal uses #63's unambiguous HDMI selection. Invalid values fail before workers
+start. These inputs never come from SQLite or web requests. The existing
+`/run/postcardscene-wayland` remains graphics authority. Managed installation #26
+must configure/enable panel power on supported appliances; default disabled keeps
+source-checkout catalog work usable and reports panel capability unavailable.
+
+The host directory `/run/postcardscene` must already exist, owned by the non-root
+runtime user, mode 0700 or 0750, under trusted ancestors. Application code creates
+only `panel-control.sock`, mode 0600 or 0660 respectively; for 0750 it inherits
+the directory GID explicitly. A separate web user must have that group as its
+primary GID for SO_PEERCRED authorization. #26 provisions users/groups and tools;
+this change installs nothing. Existing endpoints (including stale sockets) fail
+startup and are never unlinked automatically. An operator must establish the old
+owner is stopped before removing a stale endpoint. Normal cleanup removes only
+the socket inode this process created.
+
+Clients connect with Linux AF_UNIX `SOCK_SEQPACKET` and send exactly one UTF-8 JSON
+packet, maximum 1024 bytes, with exactly these keys:
+
+```json
+{"version":1,"action":"status"}
+```
+
+The other two actions are `test_on` and `test_off`; no additional arguments or
+configurable test duration exist. The listener handles one client at a time with
+100 ms receive/send bounds. Oversized/malformed/unauthorized packets are rejected;
+clients should use a bounded timeout and treat absent socket, timeout or disconnect
+as unavailable. Responses fit one packet of at most 1024 bytes:
+`version`, `outcome` (`accepted|unavailable|rejected|cleanup_failed`) and `status`.
+Status contains configured/lifecycle/backend, operating/protection/test and effective
+intent, physical/signal observation, evidence, fixed reason and signal-sleep
+ownership. No selectors, serials, tool output, environment or schedule data leave
+the runtime. Accepted means submitted/read, not confirmed physical transition;
+read status to observe convergence. Signal-only evidence always leaves physical
+state unknown.
+
+Tests use #112's fixed five-second transient intent. Test wake can override ordinary
+operating sleep but is rejected during protection; Test sleep temporarily overrides
+active intent. Expiry restores current policy without changing settings, schedules
+or protection. Normal service shutdown stops requests, joins the panel owner, then
+continues catalog cleanup without requesting on/off. Panel unavailability degrades
+locally; cleanup uncertainty stops the host and returns nonzero for supervisor
+recovery. The control plane is independently restartable.
+
+Signal selection reuses #63 inside the existing panel pass, with no mode/output
+monitor. The selected output survives intentional off. Future #11 output-monitor
+integration must refrain from reconciliation while `intentional_signal_sleep`
+is true, including uncertain sleep/wake ownership. Wlopm changes power without
+requiring a mode reapply. #104 retains schedule/playback suppression wiring, #115
+static protection, #114 Display UI, and #116 physical support evidence. These local
+software checks make no physical standby/wake or Raspberry Pi support claim.

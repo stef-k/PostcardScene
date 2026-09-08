@@ -125,6 +125,27 @@ local override expiry, without claiming actual runtime/panel state. Errors are
 sanitized; there are no probes, runtime commands, schema or scheduler additions.
 See [operations](../operations.md#weekly-schedule-and-temporary-overrides).
 
+## Local panel control (#113)
+
+The runtime owns `/run/postcardscene/panel-control.sock`: Linux AF_UNIX
+SOCK_SEQPACKET, one JSON packet per connection, version 1, exact
+`status|test_on|test_off`, request/response maximum 1024 bytes. Only fixed panel
+status and outcome fields leave the process. Diagnostic actions submit #112's
+five-second intent and cannot override protection. No backend arguments, paths,
+schedule fields, raw tool output or arbitrary method names are accepted.
+
+The pre-existing directory must belong to the non-root runtime UID with mode
+0700 (socket 0600), or 0750 (socket 0660, directory GID). Only the runtime owner
+can replace the endpoint; SO_PEERCRED permits the owner UID or the configured
+directory group's primary GID. #26 owns eventual web/runtime user/group
+provisioning. Invalid authority and existing endpoints fail startup; application
+code never creates/chowns the parent or deletes a foreign/stale socket. Clients
+have 100 ms I/O bounds and the single listener joins within five seconds.
+
+#114 will connect authenticated Display actions through this seam. Flask still
+performs no panel calls, and general runtime/playback IPC remains #29 authority.
+See [wire protocol and operations](../operations.md#live-panel-runtime-and-local-control-113).
+
 ## Authentication, network exposure, and secrets
 
 Initial authentication should be simple and appropriate to a self-hosted appliance.

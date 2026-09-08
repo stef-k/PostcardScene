@@ -3,36 +3,51 @@
 import re
 
 from postcardscene.graphics import WaylandSession
-from postcardscene.graphics.output import DisplayStatus
-from postcardscene.graphics.output_probe import CONNECTOR
+from postcardscene.graphics.output import DisplayStatus, select_connector
+from postcardscene.graphics.output_probe import CONNECTOR, ProbeError, read_connectors
 
 from ._backend import Backend
 from ._types import Kind, PowerError, Reason, State
 
 
 class SignalBackend(Backend):
-    def __init__(self, session: WaylandSession, display: DisplayStatus):
+    def __init__(
+        self,
+        session: WaylandSession,
+        display: DisplayStatus | None = None,
+        *,
+        connector_override: str | None = None,
+    ):
         super().__init__(Kind.SIGNAL)
         # Retain the selected identity across intentional off. Reconciliation
         # and replacement of this capability belong to the later single owner.
         self._output = (
             display.connector
-            if display.session_available and display.state == "ready"
+            if display is not None
+            and display.session_available
+            and display.state == "ready"
             else None
         )
         if self._output is not None and not CONNECTOR.fullmatch(self._output):
             raise ValueError("Invalid selected Wayland output.")
+        if connector_override is not None and (
+            type(connector_override) is not str
+            or not CONNECTOR.fullmatch(connector_override)
+        ):
+            raise ValueError("Invalid trusted display connector.")
+        self._discover_output = display is None
+        self._connector_override = connector_override
         self._session = session
 
     def _operate(self, requested, cancelled):
-        if self._output is None:
-            raise PowerError(Reason.NOT_CONFIGURED)
         if not self._session.inspect().available:
             raise PowerError(Reason.UNAVAILABLE)
         try:
             environment = self._session.client_environment()
         except (OSError, ValueError):
             raise PowerError(Reason.UNAVAILABLE) from None
+        if self._output is None:
+            self._select_output()
         if requested is not None:
             self._command.run(
                 ["--on" if requested == State.ON else "--off", self._output],
@@ -41,6 +56,23 @@ class SignalBackend(Backend):
             )
         raw = self._command.run([], environment, cancelled)
         return _observation(raw, self._output)
+
+    def _select_output(self):
+        if not self._discover_output:
+            raise PowerError(Reason.NOT_CONFIGURED)
+        try:
+            connector = select_connector(read_connectors(), self._connector_override)
+        except ProbeError as error:
+            reason = (
+                Reason.AMBIGUOUS if str(error) == "ambiguous" else Reason.UNAVAILABLE
+            )
+            raise PowerError(reason) from None
+        if connector is None:
+            raise PowerError(Reason.UNAVAILABLE)
+        # #63 alone selects the connector. wlopm's named protocol evidence below
+        # verifies its Wayland identity. Never reconcile modes to discover power:
+        # that could turn an intentionally sleeping output back on.
+        self._output = connector.name
 
 
 def _observation(raw: bytes, output: str) -> State:

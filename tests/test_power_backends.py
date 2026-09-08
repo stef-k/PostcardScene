@@ -345,3 +345,47 @@ def test_ddc_ignores_complete_unresponsive_display_entry(monkeypatch):
         [DDC_ONE + invalid, b"VCP D6 SNC x01\n", b"VCP D6 SNC x01\n"],
     )
     assert backend.probe(lambda: False).status == Status.PHYSICAL
+
+
+def test_live_signal_selection_recovers_no_display_and_retains_sleep_owner(monkeypatch):
+    from postcardscene.graphics.output_probe import Connector
+    from postcardscene.power import signal
+
+    backend = SignalBackend(signal_backend()._session)
+    monkeypatch.setattr(signal, "read_connectors", lambda: ())
+    assert backend.probe(lambda: False).status == Status.UNAVAILABLE
+    monkeypatch.setattr(
+        signal, "read_connectors", lambda: (Connector("HDMI-A-1", True),)
+    )
+    calls = scripted(
+        monkeypatch,
+        backend,
+        [signal_reply("on"), b"", signal_reply("off"), b"", signal_reply("on")],
+    )
+    assert backend.probe(lambda: False).signal == State.ON
+    assert backend.request_off(lambda: False).signal == State.OFF
+    monkeypatch.setattr(signal, "read_connectors", lambda: pytest.fail("rediscovery"))
+    assert backend.request_on(lambda: False).signal == State.ON
+    assert len(calls) == 5
+
+
+def test_live_signal_uses_63_ambiguity_and_strict_override(monkeypatch):
+    from postcardscene.graphics.output_probe import Connector
+    from postcardscene.power import signal
+
+    monkeypatch.setattr(
+        signal,
+        "read_connectors",
+        lambda: (Connector("HDMI-A-1", True), Connector("HDMI-A-2", True)),
+    )
+    session = signal_backend()._session
+    assert SignalBackend(session).probe(lambda: False).reason == Reason.AMBIGUOUS
+    assert (
+        SignalBackend(session, connector_override="HDMI-A-3")
+        .probe(lambda: False)
+        .status
+        == Status.UNAVAILABLE
+    )
+    backend = SignalBackend(session, connector_override="HDMI-A-1")
+    scripted(monkeypatch, backend, [signal_reply("on")])
+    assert backend.probe(lambda: False).signal == State.ON

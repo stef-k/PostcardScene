@@ -175,3 +175,129 @@ sys.exit(entry.load()())
         if process.poll() is None:
             process.kill()
         process.communicate()
+
+
+def test_live_panel_owner_degradation_and_shutdown_order(
+    catalog, tmp_path, monkeypatch
+):
+    import postcardscene.runtime as runtime
+    from postcardscene.runtime.panel_control import PanelControl
+
+    config = {"PANEL_POWER_RUNTIME_ENABLED": True}
+    path = tmp_path / "control"
+    path.mkdir(mode=0o700)
+    monkeypatch.setattr(
+        runtime,
+        "PanelControl",
+        lambda owner, stop: PanelControl(owner, stop, path / "panel.sock"),
+    )
+    host = RuntimeHost(catalog[0], catalog[3], config)
+    owner = host.panel_coordinator
+    assert owner.database is catalog[0]
+    assert owner.stop_event is host.stop_event
+    assert host.panel_control.coordinator is owner
+    calls = []
+    original_join = owner.join
+    original_stop = host.panel_control.stop
+    original_catalog_join = host.catalog_worker.join
+
+    def stop_control():
+        calls.append("control")
+        original_stop()
+
+    def join_panel():
+        calls.append("panel")
+        original_join()
+
+    def join_catalog():
+        calls.append("catalog")
+        original_catalog_join()
+
+    monkeypatch.setattr(host.panel_control, "stop", stop_control)
+    monkeypatch.setattr(owner, "join", join_panel)
+    monkeypatch.setattr(host.catalog_worker, "join", join_catalog)
+
+    original_wait = host.stop_event.wait
+
+    def wait(timeout=None):
+        if timeout is not None:
+            return original_wait(timeout)
+        # Missing CEC/Wayland and controlled DDC unavailability are nonfatal.
+        assert owner.apply_operating(True).result(2).value == "degraded"
+        assert owner.status.state == "degraded"
+        assert not host.stop_event.is_set()
+        assert host.catalog_worker.thread.is_alive()
+        host.request_shutdown()
+
+    from postcardscene.power import Kind, PowerResult, Reason, Status
+
+    monkeypatch.setattr(
+        owner._backends[1],
+        "probe",
+        lambda cancelled: PowerResult(Kind.DDC, Status.UNAVAILABLE, Reason.UNAVAILABLE),
+    )
+    monkeypatch.setattr(host.stop_event, "wait", wait)
+    host.run()
+    assert calls == ["control", "panel", "catalog"]
+    assert host.status.state == Lifecycle.STOPPED
+    assert not owner.thread.is_alive()
+    assert host.panel_status["configured"] is True
+
+
+def test_panel_fatal_cleanup_propagates_and_catalog_still_joins(catalog, monkeypatch):
+    from postcardscene.power import Kind, PowerResult, Reason, Status
+
+    host = RuntimeHost(catalog[0], catalog[3], {"PANEL_POWER_RUNTIME_ENABLED": True})
+    monkeypatch.setattr(host.panel_control, "start", lambda: None)
+    monkeypatch.setattr(
+        host.panel_coordinator._backends[0],
+        "probe",
+        lambda cancelled: PowerResult(
+            Kind.CEC, Status.CLEANUP_FAILED, Reason.CLEANUP_FAILED, cleanup_failed=True
+        ),
+    )
+    with pytest.raises(RuntimeError, match="Panel coordinator failed"):
+        host.run()
+    assert host.stop_event.is_set()
+    assert host.status.state == Lifecycle.ERROR
+    assert not host.catalog_worker.thread.is_alive()
+    assert host.panel_status["reason"] == "cleanup_failed"
+
+
+def test_disabled_panel_constructs_no_capabilities(monkeypatch):
+    import postcardscene.runtime as runtime
+
+    monkeypatch.setattr(
+        runtime, "PanelCoordinator", lambda *a, **kw: pytest.fail("panel")
+    )
+    host = RuntimeHost(config={"PANEL_POWER_RUNTIME_ENABLED": False})
+    assert host.panel_status == {
+        "configured": False,
+        "state": "unavailable",
+        "reason": "not_configured",
+    }
+    host.request_shutdown()
+    host.run()
+
+
+def test_occupied_panel_endpoint_prevents_hardware_start(
+    catalog, tmp_path, monkeypatch
+):
+    import postcardscene.runtime as runtime
+    from postcardscene.runtime.panel_control import PanelControl
+
+    tmp_path.chmod(0o700)
+    path = tmp_path / "panel.sock"
+    path.write_text("existing owner")
+    monkeypatch.setattr(
+        runtime, "PanelControl", lambda owner, stop: PanelControl(owner, stop, path)
+    )
+    host = RuntimeHost(catalog[0], catalog[3], {"PANEL_POWER_RUNTIME_ENABLED": True})
+    monkeypatch.setattr(
+        host.panel_coordinator, "start", lambda: pytest.fail("hardware started")
+    )
+    with pytest.raises(OSError):
+        host.run()
+    assert path.read_text() == "existing owner"
+    assert not host.catalog_worker.thread.is_alive()
+    assert host.status.state == Lifecycle.ERROR

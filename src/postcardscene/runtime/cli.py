@@ -17,7 +17,7 @@ def main() -> int:
         policy = PathPolicy(config["MEDIA_ALLOWED_ROOTS"])
         database = Database(config["DATABASE_PATH"])
         database.check()
-        host = RuntimeHost(database, policy)
+        host = RuntimeHost(database, policy, config)
 
         def request_shutdown(signum, frame):
             host.request_shutdown()

@@ -147,7 +147,8 @@ The web/control and runtime/player processes must be independently restartable.
 
 A Chromium, mpv, cataloging, source, or media failure must be recoverable without losing access to the web administration interface. Restarting the control plane should not unnecessarily destroy the active display session.
 
-The precise control-plane/runtime IPC mechanism remains intentionally open.
+The general control-plane/runtime IPC mechanism remains intentionally open. #113
+adds only the narrow local [panel status/test socket](architecture/control-plane-and-security.md#local-panel-control-113).
 
 ## Architecture map
 
@@ -178,7 +179,7 @@ They are not replaced by the subsystem architecture contracts.
 
 The following are intentionally unresolved until the owning issue has enough evidence:
 
-1. **General control-plane/runtime IPC** — Unix socket, localhost HTTP, another narrow local protocol, or a combination. #52 freezes only catalog refresh requests as coalescing SQLite tokens; live status/playback transport remains open.
+1. **General control-plane/runtime IPC** — Unix socket, localhost HTTP, another narrow local protocol, or a combination. #52 freezes only catalog refresh requests as coalescing SQLite tokens; general live status/playback transport remains open. #113 freezes only the panel-specific AF_UNIX status/test seam.
 3. **General cached-provider storage** — exact V1 cache implementation/invalidation strategy.
 4. **Credential-at-rest mechanism** — exact protection/master-key approach and recovery behavior.
 5. **Wayfarer native integration** — API endpoints/authentication and whether Wayfarer provides a dedicated display-oriented page.
