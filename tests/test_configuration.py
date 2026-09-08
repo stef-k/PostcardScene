@@ -50,7 +50,10 @@ def test_config_file_failure_is_not_ignored(tmp_path, monkeypatch, capsys, conte
         with pytest.raises(OSError):
             load_runtime_config()
         assert cli.main() == 1
-        assert capsys.readouterr().err == "Runtime failed and cannot continue.\n"
+        assert capsys.readouterr().err == (
+            "INFO Runtime startup beginning.\n"
+            "ERROR Runtime failed and cannot continue.\n"
+        )
     finally:
         if config.exists():
             config.chmod(0o600)
