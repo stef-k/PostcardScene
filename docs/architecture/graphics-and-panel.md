@@ -227,12 +227,74 @@ These settings are durable appliance state for backup/restore. CEC/DDC selectors
 remain trusted host/install authority, outside these administrator policy fields.
 #110 implements configuration only: backend commands/discovery, runtime ownership,
 schedule/playback actions, Display UI and physical evidence belong to later children.
-The V0 signal backend will use Wayland output signal power (`wlopm`) on the
-#63-authorized output; signal state cannot prove physical panel standby.
+The #111 capability boundary below supplies backend execution; runtime ownership,
+live enforcement and Display UI remain later work.
 
 The host/runtime remains alive while the panel sleeps so administration, scheduling, catalog reconciliation, and later provider refresh can continue.
 
 A failed power operation should surface degraded/unknown state rather than falsely claiming the physical panel reached the requested state.
+
+### Bounded backend capabilities (#111)
+
+`postcardscene.power` provides `CecBackend`, `DdcBackend` and `SignalBackend` with
+`probe(cancelled)`, `observe(cancelled)`, `request_on(cancelled)` and
+`request_off(cancelled)`. The caller supplies a cooperative cancellation predicate
+and serializes calls. Frozen `PowerResult` values retain backend, requested state,
+physical/signal `on|off|unknown`, evidence `physical|signal_only|none`, closed
+status/reason and an independent cleanup-failed marker. Mismatching readback is
+degraded while retaining the actual observation; failed readback cannot confirm
+completion. Requests never turn a readback failure into fallback availability.
+
+All three use fixed `/usr/bin/cec-ctl`, `/usr/bin/ddcutil` or `/usr/bin/wlopm`
+argv, no shell/PATH lookup, explicit environment with C locale, a 16 KiB capture
+limit, a three-second deadline per command and 50 ms cancellation polling. Stderr
+is discarded except the signal query's private, jointly capped protocol trace.
+Direct tools are killed and reaped within 250 ms on timeout/cancellation/failure.
+Cleanup uncertainty preserves the primary reason, retains process ownership and
+latches the instance against further commands; the future owner must request
+runtime restart rather than construct a replacement. Operations have a fixed
+maximum command count (CEC three, DDC four, signal two), with no internal retries.
+No DB transaction, selection loop, worker, RuntimeHost/UI or playback integration
+is introduced.
+
+CEC accepts only an optional trusted `/dev/cecN` (0–9999, canonical decimal) and
+never discovers adapters. Kernel capability information must report transmit
+support and exactly one allocated non-TV logical address. Installation owns
+adapter configuration. Wake sends Image View On first; sleep sends Standby;
+both then request TV logical-address-0 power status with a one-second reply
+budget. Only a matching three-byte Report Power Status reply confirms on/standby.
+Transitional, absent, malformed or lost-HPD authority remains unknown. No Active
+Source, adapter reconfiguration or arbitrary CEC messages are added. Parsing
+follows [upstream cec-ctl](https://github.com/gjasny/v4l-utils/blob/master/utils/cec-ctl/cec-ctl.cpp).
+
+DDC accepts an optional trusted positive display number (1–9999); otherwise only
+one responsive brief-detection entry is accepted. Multiple, duplicate or malformed
+identities fail closed. D6 support must be observed before retaining its I2C bus
+for this capability's lifetime. Keeping that bus avoids display-number reassignment
+after standby; unavailable readback never triggers rediscovery or another backend.
+Only D6 `0x01`/`0x04` are written, with a separate bounded readback. Standard
+observed values 1 mean on, 2/3/4 mean non-on, and all others (including write-only
+5) remain unknown. The parser follows ddcutil's
+[brief discovery](https://www.ddcutil.com/command_detect/) (including current
+optional DRM fields and complete nonresponsive `Invalid display` entries) and
+[non-continuous VCP output](https://www.ddcutil.com/command_getvcp/).
+
+Signal power consumes `WaylandSession` readiness/client environment and one ready
+#63 `DisplayStatus` connector. It retains that exact output across intentional off,
+uses only `wlopm --on/--off HDMI-A-N`, and queries fresh output modes. Query-only
+`WAYLAND_DEBUG=client` evidence must link that output name to its output-power
+object and an actual matching mode event, without failure/hotplug. This follows
+#65's private trace principle: no trace is logged or exposed. It avoids treating
+wlopm's default off value as observation when no mode event arrived (see
+[upstream query implementation](https://sources.debian.org/src/wlopm/1.0.0-1/wlopm.c)).
+Matching readback proves signal state only; physical state always remains unknown.
+The later runtime owner must coordinate intentional signal sleep with #63
+reconciliation. It must not re-enable the output while panel intent requires off.
+
+[Operations](../operations.md#panel-power-capabilities-111) records host-tool
+prerequisites and evidence limits. #26 owns provisioning; #112/#113 own convergence
+and live ownership; #116 owns real panel validation. Software tests make no
+Pi/display compatibility, actual standby or non-root permission claims.
 
 ## Burn-in and static-content protection
 
