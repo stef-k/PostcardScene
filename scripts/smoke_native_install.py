@@ -302,6 +302,8 @@ def main():
     spec = importlib.util.spec_from_file_location("native_install", ROOT / "install.py")
     installer = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(installer)
+    entrypoint = installer
+    _, installer, _, _ = entrypoint.load_support(ROOT)
     # Refuse any existing installation; this smoke has no adoption or cleanup path.
     for path in (
         *installer.ASSETS.values(),
@@ -318,9 +320,11 @@ def main():
     with tempfile.TemporaryDirectory() as scratch:
         bundle = Path(scratch)
         shutil.copyfile(sys.argv[1], bundle / Path(sys.argv[1]).name)
-        for name in installer.INPUT_HASHES:
+        for name in entrypoint.INPUT_HASHES:
             shutil.copyfile(ROOT / name, bundle / name)
-        version, wheel_name, wheel, requirements, _ = installer.validate_inputs(bundle)
+        version, wheel_name, wheel, requirements, _, installer = (
+            entrypoint.validate_inputs(bundle)
+        )
     installer.directory(Path("/opt/postcardscene"))
     installer.directory(Path("/opt/postcardscene/releases"))
     release = Path("/opt/postcardscene/releases") / version

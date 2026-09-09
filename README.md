@@ -157,8 +157,8 @@ uv build --wheel --no-sources
 uv run python scripts/check_release_inputs.py
 ```
 
-When the generated requirements or standalone preflight changes, review and
-refresh its corresponding `INPUT_HASHES` pin in `install.py` using `sha256sum`.
+When generated requirements or any installer support module (`install_inputs.py`,
+`install_host.py`, `install_preflight.py`) changes, review and refresh its corresponding `INPUT_HASHES` pin in `install.py` using `sha256sum`.
 The release-input check validates these exact inputs from an isolated extracted
 directory without requiring a final #143 manifest.
 

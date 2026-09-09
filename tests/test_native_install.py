@@ -16,6 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SPEC = importlib.util.spec_from_file_location("native_install", ROOT / "install.py")
 installer = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(installer)
+_, host, _, _ = installer.load_support(ROOT)
 
 
 @pytest.fixture
@@ -26,7 +27,7 @@ def bundle(tmp_path):
     payload = {
         "postcardscene/" + name: (ROOT / "src/postcardscene" / name).read_bytes()
         for name in (
-            *installer.ASSETS,
+            *host.ASSETS,
             "graphics/labwc/rc.xml",
             "graphics/labwc/autostart",
             "migrations/env.py",
@@ -63,18 +64,28 @@ def bundle(tmp_path):
 
 
 def test_reviewed_inputs_accept_without_final_manifest(bundle):
-    version, name, wheel, requirements, preflight = installer.validate_inputs(bundle)
+    version, name, wheel, requirements, preflight, loaded_host = (
+        installer.validate_inputs(bundle)
+    )
     assert version in name
     assert wheel and requirements
     assert callable(preflight.preflight)
+    assert callable(loaded_host.stage_payload)
     assert not (bundle / "release-manifest.json").exists()
 
 
 @pytest.mark.parametrize("name", tuple(installer.INPUT_HASHES))
-def test_mismatched_support_rejected_without_execution(bundle, name):
+def test_mismatched_support_rejected_without_execution(bundle, monkeypatch, name):
     (bundle / name).write_text("raise AssertionError('untrusted support executed')")
+    monkeypatch.setattr(
+        installer.importlib.util,
+        "module_from_spec",
+        lambda _: pytest.fail("support executed before input authentication"),
+    )
+    operation = installer.Installation(bundle, lambda *a, **kw: pytest.fail("mutation"))
     with pytest.raises(installer.InstallError, match="install_support_mismatch"):
-        installer.validate_inputs(bundle)
+        operation.install()
+    assert operation.release is None
 
 
 def test_corrupt_wheel_record_rejected(bundle):
@@ -89,8 +100,9 @@ def test_corrupt_wheel_record_rejected(bundle):
         installer.validate_inputs(bundle)
 
 
-def test_symlink_support_rejected(bundle):
-    path = bundle / "install_preflight.py"
+@pytest.mark.parametrize("name", tuple(installer.INPUT_HASHES))
+def test_symlink_support_rejected(bundle, name):
+    path = bundle / name
     path.unlink()
     path.symlink_to(ROOT / path.name)
     with pytest.raises(OSError):
@@ -98,8 +110,8 @@ def test_symlink_support_rejected(bundle):
 
 
 def test_failed_preflight_has_no_mutation(bundle, monkeypatch):
-    inputs = installer.validate_inputs(bundle)
-    inputs[-1].preflight = lambda: SimpleNamespace(ok=False)
+    inputs = (*installer.validate_inputs(bundle)[:-1], host)
+    inputs[-2].preflight = lambda: SimpleNamespace(ok=False)
     monkeypatch.setattr(installer, "validate_inputs", lambda _: inputs)
     calls = []
     operation = installer.Installation(bundle, lambda *a, **kw: calls.append(a))
@@ -112,9 +124,9 @@ def test_failed_preflight_has_no_mutation(bundle, monkeypatch):
 
 @pytest.mark.parametrize("failure", ["packages", "bootstrap", "activation", None])
 def test_ordering_and_failure_preservation(bundle, monkeypatch, failure, capsys):
-    inputs = installer.validate_inputs(bundle)
+    inputs = (*installer.validate_inputs(bundle)[:-1], host)
     plan = SimpleNamespace(tools=())
-    inputs[-1].preflight = lambda: SimpleNamespace(ok=True, plan=plan)
+    inputs[-2].preflight = lambda: SimpleNamespace(ok=True, plan=plan)
     monkeypatch.setattr(installer, "validate_inputs", lambda _: inputs)
     monkeypatch.setattr(installer.os, "geteuid", lambda: 0)
     monkeypatch.setattr(installer.sys, "stdin", SimpleNamespace(isatty=lambda: True))
@@ -123,21 +135,19 @@ def test_ordering_and_failure_preservation(bundle, monkeypatch, failure, capsys)
     def step(name):
         events.append(name)
         if failure == name:
-            raise installer.InstallError("command_failed")
+            raise host.InstallError("command_failed")
 
-    monkeypatch.setattr(installer, "install_packages", lambda *a: step("packages"))
+    monkeypatch.setattr(host, "install_packages", lambda *a: step("packages"))
+    monkeypatch.setattr(host, "directory", lambda *a, **kw: events.append("directory"))
+    monkeypatch.setattr(host, "write_new", lambda *a: events.append("config"))
     monkeypatch.setattr(
-        installer, "directory", lambda *a, **kw: events.append("directory")
+        host, "stage_payload", lambda *a: step("payload") or "/staged/bin/python"
     )
-    monkeypatch.setattr(installer, "write_new", lambda *a: events.append("config"))
-    monkeypatch.setattr(
-        installer, "stage_payload", lambda *a: step("payload") or "/staged/bin/python"
-    )
-    monkeypatch.setattr(installer, "provision_identities", lambda *a: (11, 12, 13, 14))
-    monkeypatch.setattr(installer, "install_assets", lambda *a: step("assets"))
-    monkeypatch.setattr(installer, "reserve_graphics", lambda *a: step("conflicts"))
-    monkeypatch.setattr(installer, "require_stopped", lambda *a: step("stopped"))
-    monkeypatch.setattr(installer, "bootstrap", lambda *a: step("bootstrap"))
+    monkeypatch.setattr(host, "provision_identities", lambda *a: (11, 12, 13, 14))
+    monkeypatch.setattr(host, "install_assets", lambda *a: step("assets"))
+    monkeypatch.setattr(host, "reserve_graphics", lambda *a: step("conflicts"))
+    monkeypatch.setattr(host, "require_stopped", lambda *a: step("stopped"))
+    monkeypatch.setattr(host, "bootstrap", lambda *a: step("bootstrap"))
     monkeypatch.setattr(Path, "symlink_to", lambda *a: step("activation"))
     monkeypatch.setattr(
         installer.shutil,
@@ -176,7 +186,7 @@ def test_ordering_and_failure_preservation(bundle, monkeypatch, failure, capsys)
 
 def test_bootstrap_uses_web_cli_without_password_arguments():
     calls = []
-    installer.bootstrap(
+    host.bootstrap(
         "/release/venv/bin/python", lambda args, **kw: calls.append((args, kw))
     )
     assert calls[0][1]["user"] == "postcardscene"
@@ -193,11 +203,11 @@ def test_bootstrap_uses_web_cli_without_password_arguments():
 
 
 def test_exclusive_config_write_never_replaces_existing(tmp_path, monkeypatch):
-    monkeypatch.setattr(installer, "trusted_parent", lambda _: None)
+    monkeypatch.setattr(host, "trusted_parent", lambda _: None)
     path = tmp_path / "config.py"
     path.write_bytes(b"existing authority")
     with pytest.raises(FileExistsError):
-        installer.write_new(path, installer.CONFIG)
+        host.write_new(path, host.CONFIG)
     assert path.read_bytes() == b"existing authority"
 
 
@@ -212,11 +222,11 @@ def test_unavailable_service_state_uses_installer_recovery(operation):
     preflight = SimpleNamespace(
         Rejected=Rejected, Host=lambda: None, service_state=unavailable
     )
-    with pytest.raises(installer.InstallError, match="service_state_unavailable"):
+    with pytest.raises(host.InstallError, match="service_state_unavailable"):
         if operation == "reserve_graphics":
-            installer.reserve_graphics(preflight, lambda *a: pytest.fail("mutation"))
+            host.reserve_graphics(preflight, lambda *a: pytest.fail("mutation"))
         else:
-            installer.require_stopped(preflight)
+            host.require_stopped(preflight)
 
 
 @pytest.mark.parametrize("state", ["installed", "install_required"])
@@ -228,7 +238,7 @@ def test_closed_packages_preserve_already_installed_chromium(state):
         tools=(SimpleNamespace(executable="/snap/bin/chromium", state=state),),
     )
     calls = []
-    installer.install_packages(plan, lambda args, **kw: calls.append(args))
+    host.install_packages(plan, lambda args, **kw: calls.append(args))
     assert calls[0][-1] == "update"
     assert calls[1][-3:] == ("install", "labwc", "snapd")
     assert (len(calls) == 3) == (state == "install_required")
@@ -242,13 +252,11 @@ def test_closed_packages_preserve_already_installed_chromium(state):
 
 
 def test_staging_enforces_isolated_hash_locked_binary_install(tmp_path, monkeypatch):
-    monkeypatch.setattr(installer, "directory", lambda path: path.mkdir())
-    monkeypatch.setattr(
-        installer, "write_new", lambda path, data: path.write_bytes(data)
-    )
+    monkeypatch.setattr(host, "directory", lambda path: path.mkdir())
+    monkeypatch.setattr(host, "write_new", lambda path, data: path.write_bytes(data))
     calls = []
     release = tmp_path / "0.1.0.dev0"
-    result = installer.stage_payload(
+    result = host.stage_payload(
         release,
         "postcardscene-0.1.0.dev0-py3-none-any.whl",
         b"wheel",
@@ -295,3 +303,33 @@ def test_doctor_does_not_open_wheel_entry_point_allowlist(bundle):
             archive.writestr(name, content)
     with pytest.raises(installer.InstallError, match="invalid_wheel_entry_points"):
         installer.validate_inputs(bundle)
+
+
+@pytest.mark.parametrize("name", tuple(installer.INPUT_HASHES))
+@pytest.mark.parametrize("kind", ("hardlink", "fifo", "directory", "oversized"))
+def test_invalid_support_never_executes_or_mutates(bundle, monkeypatch, name, kind):
+    path = bundle / name
+    path.unlink()
+    if kind == "hardlink":
+        original = bundle / "linked-input"
+        original.write_bytes((ROOT / name).read_bytes())
+        path.hardlink_to(original)
+    elif kind == "fifo":
+        installer.os.mkfifo(path)
+    elif kind == "directory":
+        path.mkdir()
+    else:
+        with path.open("wb") as stream:
+            stream.truncate(32 * 1024 * 1024 + 1)
+    monkeypatch.setattr(
+        installer.importlib.util,
+        "module_from_spec",
+        lambda _: pytest.fail("support executed before input authentication"),
+    )
+    operation = installer.Installation(
+        bundle, lambda *a, **kw: pytest.fail("host mutation")
+    )
+    with pytest.raises((installer.InstallError, OSError)):
+        operation.install()
+    assert operation.phase == "validation"
+    assert operation.release is None
