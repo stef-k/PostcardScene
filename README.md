@@ -122,6 +122,14 @@ The Foundation milestone is not complete merely when source code can display med
 
 External media libraries themselves are not copied into PostcardScene backups.
 
+#140 provides the [managed initial installer](docs/operations.md#managed-initial-installation-140):
+run `sudo python3 -B install.py install` from trusted wheel/requirements/support
+inputs on a clean #139-supported host. It stages a versioned venv, provisions
+separate runtime/web identities, explicitly bootstraps state and activates the
+packaged services. Repeat invocations fail closed without resetting credentials.
+Published-bundle manifest/member verification remains #143; updates remain #144.
+Privileged Linux CI proves two-UID software permissions, not physical Pi support.
+
 ## Development
 
 Development supports released CPython 3.11–3.14 (`>=3.11,<3.15`) and requires
@@ -147,6 +155,11 @@ uv export --format requirements.txt --locked --no-dev --no-emit-project \
 uv build --wheel --no-sources
 uv run python scripts/check_release_inputs.py
 ```
+
+When the generated requirements or standalone preflight changes, review and
+refresh its corresponding `INPUT_HASHES` pin in `install.py` using `sha256sum`.
+The release-input check validates these exact inputs from an isolated extracted
+directory without requiring a final #143 manifest.
 
 uv 0.12.10 emits hashes by default; it has no `--generate-hashes` flag.
 `--no-header` removes the invocation-dependent comment so the output is byte

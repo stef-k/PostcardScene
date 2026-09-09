@@ -1,0 +1,286 @@
+"""Privileged disposable Linux CI only: real installed layout, two UIDs and units.
+
+This bypasses ARM64/package detection deliberately, exercising provisioning steps
+on an x86 CI VM. It never establishes a supported managed or physical target.
+"""
+
+import importlib.util
+import json
+import os
+import pwd
+import secrets
+import shutil
+import socket
+import stat
+import subprocess
+import sys
+import tempfile
+import time
+from http.client import HTTPConnection
+from pathlib import Path
+from threading import Event
+from types import SimpleNamespace
+
+ROOT = Path(__file__).resolve().parents[1]
+PYTHON = "/opt/postcardscene/venv/bin/python"
+STATE = Path("/var/lib/postcardscene")
+KEY = Path("/var/lib/postcardscene-web/session.key")
+SOCKET = Path("/run/postcardscene/panel-control.sock")
+DEVICE = Path("/run/postcardscene-device-smoke")
+
+
+def worker(action):
+    from sqlalchemy import select
+
+    from postcardscene.persistence import Database
+    from postcardscene.runtime.panel_control import PanelControl
+    from postcardscene.session_secret import read_secret
+    from postcardscene.settings import ApplicationSettings, set_timezone
+
+    database = STATE / "postcardscene.sqlite3"
+    if action == "socket":
+        server = PanelControl(None, Event())
+        server.start()
+        try:
+            print("ready", flush=True)
+            input()
+        finally:
+            server.stop()
+    elif action == "web-access":
+        assert len(read_secret(KEY)) == 32
+        with socket.socket(socket.AF_UNIX, socket.SOCK_SEQPACKET) as client:
+            client.settimeout(2)
+            client.connect(str(SOCKET))
+            client.sendall(b'{"version":1,"action":"status"}')
+            assert json.loads(client.recv(1024))["outcome"] == "unavailable"
+        for operation in (
+            lambda: SOCKET.unlink(),
+            lambda: (SOCKET.parent / "foreign").write_text("forbidden"),
+            lambda: list(Path("/run/postcardscene-wayland").iterdir()),
+            lambda: DEVICE.open("rb"),
+        ):
+            denied(operation)
+    elif action == "runtime-private":
+        denied(lambda: KEY.read_bytes())
+    elif action == "write":
+        set_timezone(Database(database), "Europe/Athens")
+    else:
+        db = Database(database)
+        set_timezone(db, "UTC")
+        with db.transaction() as session:
+            assert session.scalar(select(ApplicationSettings.timezone)) == "UTC"
+            print("ready", flush=True)
+            input()
+        db.engine.dispose()
+
+
+def denied(operation):
+    try:
+        operation()
+    except PermissionError:
+        return
+    raise AssertionError("Unexpected cross-UID authority")
+
+
+def child(action, user, *, hold=False):
+    account = pwd.getpwnam(user)
+    process = subprocess.Popen(
+        [PYTHON, "-I", "/opt/postcardscene/smoke.py", "worker", action],
+        user=account.pw_uid,
+        group=account.pw_gid,
+        extra_groups=[],
+        umask=0o007,
+        env={"PATH": "/usr/bin:/bin"},
+        cwd="/",
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    if hold:
+        # The entire smoke also has a CI timeout; select bounds the ready handshake.
+        import select
+
+        assert select.select([process.stdout], [], [], 15)[0], (
+            "Worker readiness timeout"
+        )
+        assert process.stdout.readline() == "ready\n", process.communicate(timeout=2)
+        return process
+    output = process.communicate(timeout=15)
+    assert process.returncode == 0, output
+
+
+def release_child(process):
+    output = process.communicate("done\n", timeout=15)
+    assert process.returncode == 0, output
+
+
+def permissions(runtime, web, shared):
+    assert runtime != web and 0 not in (runtime, web)
+    for owner, peer, uid in (
+        ("postcardscene", "postcardscene-web", runtime),
+        ("postcardscene-web", "postcardscene", web),
+    ):
+        holder = child("hold", owner, hold=True)
+        try:
+            for suffix in ("-wal", "-shm"):
+                info = (STATE / ("postcardscene.sqlite3" + suffix)).stat()
+                assert info.st_uid == uid and info.st_gid == shared
+                assert stat.S_IMODE(info.st_mode) == 0o660, oct(
+                    stat.S_IMODE(info.st_mode)
+                )
+            child("write", peer)
+        finally:
+            release_child(holder)
+    assert (STATE / "postcardscene.sqlite3").stat().st_uid == runtime
+    assert KEY.stat().st_uid == web and stat.S_IMODE(KEY.stat().st_mode) == 0o600
+    assert os.getgrouplist("postcardscene-web", shared) == [shared]
+    child("runtime-private", "postcardscene")
+    server = child("socket", "postcardscene", hold=True)
+    try:
+        assert stat.S_IMODE(SOCKET.stat().st_mode) == 0o660
+        child("web-access", "postcardscene-web")
+    finally:
+        release_child(server)
+
+
+def bootstrap_runner(installer, args, **options):
+    if not options.get("interactive"):
+        return installer.command(args, **options)
+    # Disposable test credentials travel on stdin only, never argv/env or output.
+    account = pwd.getpwnam("postcardscene-web")
+    password = secrets.token_urlsafe(32)
+    result = subprocess.run(
+        args,
+        input=f"smoke-admin\n{password}\n{password}\n",
+        text=True,
+        user=account.pw_uid,
+        group=account.pw_gid,
+        extra_groups=[],
+        umask=0o007,
+        env={**installer.ENV, "POSTCARDSCENE_CONFIG": "/etc/postcardscene/config.py"},
+        cwd="/",
+        capture_output=True,
+        timeout=30,
+    )
+    assert result.returncode == 0, "Administrator CLI bootstrap failed"
+
+
+def service_smoke(installer, runtime, web):
+    installer.command(("/usr/bin/systemctl", "daemon-reload"))
+    for unit, uid in (
+        ("postcardscene-runtime.service", runtime),
+        ("postcardscene-web.service", web),
+    ):
+        installer.command(("/usr/bin/systemctl", "start", unit))
+        result = subprocess.run(
+            ["systemctl", "show", unit, "--property=MainPID", "--value"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        pid = int(result.stdout.strip())
+        assert Path(f"/proc/{pid}").stat().st_uid == uid
+        result = subprocess.run(
+            ["systemctl", "show", unit, "--property=UMask", "--value"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        assert result.stdout.strip() == "0007"
+    deadline = time.monotonic() + 15
+    while time.monotonic() < deadline:
+        connection = HTTPConnection("127.0.0.1", 8080, timeout=1)
+        try:
+            connection.request("GET", "/login", headers={"Host": "localhost"})
+            response = connection.getresponse()
+            assert response.status == 200
+            break
+        except OSError:
+            time.sleep(0.1)
+        finally:
+            connection.close()
+    else:
+        raise AssertionError("Installed web readiness timeout")
+    installer.command(
+        (
+            "/usr/bin/systemctl",
+            "is-active",
+            "--quiet",
+            "postcardscene-runtime.service",
+            "postcardscene-web.service",
+        )
+    )
+    installer.command(("/usr/bin/systemctl", "stop", *installer.SERVICES))
+    print(
+        "Canonical runtime/web units ran under distinct installed UIDs; graphics hardware unverified."
+    )
+
+
+def main():
+    assert os.geteuid() == 0, "Run only as root in a disposable Linux CI VM"
+    assert Path("/proc/1/comm").read_text().strip() == "systemd"
+    spec = importlib.util.spec_from_file_location("native_install", ROOT / "install.py")
+    installer = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(installer)
+    # Refuse any existing installation; this smoke has no adoption or cleanup path.
+    for path in (
+        *installer.ASSETS.values(),
+        "/opt/postcardscene",
+        "/etc/postcardscene",
+        str(STATE),
+        str(KEY.parent),
+        "/var/cache/postcardscene",
+        "/run/postcardscene",
+        "/run/postcardscene-wayland",
+        str(DEVICE),
+    ):
+        assert not os.path.lexists(path), "Disposable clean VM required"
+    with tempfile.TemporaryDirectory() as scratch:
+        bundle = Path(scratch)
+        shutil.copyfile(sys.argv[1], bundle / Path(sys.argv[1]).name)
+        for name in installer.INPUT_HASHES:
+            shutil.copyfile(ROOT / name, bundle / name)
+        version, wheel_name, wheel, requirements, _ = installer.validate_inputs(bundle)
+    installer.directory(Path("/opt/postcardscene"))
+    installer.directory(Path("/opt/postcardscene/releases"))
+    release = Path("/opt/postcardscene/releases") / version
+    python = installer.stage_payload(
+        release,
+        wheel_name,
+        wheel,
+        requirements,
+        SimpleNamespace(python="/usr/bin/python3"),
+        installer.command,
+    )
+    runtime, web, shared, private = installer.provision_identities(installer.command)
+    installer.directory(Path("/etc/postcardscene"), gid=shared, mode=0o750)
+    installer.write_new(
+        Path("/etc/postcardscene/config.py"), installer.CONFIG, 0o640, shared
+    )
+    installer.directory(STATE, runtime, shared, 0o2770)
+    installer.directory(KEY.parent, web, private, 0o700)
+    installer.directory(Path("/var/cache/postcardscene"), runtime, shared, 0o700)
+    installer.install_assets(wheel, installer.command)
+    installer.directory(Path("/run/postcardscene-wayland"), runtime, shared, 0o700)
+    os.mknod(DEVICE, stat.S_IFCHR | 0o660, os.makedev(1, 3))
+    DEVICE.chmod(0o660)
+    installer.bootstrap(
+        python, lambda args, **kw: bootstrap_runner(installer, args, **kw)
+    )
+    Path("/opt/postcardscene/venv").symlink_to(release / "venv")
+    installer.write_new(
+        Path("/opt/postcardscene/smoke.py"), Path(__file__).read_bytes()
+    )
+    permissions(runtime, web, shared)
+    service_smoke(installer, runtime, web)
+    print(
+        "Real two-UID SQLite/WAL/SHM, private key, panel socket and device/Wayland DAC passed."
+    )
+
+
+if __name__ == "__main__":
+    if sys.argv[1] == "worker":
+        worker(sys.argv[2])
+    else:
+        main()

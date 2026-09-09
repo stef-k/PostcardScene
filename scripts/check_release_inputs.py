@@ -3,6 +3,7 @@
 import configparser
 import email.parser
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -82,6 +83,18 @@ def main():
         wheels = list(scratch.glob("*.whl"))
         assert len(wheels) == 1, "Expected exactly one application wheel"
         check_wheel(wheels[0], project)
+        for name in ("install.py", "install_preflight.py", "runtime-requirements.txt"):
+            shutil.copyfile(ROOT / name, scratch / name)
+        run(
+            sys.executable,
+            "-I",
+            "-B",
+            "-c",
+            "import pathlib, runpy; "
+            f"p=pathlib.Path({str(scratch)!r}); "
+            "installer=runpy.run_path(str(p / 'install.py')); "
+            "installer['validate_inputs'](p)",
+        )
         venv = scratch / "venv"
         run(sys.executable, "-m", "venv", str(venv))
         python = str(venv / "bin/python")
