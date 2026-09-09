@@ -144,8 +144,12 @@ are not implemented.
 The command starts only the web process. Stop it with Ctrl-C.
 
 The Flask development server is for local development only. It is not the managed
-production appliance server. Issues #29 and #26 own the production WSGI server,
-bind address, HTTP/HTTPS and reverse-proxy deployment policy.
+production appliance server. V0 production uses only Waitress 3.x through the
+foreground `postcardscene-web` executable. See the
+[production web contract](docs/operations.md#production-control-plane-131) for
+mandatory `TRUSTED_HOSTS`, loopback HTTP defaults, explicit insecure private-LAN
+opt-in, and same-host HTTPS proxy configuration. #125 owns web systemd supervision;
+#26 owns installation and provisioning.
 
 `create_app(config=None)` loads Flask defaults (debug/testing off, no session
 secret), then an optional Python configuration file named by the
@@ -157,12 +161,12 @@ secrets out of source control; signing authority comes exclusively from the
 protected file described below, overriding any configured `SECRET_KEY`.
 
 Flask configuration such as `TRUSTED_HOSTS` can be supplied through that file or
-mapping. `SERVER_NAME` is not a bind address or a Host allowlist. The future WSGI
-server owns listening configuration; the factory returns a standard Flask WSGI
-application and does not bind a socket. Forwarded headers are not trusted through
-proxy middleware by default; #29 must define trusted proxy topology before adding
-such middleware. Keep debug/testing disabled in deployment configuration. Normal
-error responses omit exception details; protected server logs remain diagnostic.
+mapping. `SERVER_NAME` is not a bind address or a Host allowlist. The production
+entry point owns listening configuration; the factory returns a standard Flask
+WSGI application and does not bind a socket. Production forwarded-header trust
+belongs only to Waitress; no Werkzeug ProxyFix is installed. Keep debug/testing
+disabled in deployment configuration. Normal error responses omit exception
+details; production server logs use fixed sanitized diagnostics.
 
 ### Runtime development
 
@@ -410,7 +414,7 @@ users. There is one administrator, no registration, roles or web recovery.
 
 Provision an owner-only directory (`0700`) outside the checkout and configure
 `SESSION_SECRET_PATH = "/absolute/path/to/private/session.key"` alongside
-`DATABASE_PATH`. The default key path is `/var/lib/postcardscene/session.key`.
+`DATABASE_PATH`. The default key path is `/var/lib/postcardscene-web/session.key`.
 The key's immediate parent must be owned by the effective user with no group/other
 permissions; keep ancestor directories under trusted host control. Then run:
 
@@ -451,12 +455,11 @@ Sessions use Flask-Login strong protection, browser-session cookies (no remember
 me), a 12-hour signed-cookie age limit, HttpOnly, SameSite=Lax, no Domain, and
 `Cache-Control: no-store` for dynamic responses. Sessions survive web reconstruction
 with the same database/key until expiry or revocation; browser restore behavior
-may preserve browser-session cookies. Configure `SESSION_COOKIE_SECURE = True`
-when serving HTTPS. It defaults to false solely for the documented loopback HTTP
-development server. Do not expose this development transport remotely. No proxy
-headers are trusted automatically. #29/#26 retain the final production server,
-bind/Host/proxy/TLS and cookie transport policy; #29 also owns bounded login-abuse
-protection, broader headers and provider credential-at-rest architecture.
+may preserve browser-session cookies. Production forces Secure false for
+`direct_http` and true for `reverse_proxy_https`, retaining HttpOnly/SameSite=Lax
+and the 12-hour limit. Development may configure Secure explicitly for HTTPS.
+#132 owns login-abuse protection and broader headers; #133 owns the remaining
+secret/recovery and provider-credential boundary.
 
 ## Documentation
 

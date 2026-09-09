@@ -52,9 +52,11 @@ runtime work, background threads or servers.
 Configuration precedence is Flask defaults with debug/testing disabled and no
 secret, optional operator-owned Python file via `POSTCARDSCENE_CONFIG`, then
 explicit mapping overrides. A specified invalid file fails startup. This permits
-Flask Host configuration without choosing a production bind or proxy policy;
-server binding remains outside the factory and no forwarded-header middleware is
-installed. #29/#26 retain production serving ownership. The shell has a lazy shared
+Flask Host configuration without requiring production settings for development or
+CLI use. #131's production entry point validates serving authority, passes one
+already-loaded operator snapshot to the factory, then applies transport overrides.
+Server binding remains outside the factory; no forwarded-header middleware is
+installed in Flask. The shell has a lazy shared
 database handle and explicit migration CLI; #15 adds authentication, without settings
 behavior or runtime IPC. See README for local startup.
 
@@ -166,18 +168,63 @@ Expected initial authority:
 
 Issue #15 uses a single SQLAlchemy administrator (explicit `0002_administrator` migration), Werkzeug scrypt hashes, Flask-Login strong session protection and Flask-WTF CSRF. Logout/reset rotate its revocable login identity; all sessions are revoked.
 
-Host CLI commands provision a protected persistent signing file and bootstrap/reset the administrator without database editing. Cookies are HttpOnly/SameSite=Lax, age-bounded to 12 hours; Secure is configurable (false for loopback HTTP development). README owns setup/recovery details; #29 retains production transport and credential-at-rest decisions.
+Host CLI commands provision a protected persistent signing file and bootstrap/reset the administrator without database editing. Cookies are HttpOnly/SameSite=Lax, age-bounded to 12 hours; Secure is transport-derived in production and configurable for development. README owns setup/recovery details; #133 retains the remaining secret authority decisions.
 
-Before V0 release, the project must explicitly define:
+The production transport is frozen below. Remaining security decisions include:
 
-- control-interface bind/listen defaults
-- HTTP/HTTPS/reverse-proxy support boundary
-- Host/proxy assumptions
-- session-cookie behavior for the effective transport
 - credential-at-rest strategy before long-lived third-party credentials are stored
 - master-key/secret recovery behavior
 
 No external telemetry/analytics is enabled by default.
+
+## Production serving (#131)
+
+`postcardscene-web` runs Waitress 3.x through its Python API in one foreground
+process. It reads the shared trusted `POSTCARDSCENE_CONFIG` file, validates before
+listening, and starts no runtime workers. Debug/testing are forced off; startup
+failure exits nonzero. Flask/Waitress diagnostics use fixed sanitized messages,
+without exception text or request-access logging. The factory/CLI remains usable
+without production serving settings. See [operations](../operations.md#production-control-plane-131)
+for the exact configuration and installed paths.
+
+Production requires nonempty finite-sequence Flask `TRUSTED_HOSTS`: string
+entries without whitespace/control characters, schemes, paths or wildcard `*`.
+Leading-dot subdomains remain supported; Flask owns final Host matching.
+`SERVER_NAME` supplies neither a bind address nor an allowlist.
+
+`WEB_TRANSPORT_MODE` defaults to `direct_http`; `WEB_BIND_HOST` defaults to IP
+literal `127.0.0.1`; `WEB_BIND_PORT` defaults to integer 8080 (1024–65535, no bool).
+`WEB_ALLOW_INSECURE_REMOTE_HTTP` is strictly boolean and defaults false.
+Direct HTTP trusts no forwarded headers and forces non-Secure cookies.
+Non-loopback/wildcard binds require explicit insecure opt-in: credentials and
+session traffic are plaintext, suitable only for a deliberately trusted private
+LAN, never untrusted networks or Internet exposure.
+
+`reverse_proxy_https` requires binding exactly `127.0.0.1`, trusting only that
+peer with count 1 and only X-Forwarded-For/Proto/Host. Waitress clears untrusted
+forwarding headers; Flask never applies ProxyFix. Application-visible non-HTTPS
+requests are rejected with a fixed 400 response before authentication/CSRF.
+Flask validates the rewritten external Host. Secure cookies are forced true;
+both modes retain HttpOnly, SameSite=Lax and the 12-hour session limit.
+The same-host TLS proxy is operator/install authority; no TLS/DNS/proxy automation
+is added. [Waitress options](https://docs.pylonsproject.org/projects/waitress/en/latest/arguments.html)
+define the server's native one-hop forwarding semantics.
+
+Installed runtime UID remains `postcardscene`; web UID is `postcardscene-web`
+with primary group `postcardscene`. Web receives no runtime DRM/render/video/audio/
+CEC/input groups and no `/run/postcardscene-wayland` authority. Its primary GID
+satisfies the existing panel SO_PEERCRED check: runtime-owned `/run/postcardscene`
+is 0750 with shared group, and `panel-control.sock` is 0660 with that group.
+Web can send the fixed panel protocol but cannot replace runtime directory files.
+
+Private signing authority defaults to `/var/lib/postcardscene-web/session.key`:
+web-owned parent 0700, key 0600, exactly 32 bytes, regular file, no symlink or extra
+hard link. RuntimeHost never reads it. Shared SQLite state stays under
+`/var/lib/postcardscene` with group `postcardscene`. #26 provisions the identities,
+secret via existing auth CLI as web UID, and exact DB/WAL/SHM modes/umask; #125/#26
+must prove two-UID database operation without web graphics authority. Application
+startup performs no recursive chmod/chown repair. #27 owns sensitive backup/restore.
+#125 adds the service unit; #131 does not install or supervise it.
 
 ## Privilege boundaries
 

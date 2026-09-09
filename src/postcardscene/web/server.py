@@ -50,19 +50,20 @@ def serving_options(config):
         host=str(address),
         port=port,
         trusted_proxy="127.0.0.1" if proxy else None,
-        trusted_proxy_count=1 if proxy else None,
-        trusted_proxy_headers={
-            "x-forwarded-for",
-            "x-forwarded-proto",
-            "x-forwarded-host",
-        }
-        if proxy
-        else set(),
         clear_untrusted_proxy_headers=True,
         log_untrusted_proxy_headers=False,
         log_socket_errors=False,
         expose_tracebacks=False,
     )
+    if proxy:
+        options.update(
+            trusted_proxy_count=1,
+            trusted_proxy_headers={
+                "x-forwarded-for",
+                "x-forwarded-proto",
+                "x-forwarded-host",
+            },
+        )
     overrides = dict(
         TRUSTED_HOSTS=list(hosts),
         DEBUG=False,

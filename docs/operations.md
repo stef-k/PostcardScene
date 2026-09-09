@@ -1,7 +1,7 @@
 # Appliance operations
 
 This document records implemented operating contracts. Managed installation,
-updates and production control-plane serving remain with #26/#29. The templates
+updates remain with #26; web service supervision remains #125. The templates
 below are versioned provisioning inputs, not an installer or a claim of a
 physically validated release.
 
@@ -39,7 +39,8 @@ not completion of application startup checks.
 | Installed authority | Responsibility |
 | --- | --- |
 | `/etc/postcardscene/config.py` | Shared trusted operator configuration; #26 provisions/protects the file and parent. |
-| `/var/lib/postcardscene` | Durable database and session key; never automatically cleaned. |
+| `/var/lib/postcardscene` | Shared durable SQLite state, group `postcardscene`; never automatically cleaned. |
+| `/var/lib/postcardscene-web` | Private durable web signing authority; web-owned 0700, key 0600. |
 | `/var/cache/postcardscene` | Replaceable/regenerable application caches; later children own bounded use/cleanup. |
 | `/run/postcardscene` | Transient state including panel-control socket; systemd/installer ownership, never durable or backed up. |
 | `/run/postcardscene-wayland` | Independent graphics-service runtime directory. |
@@ -62,6 +63,85 @@ Restart constructs a fresh RuntimeHost and discards transient playback state.
 Startup checks existing database compatibility/integrity without auto-migration
 or repair. Unit/text/process tests establish software behavior only; actual Pi
 boot, abrupt power-loss recovery and complete unattended evidence remain #127.
+
+## Production control plane (#131)
+
+V0 uses only Waitress 3.x, a pure-Python single-process threaded WSGI server,
+through the packaged foreground command:
+
+```bash
+POSTCARDSCENE_CONFIG=/etc/postcardscene/config.py /opt/postcardscene/venv/bin/postcardscene-web
+```
+
+This is the installed launch contract, not an installation command. #125 owns
+`postcardscene-web.service`; #26 provisions the environment, users and directories.
+No runtime/background worker starts with web. The development Flask server is
+never a production substitute. Invalid configuration/startup exits nonzero with
+fixed stderr diagnostics; Flask/Waitress diagnostics omit raw values/tracebacks.
+No request-access log is added.
+
+The same trusted operator Python file used by RuntimeHost contains serving fields;
+none belong in SQLite or administrator forms. A minimal loopback configuration is:
+
+```python
+TRUSTED_HOSTS = ["localhost", "127.0.0.1"]
+# Defaults:
+WEB_TRANSPORT_MODE = "direct_http"
+WEB_BIND_HOST = "127.0.0.1"
+WEB_BIND_PORT = 8080
+WEB_ALLOW_INSECURE_REMOTE_HTTP = False
+```
+
+`TRUSTED_HOSTS` is mandatory and nonempty in production. Entries must be strings
+without whitespace/control characters, URL schemes/paths or wildcard `*`.
+Flask's leading-dot subdomain syntax is supported; Flask performs Host matching.
+`SERVER_NAME` is neither a bind selector nor a Host allowlist. Bind hosts must be
+IP literals; ports must be integers 1024–65535, with booleans rejected. The insecure
+opt-in is strictly boolean. Direct HTTP ignores forwarded authority and forces
+`SESSION_COOKIE_SECURE=False` even if configuration asks otherwise.
+
+For deliberate private-LAN plaintext exposure, choose a non-loopback IP (or
+wildcard IP `0.0.0.0`/`::`), set the appropriate `TRUSTED_HOSTS`, and explicitly
+set `WEB_ALLOW_INSECURE_REMOTE_HTTP=True`. **Passwords and session traffic travel
+in plaintext. This is unsuitable for untrusted networks or Internet exposure.**
+
+Secure network-facing deployment uses a same-host HTTPS reverse proxy:
+
+```python
+WEB_TRANSPORT_MODE = "reverse_proxy_https"
+WEB_BIND_HOST = "127.0.0.1"
+WEB_BIND_PORT = 8080
+TRUSTED_HOSTS = ["display.example.com"]  # replace with your external Host
+```
+
+Waitress accepts forwarding authority only from peer `127.0.0.1`, count exactly
+1, trusting only X-Forwarded-For, X-Forwarded-Proto and X-Forwarded-Host. The proxy
+must supply the actual client, external HTTPS scheme and external Host, replacing
+untrusted inbound values. Other forwarding headers are cleared. No ProxyFix is
+used. Requests without application-visible HTTPS receive 400; Flask validates the
+external Host after Waitress rewrites it. Secure cookies are forced true.
+Both modes retain HttpOnly, SameSite=Lax and the 12-hour session limit.
+#26/#28 own proxy prerequisites/examples; this command installs no proxy, TLS
+certificate, firewall rule or DNS configuration.
+
+The installed web UID is `postcardscene-web`, primary GID `postcardscene`.
+Runtime retains UID `postcardscene`. Web receives no runtime graphics/device groups
+(DRM/render/video/audio/CEC/input) or access to `/run/postcardscene-wayland`.
+Runtime-owned `/run/postcardscene` uses group `postcardscene`, mode 0750;
+`panel-control.sock` uses that group, mode 0660. The web primary GID satisfies
+SO_PEERCRED for only the fixed panel protocol, without directory replacement rights.
+
+Shared SQLite remains `/var/lib/postcardscene/postcardscene.sqlite3`, with shared
+application group access. #26 owns exact directory/file modes and umask, and
+#125/#26 must prove web/runtime two-UID WAL/SHM writes. Neither process recursively
+repairs ownership or permissions. Private signing authority is separately
+`/var/lib/postcardscene-web/session.key`: web-owned directory 0700 and regular key
+0600, exactly 32 bytes, no symlink/extra hard link. #26 provisions/initializes it
+with existing auth CLI as the web identity; RuntimeHost never reads it. Existing
+installations using an explicit `SESSION_SECRET_PATH` keep that override; no key
+is automatically moved or regenerated. #27 owns sensitive backup/restore of this
+secret and administrator DB state. These are software contracts, not evidence of
+installed two-UID operation or physical Raspberry Pi/network validation.
 
 ## Owned storage snapshot (#123)
 

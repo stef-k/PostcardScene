@@ -31,8 +31,8 @@ owns a separate Flask-only model or session layer.
 
 The database is an absolute host-local file, defaulting to
 `/var/lib/postcardscene/postcardscene.sqlite3`, configurable with `DATABASE_PATH`.
-The operator/installer provisions its private parent directory; network storage
-is suitable for external media, not this database. Normal access opens an existing
+The operator/installer provisions its shared application-group parent directory;
+network storage is suitable for external media, not this database. Normal access opens an existing
 file only. App construction is lazy and performs no schema work; transactions
 reject missing/unrecognized/incompatible databases before application use.
 
@@ -105,7 +105,16 @@ The control plane should remain reachable whenever the host itself is healthy.
 #122 freezes `postcardscene-runtime.service` supervision and the installed
 [path/logging contract](../operations.md#installed-runtime-service-122).
 `/etc/postcardscene/config.py` is the shared trusted operator configuration for
-installed runtime and later web services. `/var/lib/postcardscene` is durable,
+installed runtime and web services. #131 supplies foreground `postcardscene-web`
+using Waitress; #125 owns its unit. Web runs as `postcardscene-web` with primary
+GID `postcardscene`, without runtime device/Wayland authority. Shared SQLite
+under `/var/lib/postcardscene` uses group `postcardscene`; #26 owns exact modes,
+umask and two-UID WAL/SHM evidence. Private durable signing authority is instead
+`/var/lib/postcardscene-web/session.key`, web-owned 0600 under web-owned 0700 parent.
+#26 initializes it through existing auth authority as the web UID; RuntimeHost
+never reads it. #27 must explicitly back up/restore this sensitive authority.
+See the [serving/identity contract](control-plane-and-security.md#production-serving-131).
+`/var/lib/postcardscene` is durable,
 `/var/cache/postcardscene` replaceable, `/run/postcardscene` transient, and
 `/run/postcardscene-wayland` independently graphics-owned. Application startup
 does not recursively provision or repair these roots; #26 owns provisioning.

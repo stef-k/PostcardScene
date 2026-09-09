@@ -56,7 +56,7 @@ def test_defaults_and_explicit_lan_opt_in():
     options, overrides = server.serving_options({"TRUSTED_HOSTS": [".example.com"]})
     assert (options["host"], options["port"]) == ("127.0.0.1", 8080)
     assert options["trusted_proxy"] is None
-    assert options["trusted_proxy_headers"] == set()
+    assert options.get("trusted_proxy_headers", set()) == set()
     assert overrides["SESSION_COOKIE_SECURE"] is False
     for host in ("::1", "0.0.0.0", "::", "192.0.2.1"):
         options, _ = server.serving_options(
@@ -97,6 +97,14 @@ def boundary(mode):
             "port": request.headers.get("X-Forwarded-Port"),
         }
 
+    if mode == "reverse_proxy_https":
+        assert options["trusted_proxy"] == "127.0.0.1"
+        assert options["trusted_proxy_count"] == 1
+        assert options["trusted_proxy_headers"] == {
+            "x-forwarded-for",
+            "x-forwarded-proto",
+            "x-forwarded-host",
+        }
     assert not app.debug and not app.testing
     assert app.permanent_session_lifetime == timedelta(hours=12)
     # Ephemeral test port; use the real server's configured WSGI boundary to
