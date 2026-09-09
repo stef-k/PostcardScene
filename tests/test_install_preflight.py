@@ -468,3 +468,21 @@ def test_preserved_prerequisites_allow_only_inactive_not_found_cached_units():
         "postcardscene-foreign.service not-found inactive dead\n",
     )
     assert not pf.preflight(host, installation="preserved").ok
+
+
+def test_empty_unit_file_listing_status_is_not_a_failed_inspection():
+    host = FixtureHost()
+    listing = (
+        "/usr/bin/systemctl",
+        "list-unit-files",
+        "--all",
+        "--no-legend",
+        "--plain",
+        "--no-pager",
+        "postcardscene*",
+    )
+    host.overrides[listing] = (1, "")
+    assert pf.preflight(host).ok
+    assert pf.preflight(host, installation="preserved").ok
+    host.overrides[listing] = (2, "")
+    assert not pf.preflight(host, installation="preserved").ok

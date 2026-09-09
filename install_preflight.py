@@ -412,7 +412,9 @@ def unit_names(host):
                 "postcardscene*",
             )
         )
-        if status:
+        # list-unit-files returns 1 for an empty pattern match.
+        empty = operation == "list-unit-files" and status == 1 and not output.strip()
+        if status and not empty:
             raise Rejected("service_state_unavailable")
         names.update(line.split()[0] for line in output.splitlines())
     return names
