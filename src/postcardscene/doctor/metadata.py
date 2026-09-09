@@ -55,6 +55,7 @@ def identities():
         or runtime.pw_gid != shared
         or web.pw_gid != shared
         or shared == private
+        or min(shared, private) <= 0
         or set(os.getgrouplist(web.pw_name, shared)) - {shared, private}
     ):
         raise ValueError("Invalid service identities.")
@@ -159,7 +160,7 @@ def permissions(identifier):
         ),
         "private_key_permissions": (
             (Path("/var/lib/postcardscene-web"), web, private, 0o700, stat.S_ISDIR),
-            (Path("/var/lib/postcardscene-web/session.key"), web, private, 0o600),
+            (Path("/var/lib/postcardscene-web/session.key"), web, shared, 0o600),
         ),
         "cache_permissions": (
             (Path("/var/cache/postcardscene"), runtime, shared, 0o700, stat.S_ISDIR),
@@ -191,7 +192,16 @@ def permissions(identifier):
         try:
             socket.lstat()
         except FileNotFoundError:
-            return  # Panel runtime is optional; a socket is not fabricated.
+            from .bounded import systemd_state
+            from .data import configuration
+
+            if (
+                configuration().get("PANEL_POWER_RUNTIME_ENABLED") is True
+                and systemd_state("postcardscene-runtime.service")["ActiveState"]
+                == "active"
+            ):
+                raise ValueError("Live panel socket missing.")
+            return
         metadata(socket, runtime, shared, 0o660, stat.S_ISSOCK)
 
 
@@ -207,6 +217,12 @@ def inspect(identifier):
         else:
             permissions(identifier)
         return Check(identifier, "ready", "ready", details)
-    except (OSError, ValueError, KeyError, importlib.metadata.PackageNotFoundError):
+    except (
+        OSError,
+        ValueError,
+        TypeError,
+        KeyError,
+        importlib.metadata.PackageNotFoundError,
+    ):
         fatal = identifier in {"release", "config_authority", "identities"}
         return Check(identifier, "fatal" if fatal else "degraded", "authority_invalid")

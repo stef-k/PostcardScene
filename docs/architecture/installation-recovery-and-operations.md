@@ -280,6 +280,25 @@ Linux CI proves real distinct-UID SQLite/WAL/SHM and panel socket cooperation,
 private-key/Wayland/device separation and canonical runtime/web service identity.
 It does not establish ARM64 provisioning, graphics boot or physical HDMI support.
 
+## Installed doctor (#141)
+
+`postcardscene-doctor` owns bounded, read-only administrative aggregation of the
+existing persistence, persisted catalog, resource, serving and graphics seams.
+Its closed immutable check model supplies both human and JSON output. Exact
+#140 layout metadata and the explicit installer console-script set include doctor;
+#143 retains final release-manifest/member-hash authority.
+
+Each check runs in a short-lived isolated Linux child with a five-second deadline,
+fixed output vocabulary and bounded tool capture. It never executes Python host
+configuration: literal assignments feed the existing serving validator; dynamic
+configuration is unavailable to this read-only observer. DB checks use a bounded
+private main/WAL copy, rejecting concurrent changes, so SQLite cannot create or
+modify installed sidecars. Only disposable scratch is writable and parent-owned
+cleanup survives check timeout. This sample is not a backup or recovery claim.
+Graphics ownership is not bypassed, and executable tool prerequisites do not
+establish device/physical capability. See [doctor operations](../operations.md#installed-read-only-diagnostics-141)
+for limits, result/exit categories and repair/evidence ownership.
+
 ## Backup and restore boundary
 
 PostcardScene backup owns PostcardScene durable state, not the user's original media libraries.

@@ -3,6 +3,7 @@
 import ast
 import ipaddress
 import os
+import sqlite3
 import stat
 from pathlib import Path
 
@@ -144,7 +145,15 @@ def database_check(identifier, directory):
             else "integrity_failed"
         )
         return Check(identifier, "degraded", reason)
-    except (OSError, ValueError, SyntaxError, SQLAlchemyError):
+    except SQLAlchemyError as error:
+        code = getattr(getattr(error, "orig", None), "sqlite_errorcode", 0)
+        corrupt = code & 0xFF in {sqlite3.SQLITE_CORRUPT, sqlite3.SQLITE_NOTADB}
+        return Check(
+            identifier,
+            "degraded" if corrupt else "unavailable",
+            "integrity_failed" if corrupt else "database_unavailable",
+        )
+    except (OSError, ValueError, SyntaxError):
         return Check(identifier, "unavailable", "database_unavailable")
     finally:
         if database is not None:

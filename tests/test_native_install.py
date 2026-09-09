@@ -279,3 +279,19 @@ def test_blank_wheel_record_row_rejected_safely(bundle):
             wheel.writestr(name, content)
     with pytest.raises(installer.InstallError, match="invalid_wheel_record"):
         installer.validate_inputs(bundle)
+
+
+def test_doctor_does_not_open_wheel_entry_point_allowlist(bundle):
+    wheel = next(bundle.glob("*.whl"))
+    with zipfile.ZipFile(wheel) as archive:
+        members = {name: archive.read(name) for name in archive.namelist()}
+    entry_path = next(name for name in members if name.endswith("/entry_points.txt"))
+    assert (
+        b"postcardscene-doctor = postcardscene.doctor.cli:main" in members[entry_path]
+    )
+    members[entry_path] += b"\nunreviewed-tool = arbitrary.module:main\n"
+    with zipfile.ZipFile(wheel, "w") as archive:
+        for name, content in members.items():
+            archive.writestr(name, content)
+    with pytest.raises(installer.InstallError, match="invalid_wheel_entry_points"):
+        installer.validate_inputs(bundle)

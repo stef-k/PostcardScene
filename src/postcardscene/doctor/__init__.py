@@ -1,6 +1,7 @@
 """Closed, immutable administrative diagnostics; no repair authority."""
 
 import json
+import re
 from dataclasses import asdict, dataclass
 
 STATES = frozenset({"ready", "degraded", "unavailable", "fatal", "not_applicable"})
@@ -23,7 +24,6 @@ REASONS = frozenset(
         "schema_incompatible",
         "integrity_failed",
         "database_unavailable",
-        "sidecars_unavailable",
         "catalog_attention",
         "config_not_inspectable",
         "config_invalid",
@@ -67,6 +67,59 @@ CHECKS = (
 )
 
 
+SERVICE_VALUES = {
+    "LoadState": frozenset({"loaded", "not-found", "error", "bad-setting", "masked"}),
+    "UnitFileState": frozenset(
+        {
+            "enabled",
+            "disabled",
+            "static",
+            "masked",
+            "",
+            "enabled-runtime",
+            "linked",
+            "indirect",
+            "alias",
+            "generated",
+            "transient",
+            "bad",
+        }
+    ),
+    "ActiveState": frozenset(
+        {
+            "active",
+            "inactive",
+            "failed",
+            "activating",
+            "deactivating",
+            "reloading",
+            "maintenance",
+            "refreshing",
+        }
+    ),
+}
+
+
+def valid_detail(identifier, key, value):
+    if identifier == "release" and key == "version":
+        return (
+            type(value) is str
+            and re.fullmatch(r"[0-9][a-z0-9.]{0,63}", value) is not None
+        )
+    if identifier.startswith("service_") and key in SERVICE_VALUES:
+        return type(value) is str and value in SERVICE_VALUES[key]
+    if identifier.startswith("storage_") and key == "space_state":
+        return type(value) is str and value in {
+            "healthy",
+            "warning",
+            "critical",
+            "unavailable",
+        }
+    if identifier == "catalog" and key in {"sources", "items", "attention"}:
+        return type(value) is int and 0 <= value < 2**63
+    return False
+
+
 @dataclass(frozen=True)
 class Check:
     identifier: str
@@ -82,6 +135,13 @@ class Check:
             or self.reason not in REASONS
         ):
             raise ValueError("Invalid diagnostic vocabulary.")
+        if type(self.details) is not tuple or any(
+            type(item) is not tuple
+            or len(item) != 2
+            or not valid_detail(self.identifier, *item)
+            for item in self.details
+        ):
+            raise ValueError("Invalid diagnostic details.")
 
 
 @dataclass(frozen=True)

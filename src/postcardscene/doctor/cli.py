@@ -17,7 +17,9 @@ def collect():
             continue
         if identifier in {"database", "catalog"}:
             # Only disposable private copies are writable, never installed state.
-            with tempfile.TemporaryDirectory(prefix="postcardscene-doctor-") as scratch:
+            with tempfile.TemporaryDirectory(
+                prefix="postcardscene-doctor-", dir="/tmp"
+            ) as scratch:
                 function = partial(data.database_check, directory=Path(scratch))
                 results.append(inspect_bounded(function, identifier))
             continue
