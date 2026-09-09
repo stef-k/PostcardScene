@@ -213,6 +213,7 @@ The future GitHub Release archive is
 postcardscene-<version>-py3-none-any.whl
 runtime-requirements.txt
 install.py                 # managed-install child #140
+install_preflight.py       # standalone read-only install support #139
 release-manifest.json      # release child #143
 ```
 

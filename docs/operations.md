@@ -19,8 +19,9 @@ No configuration, signing key, database, cache/profile or backup belongs in thes
 release inputs.
 
 The future GitHub Release `postcardscene-<version>-linux-native.tar.gz` will carry
-those inputs, standalone `install.py` (#140) and `release-manifest.json` (#143),
-plus explicitly reviewed metadata/checksums. Version comes only from
+those inputs, standalone `install.py` (#140), `install_preflight.py` (#139),
+and `release-manifest.json` (#143), plus explicitly reviewed metadata/checksums.
+Version comes only from
 `pyproject.toml`; tag, wheel, installed/Overview and manifest identity must agree.
 Managed installation, publication and updates remain later work. See
 [development checks](../README.md#release-input-development) and the
