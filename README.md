@@ -127,7 +127,8 @@ run `sudo python3 -B install.py install` from trusted wheel/requirements/support
 inputs on a clean #139-supported host. It stages a versioned venv, provisions
 separate runtime/web identities, explicitly bootstraps state and activates the
 packaged services. Repeat invocations fail closed without resetting credentials.
-Published-bundle manifest/member verification remains #143; updates remain #144.
+Use the installed [read-only doctor](docs/operations.md#installed-read-only-diagnostics-141)
+for bounded host diagnostics. Published-bundle manifest/member verification remains #143; updates remain #144.
 Privileged Linux CI proves two-UID software permissions, not physical Pi support.
 
 ## Development

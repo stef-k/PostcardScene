@@ -1175,3 +1175,45 @@ change no durable settings or schedule and are not manual scheduling overrides.
 Rejection cannot bypass protection; cleanup-authority failure requires runtime
 recovery and is not retried by the web process. Flask invokes no hardware tools.
 These controls make no physical-support claim; #116 retains hardware evidence.
+
+## Installed read-only diagnostics (#141)
+
+Run `/opt/postcardscene/venv/bin/postcardscene-doctor` as an authorized local host
+administrator (normally via `sudo`); add `--json` for the same ordered, immutable
+check results in JSON. No configuration-path, command, impersonation or repair
+options are accepted. Exit **0** means all applicable checks are ready; **1** means
+degraded/unavailable checks need attention; **2** means an installation identity or
+configuration inconsistency (or invalid invocation); **3** is an internal command
+error. `backup: not_applicable (not_implemented)` is expected until #27 lands.
+
+Fixed check identifiers cover release/wheel identity, exact #140 assets and
+conflict-record structure, config/two-UID/key/DB/sidecar/IPC permissions, independent
+service states, DB/schema/catalog health, #123 storage thresholds, web serving,
+graphics and executable panel-tool prerequisites. No secrets, hostnames, media
+paths, URLs, symlink targets, raw configuration or tool/error output are printed.
+Each check has a five-second deadline and isolated failure; systemd output is
+limited to 16 KiB and three allowlisted properties. Storage warning/critical
+thresholds remain exactly #123's policy.
+
+Doctor never opens the installed database through SQLite, which could create
+sidecars even for a read-only query. It checks a private, disposable copy of only
+the main DB and existing WAL (64 MiB combined maximum), rejecting files that
+change while copied, then reuses `Database.check()` and persisted catalog health.
+Private 0700 scratch under `/tmp` and 0600 copies are removed after each check,
+including a check timeout. This is diagnostic sampling, **not a backup**. A busy,
+oversized or unreadable DB reports unavailable; catalog summaries cap Sources at
+1,000. Installed DB/WAL/SHM and signing-key authority are never repaired or created.
+
+To avoid executing host code, configuration inspection accepts literal Python
+assignments only. Valid dynamic Python remains service-owned and reports
+`config_not_inspectable`; doctor does not execute it. Serving classification uses
+the existing #131 validator without a listener. Graphics checks use the existing
+session and read-only output probes only under the runtime UID; outside that UID,
+including root, `capability_unavailable` is expected. Tool readiness means executable
+DAC prerequisites only, not device access or physical panel support.
+
+Doctor does not restart services, migrate, rescan media, read signing-key bytes,
+parse journals, mutate hardware or establish HDMI/4K/acceleration evidence. Use
+#140/#142 for provisioning/reinstall ownership, #144 for recovery-backed updates,
+#27 for backup/restore, and #66/#116/#127 for physical validation. Review individual
+service results independently; web failure does not imply runtime failure.

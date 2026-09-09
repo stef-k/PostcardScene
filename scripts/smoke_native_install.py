@@ -38,7 +38,9 @@ def worker(action):
     from postcardscene.settings import ApplicationSettings, set_timezone
 
     database = STATE / "postcardscene.sqlite3"
-    if action == "socket":
+    if action == "doctor":
+        doctor_layout()
+    elif action == "socket":
         server = PanelControl(None, Event())
         server.start()
         try:
@@ -142,6 +144,83 @@ def permissions(runtime, web, shared):
         child("web-access", "postcardscene-web")
     finally:
         release_child(server)
+
+
+def doctor_layout():
+    from postcardscene.doctor import CHECKS
+    from postcardscene.doctor.cli import collect
+    from postcardscene.doctor.metadata import PACKAGE, inspect
+
+    # Fixed installed payload metadata makes packaging/DAC failures reviewable.
+    for label, path in (
+        ("active", Path("/opt/postcardscene/venv")),
+        ("venv", PACKAGE.parents[3]),
+        ("package", PACKAGE),
+        ("labwc_config", PACKAGE / "graphics/labwc/rc.xml"),
+        ("labwc_autostart", PACKAGE / "graphics/labwc/autostart"),
+    ):
+        info = path.lstat()
+        print(
+            label,
+            info.st_uid,
+            info.st_gid,
+            oct(stat.S_IMODE(info.st_mode)),
+            info.st_nlink,
+            flush=True,
+        )
+    ready = {
+        "release",
+        "config_authority",
+        "installed_assets",
+        "conflict_record",
+        "identities",
+        "durable_permissions",
+        "database_permissions",
+        "private_key_permissions",
+        "cache_permissions",
+        "runtime_permissions",
+        "wayland_permissions",
+        "database",
+        "catalog",
+        "web_config",
+    }
+    database = STATE / "postcardscene.sqlite3"
+    before = database.read_bytes()
+    key_info = KEY.stat()
+    for _ in range(2):
+        report = collect()
+        assert tuple(c.identifier for c in report.checks) == CHECKS
+        assert all(
+            c.state == "ready" for c in report.checks if c.identifier in ready
+        ), report
+        assert database.read_bytes() == before
+        assert KEY.stat() == key_info
+    # Exact installed authorities fail individually; doctor never recreates them.
+    for path, identifier in (
+        (Path("/opt/postcardscene/venv"), "release"),
+        (Path("/etc/postcardscene/config.py"), "config_authority"),
+        (Path("/etc/systemd/system/postcardscene-runtime.service"), "installed_assets"),
+        (Path("/etc/pam.d/postcardscene-graphics"), "installed_assets"),
+        (
+            Path("/etc/systemd/system/postcardscene-web.service.d/permissions.conf"),
+            "installed_assets",
+        ),
+        (Path("/etc/tmpfiles.d/postcardscene.conf"), "installed_assets"),
+        (PACKAGE / "graphics/labwc/autostart", "installed_assets"),
+        (Path("/opt/postcardscene/service-conflicts.json"), "conflict_record"),
+        (KEY, "private_key_permissions"),
+        (database, "database_permissions"),
+    ):
+        saved = path.with_name(path.name + ".doctor-smoke")
+        path.rename(saved)
+        try:
+            assert inspect(identifier).state in {"degraded", "fatal"}
+            assert not path.exists()
+        finally:
+            saved.rename(path)
+    print(
+        "Installed doctor metadata, DB, redaction boundaries and repeat-run preservation passed."
+    )
 
 
 def bootstrap_runner(installer, args, **options):
@@ -273,6 +352,26 @@ def main():
         Path("/opt/postcardscene/smoke.py"), Path(__file__).read_bytes()
     )
     permissions(runtime, web, shared)
+    installer.write_new(
+        Path("/opt/postcardscene/service-conflicts.json"),
+        json.dumps(
+            {
+                unit: {
+                    "LoadState": "not-found",
+                    "ActiveState": "inactive",
+                    "UnitFileState": "",
+                    "local_symlink": None,
+                }
+                for unit in ("getty@tty1.service", "display-manager.service")
+            }
+        ).encode(),
+    )
+    subprocess.run(
+        (PYTHON, "-I", "-B", "/opt/postcardscene/smoke.py", "worker", "doctor"),
+        check=True,
+        timeout=60,
+        env=installer.ENV,
+    )
     service_smoke(installer, runtime, web)
     print(
         "Real two-UID SQLite/WAL/SHM, private key, panel socket and device/Wayland DAC passed."
