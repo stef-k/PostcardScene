@@ -263,6 +263,12 @@ Generic Linux CI does not establish ARM64 or display support. V0 does not requir
 PyPI publication, a `.deb`, APT repository, Docker image, target source builds,
 auto-update daemon, or transactional rollback engine.
 
+#140 implements clean native installation from those inputs after #139 preflight,
+with separate runtime/web UIDs, shared SQLite sidecars, private signing authority,
+explicit bootstrap and versioned service activation. Real two-UID Linux CI proves
+software/DAC behavior; #143 final publication verification and physical Pi gates
+remain open. See [managed operations](operations.md#managed-initial-installation-140).
+
 ### Backup and restore
 
 Back up PostcardScene's own durable state, not the user's external media libraries.

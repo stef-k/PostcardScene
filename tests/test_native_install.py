@@ -54,6 +54,7 @@ def bundle(tmp_path):
     with zipfile.ZipFile(
         tmp_path / f"postcardscene-{version}-py3-none-any.whl", "w"
     ) as wheel:
+        wheel.writestr("postcardscene/", b"")
         for name, data in payload.items():
             wheel.writestr(name, data)
     for name in installer.INPUT_HASHES:
@@ -135,6 +136,7 @@ def test_ordering_and_failure_preservation(bundle, monkeypatch, failure, capsys)
     monkeypatch.setattr(installer, "provision_identities", lambda *a: (11, 12, 13, 14))
     monkeypatch.setattr(installer, "install_assets", lambda *a: step("assets"))
     monkeypatch.setattr(installer, "reserve_graphics", lambda *a: step("conflicts"))
+    monkeypatch.setattr(installer, "require_stopped", lambda *a: step("stopped"))
     monkeypatch.setattr(installer, "bootstrap", lambda *a: step("bootstrap"))
     monkeypatch.setattr(Path, "symlink_to", lambda *a: step("activation"))
     monkeypatch.setattr(
@@ -159,7 +161,7 @@ def test_ordering_and_failure_preservation(bundle, monkeypatch, failure, capsys)
             events.index("payload") < events.index("config") < events.index("bootstrap")
         )
         assert (
-            events.index("stop")
+            events.index("stopped")
             < events.index("bootstrap")
             < events.index("activation")
         )
@@ -195,3 +197,70 @@ def test_exclusive_config_write_never_replaces_existing(tmp_path, monkeypatch):
     with pytest.raises(FileExistsError):
         installer.write_new(path, installer.CONFIG)
     assert path.read_bytes() == b"existing authority"
+
+
+@pytest.mark.parametrize("operation", ["require_stopped", "reserve_graphics"])
+def test_unavailable_service_state_uses_installer_recovery(operation):
+    class Rejected(Exception):
+        pass
+
+    def unavailable(*args):
+        raise Rejected("service_state_unavailable")
+
+    preflight = SimpleNamespace(
+        Rejected=Rejected, Host=lambda: None, service_state=unavailable
+    )
+    with pytest.raises(installer.InstallError, match="service_state_unavailable"):
+        if operation == "reserve_graphics":
+            installer.reserve_graphics(preflight, lambda *a: pytest.fail("mutation"))
+        else:
+            installer.require_stopped(preflight)
+
+
+@pytest.mark.parametrize("state", ["installed", "install_required"])
+def test_closed_packages_preserve_already_installed_chromium(state):
+    plan = SimpleNamespace(
+        apt_packages=("labwc", "snapd"),
+        seat_packages=(),
+        snap=("chromium", "latest/stable"),
+        tools=(SimpleNamespace(executable="/snap/bin/chromium", state=state),),
+    )
+    calls = []
+    installer.install_packages(plan, lambda args, **kw: calls.append(args))
+    assert calls[0][-1] == "update"
+    assert calls[1][-3:] == ("install", "labwc", "snapd")
+    assert (len(calls) == 3) == (state == "install_required")
+    if state == "install_required":
+        assert calls[-1] == (
+            "/usr/bin/snap",
+            "install",
+            "chromium",
+            "--channel=latest/stable",
+        )
+
+
+def test_staging_enforces_isolated_hash_locked_binary_install(tmp_path, monkeypatch):
+    monkeypatch.setattr(installer, "directory", lambda path: path.mkdir())
+    monkeypatch.setattr(
+        installer, "write_new", lambda path, data: path.write_bytes(data)
+    )
+    calls = []
+    release = tmp_path / "0.1.0.dev0"
+    result = installer.stage_payload(
+        release,
+        "postcardscene-0.1.0.dev0-py3-none-any.whl",
+        b"wheel",
+        b"requirements",
+        SimpleNamespace(python="/usr/bin/python3"),
+        lambda args, **kw: calls.append(args),
+    )
+    assert calls[0] == ("/usr/bin/python3", "-I", "-m", "venv", str(release / "venv"))
+    assert result == str(release / "venv/bin/python")
+    requirements, app = calls[1:3]
+    assert requirements[0] == app[0] == result
+    assert all(
+        option in requirements
+        for option in ("--isolated", "--require-hashes", "--only-binary=:all:")
+    )
+    assert "--no-deps" in app
+    assert "check" in calls[3]

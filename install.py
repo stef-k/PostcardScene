@@ -77,12 +77,15 @@ def validate_wheel(data, filename):
             or sum(i.file_size for i in wheel.infolist()) > 64 * 1024 * 1024
         ):
             raise InstallError("invalid_wheel_members")
-        for name in names:
+        for entry in wheel.infolist():
+            name = entry.filename
             if (
                 not name.startswith(("postcardscene/", info + "/"))
-                or ".." in name.split("/")
+                or any(part in ("", ".", "..") for part in name.rstrip("/").split("/"))
                 or "\\" in name
-                or name.endswith("/")
+                or stat.S_ISLNK(entry.external_attr >> 16)
+                or entry.flag_bits & 1
+                or entry.compress_type not in (zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED)
             ):
                 raise InstallError("invalid_wheel_members")
         metadata = email.parser.BytesParser().parsebytes(wheel.read(f"{info}/METADATA"))
@@ -90,7 +93,7 @@ def validate_wheel(data, filename):
         if (
             metadata["Name"] != "postcardscene"
             or metadata["Version"] != version
-            or set(metadata["Requires-Python"].replace(" ", "").split(","))
+            or set(metadata.get("Requires-Python", "").replace(" ", "").split(","))
             != {">=3.11", "<3.15"}
             or tags["Root-Is-Purelib"] != "true"
             or tags.get_all("Tag") != ["py3-none-any"]
@@ -118,9 +121,8 @@ def validate_wheel(data, filename):
 def validate_record(wheel, info):
     record = f"{info}/RECORD"
     rows = list(csv.reader(io.StringIO(wheel.read(record).decode())))
-    if len(rows) != len(wheel.namelist()) or {r[0] for r in rows} != set(
-        wheel.namelist()
-    ):
+    files = {entry.filename for entry in wheel.infolist() if not entry.is_dir()}
+    if len(rows) != len(files) or {r[0] for r in rows} != files:
         raise InstallError("invalid_wheel_record")
     for name, digest, size in rows:
         if name == record:
@@ -303,7 +305,10 @@ def install_packages(plan, run):
         ),
         timeout=900,
     )
-    if plan.snap:
+    if plan.snap and any(
+        tool.executable == "/snap/bin/chromium" and tool.state == "install_required"
+        for tool in plan.tools
+    ):
         run(
             ("/usr/bin/snap", "install", "chromium", "--channel=latest/stable"),
             timeout=600,
@@ -366,9 +371,12 @@ def install_assets(wheel, run):
 def reserve_graphics(preflight, run):
     # Record prior state before changing boot conflicts; no desktop file is replaced.
     states = {
-        unit: preflight.service_state(preflight.Host(), unit)
+        unit: service_state(preflight, unit)
         for unit in ("getty@tty1.service", "display-manager.service")
     }
+    for unit, state in states.items():
+        alias = Path("/etc/systemd/system") / unit
+        state["local_symlink"] = str(alias.readlink()) if alias.is_symlink() else None
     write_new(
         Path("/opt/postcardscene/service-conflicts.json"),
         json.dumps(states, sort_keys=True).encode(),
@@ -377,6 +385,20 @@ def reserve_graphics(preflight, run):
         if state["LoadState"] == "loaded":
             run(("/usr/bin/systemctl", "disable", "--now", unit))
     run(("/usr/bin/systemctl", "mask", "getty@tty1.service"))
+
+
+def service_state(preflight, unit):
+    try:
+        return preflight.service_state(preflight.Host(), unit)
+    except preflight.Rejected:
+        raise InstallError("service_state_unavailable") from None
+
+
+def require_stopped(preflight):
+    if any(
+        service_state(preflight, unit)["ActiveState"] != "inactive" for unit in SERVICES
+    ):
+        raise InstallError("services_must_be_stopped")
 
 
 def bootstrap(python, run):
@@ -433,7 +455,9 @@ class Installation:
         self.phase = "assets"
         install_assets(wheel, self.run)
         reserve_graphics(preflight, self.run)
-        self.run(("/usr/bin/systemctl", "stop", *SERVICES))
+        # Fresh services have never been enabled/started. Recheck their state
+        # without an early daemon-reload before durable mutation.
+        require_stopped(preflight)
         self.phase = "bootstrap"
         self.durable = True
         bootstrap(python, self.run)
@@ -450,6 +474,14 @@ class Installation:
 
     def recover(self):
         if self.durable:
+            if self.activation:
+                try:
+                    self.run(("/usr/bin/systemctl", "disable", *SERVICES))
+                except (OSError, InstallError, subprocess.SubprocessError):
+                    print(
+                        "Disable failed; prevent automatic service startup before recovery.",
+                        file=sys.stderr,
+                    )
             try:
                 self.run(("/usr/bin/systemctl", "stop", *SERVICES))
             except (OSError, InstallError, subprocess.SubprocessError):
@@ -463,7 +495,13 @@ class Installation:
             and not self.release.is_symlink()
         ):
             # Exact fresh root-controlled payload only; never durable/config authority.
-            shutil.rmtree(self.release)
+            try:
+                shutil.rmtree(self.release)
+            except OSError:
+                print(
+                    "Staged payload cleanup failed; preserve it for inspection.",
+                    file=sys.stderr,
+                )
         print(
             f"Install failed during {self.phase}. Preserve config, state and signing key. "
             "Inspect host package/service status and the managed-install recovery instructions; "
@@ -484,10 +522,14 @@ def main():
         OSError,
         ValueError,
         KeyError,
+        configparser.Error,
+        csv.Error,
         zipfile.BadZipFile,
         subprocess.SubprocessError,
         KeyboardInterrupt,
-    ):
+    ) as error:
+        if isinstance(error, InstallError):
+            print("Install reason: " + str(error), file=sys.stderr)
         operation.recover()
         return 1
     print(

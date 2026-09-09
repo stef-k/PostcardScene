@@ -254,6 +254,30 @@ filesystem/service authority: the installer must revalidate before mutation.
 See [operations](../operations.md#read-only-managed-host-preflight-139) for fixed
 packages/paths, command bounds, package evidence and diagnostic interpretation.
 
+### Managed initial installation (#140)
+
+Standalone `install.py install` consumes the validated #138 wheel/requirements
+and pinned reviewed #139 support before host mutation. It invokes clean-host
+preflight both before fixed package installation and before application-state
+provisioning. These installer input pins are not #143's final release manifest;
+published-bundle schema/member authentication remains with #143.
+
+The initial path selects logind/PAM, stages a root-controlled versioned venv,
+provisions distinct locked runtime/web UIDs with shared primary group and setgid
+SQLite state, then uses existing web-UID secret/migration/admin CLI authority
+with umask `0007`. Versioned units/PAM and wheel-local labwc assets remain their
+owning subsystems' policies. Root-owned web/runtime umask drop-ins grant shared
+SQLite sidecar access without broadening private signing-key authority. Only
+successful bootstrap permits atomic active-symlink publication and service
+enablement/start. No legacy adoption, credential reset, update or DB rollback is
+introduced. Repeat installs reject existing authority unchanged.
+
+See [managed operations](../operations.md#managed-initial-installation-140) for
+exact modes, phase/failure recovery and conflict records. Privileged disposable
+Linux CI proves real distinct-UID SQLite/WAL/SHM and panel socket cooperation,
+private-key/Wayland/device separation and canonical runtime/web service identity.
+It does not establish ARM64 provisioning, graphics boot or physical HDMI support.
+
 ## Backup and restore boundary
 
 PostcardScene backup owns PostcardScene durable state, not the user's original media libraries.
