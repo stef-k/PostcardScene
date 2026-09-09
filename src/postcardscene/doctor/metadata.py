@@ -87,7 +87,9 @@ def release():
     info = f"postcardscene-{version}.dist-info"
     headers = {}
     for name in ("METADATA", "WHEEL"):
-        path = Path(distribution.locate_file(f"{info}/{name}"))
+        # Package location was verified against the active release above. Use
+        # that canonical root, not importlib's lexical /opt/.../venv alias.
+        path = PACKAGE.parent / info / name
         metadata(path, 0, 0, 0o644)
         headers[name] = email.parser.BytesParser().parsebytes(read_regular(path))
     if (
