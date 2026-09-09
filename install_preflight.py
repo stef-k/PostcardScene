@@ -44,6 +44,22 @@ UNITS = (
     "postcardscene-web.service",
     "postcardscene-graphics.service",
 )
+UNIT_FILE_STATES = {
+    "enabled",
+    "disabled",
+    "static",
+    "masked",
+    "",
+    "enabled-runtime",
+    "linked",
+    "linked-runtime",
+    "masked-runtime",
+    "indirect",
+    "alias",
+    "generated",
+    "transient",
+    "bad",
+}
 LOCAL_FILESYSTEMS = frozenset({"ext4", "ext3", "ext2", "btrfs", "xfs", "f2fs", "zfs"})
 ENV = {"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LC_ALL": "C", "LANG": "C"}
 
@@ -319,7 +335,7 @@ def python_check(host):
     return ".".join(map(str, version))
 
 
-def storage_check(host):
+def storage_check(host, installation="clean"):
     mounts = []
     for line in host.read("/proc/self/mountinfo").splitlines():
         fields = line.split()
@@ -344,7 +360,9 @@ def storage_check(host):
             raise Rejected("unsupported_install_storage")
 
         path = Path(root)
-        for ancestor in reversed((path, *path.parents)):
+        for ancestor in reversed(
+            path.parents if installation == "preserved" else (path, *path.parents)
+        ):
             if not host.exists(str(ancestor)):
                 continue
             info = host.lstat(str(ancestor))
@@ -354,8 +372,8 @@ def storage_check(host):
                 or info.st_mode & 0o022
             ):
                 raise Rejected("unsafe_install_root")
-        if host.exists(root):
-            # No managed marker exists before #140/#142: never adopt even empty roots.
+        if installation == "clean" and host.exists(root):
+            # Standalone inspection never adopts even empty roots.
             raise Rejected("existing_installation_unrecognized")
 
 
@@ -366,6 +384,7 @@ def service_state(host, unit):
             "show",
             unit,
             "--no-pager",
+            "--all",
             "--property=LoadState,ActiveState,UnitFileState",
         )
     )
@@ -374,16 +393,13 @@ def service_state(host, unit):
         raise Rejected("service_state_unavailable")
     if values.get("ActiveState") not in ("active", "inactive", "failed"):
         raise Rejected("service_state_unavailable")
+    if values.get("UnitFileState") not in UNIT_FILE_STATES:
+        raise Rejected("service_state_unavailable")
     return values
 
 
-def service_check(host, seat):
-    for path in ("/etc/passwd", "/etc/group"):
-        if any(
-            line.split(":", 1)[0] in ("postcardscene", "postcardscene-web")
-            for line in host.read(path).splitlines()
-        ):
-            raise Rejected("existing_installation_unrecognized")
+def unit_names(host):
+    names = set()
     for operation in ("list-unit-files", "list-units"):
         status, output = host.command(
             (
@@ -396,12 +412,28 @@ def service_check(host, seat):
                 "postcardscene*",
             )
         )
-        if status:
+        # list-unit-files returns 1 for an empty pattern match.
+        empty = operation == "list-unit-files" and status == 1 and not output.strip()
+        if status and not empty:
             raise Rejected("service_state_unavailable")
-        if output.strip():
-            raise Rejected("existing_service_unrecognized")
+        names.update(line.split()[0] for line in output.splitlines())
+    return names
+
+
+def service_check(host, seat, installation="clean"):
+    for path in ("/etc/passwd", "/etc/group"):
+        if installation == "clean" and any(
+            line.split(":", 1)[0] in ("postcardscene", "postcardscene-web")
+            for line in host.read(path).splitlines()
+        ):
+            raise Rejected("existing_installation_unrecognized")
+    # systemd can retain inactive not-found entries after daemon-reload.
+    allowed = set(UNITS) if installation == "preserved" else set()
+    if unit_names(host) - allowed:
+        raise Rejected("existing_service_unrecognized")
     for unit in UNITS:
-        if service_state(host, unit)["LoadState"] != "not-found":
+        state = service_state(host, unit)
+        if state["LoadState"] != "not-found" or state["ActiveState"] != "inactive":
             raise Rejected("existing_service_unrecognized")
     actions = []
     for unit, action in (
@@ -493,16 +525,20 @@ def chromium_snap(host):
     return Tool("chromium", "/snap/bin/chromium", "installed")
 
 
-def preflight(host=None, *, seat="logind"):
+def preflight(host=None, *, seat="logind", installation="clean"):
+    # Internal prerequisite reuse only. The installer must separately recognize
+    # removed_preserved before requesting this mode; the CLI exposes no switch.
     host = host or Host()
     try:
+        if installation not in ("clean", "preserved"):
+            raise Rejected("unsupported_installation_mode")
         if seat not in ("logind", "seatd"):
             raise Rejected("unsupported_seat_authority")
         distro, release = identity(host)
         platform_check(host)
         python_version = python_check(host)
-        storage_check(host)
-        actions = service_check(host, seat)
+        storage_check(host, installation)
+        actions = service_check(host, seat, installation)
         packages = BASE_PACKAGES + (("snapd",) if distro == "ubuntu" else ("chromium",))
         seat_packages = ("seatd",) if seat == "seatd" else ()
         for package in packages + seat_packages:
@@ -532,6 +568,7 @@ def preflight(host=None, *, seat="logind"):
                 ("chromium", "latest/stable") if distro == "ubuntu" else (),
                 tools + (browser,),
                 actions,
+                installation,
             ),
         )
     except Rejected as exc:

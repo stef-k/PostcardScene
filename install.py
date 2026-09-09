@@ -1,4 +1,4 @@
-"""Deliberate clean native installation; final published-bundle verification is #143."""
+"""Managed native install/remove; final published-bundle verification is #143."""
 
 import argparse
 import configparser
@@ -16,8 +16,8 @@ from pathlib import Path
 # These are installer inputs, not a release manifest or published-bundle schema.
 INPUT_HASHES = {
     "install_inputs.py": "e30622cb3258479669f0a32ab06924b1b37dfa7151cb293c749859f675711218",
-    "install_host.py": "f61201bf57bd4597b7ac198b2090276023560a714821022e0a12293efd35eb37",
-    "install_preflight.py": "2dfd1d5df53ec933ed4fb38a1edbe4309b5dd4cff901a9a5de81a5c6ff050c57",
+    "install_host.py": "7278ea875ece7346959a9605c5a65c40888316641db53ea13c990c789f8084c1",
+    "install_preflight.py": "b01b5e1f71325b44e1b8812da4d6132eb6ef70e64f14869f83de872036aeb107",
     "runtime-requirements.txt": "ca8eb8d430bd3d883523e592c99bec74c65c7537a765c52998001f0ae4c76d3a",
 }
 
@@ -66,6 +66,40 @@ def validate_inputs(bundle):
     return *validated, preflight, host
 
 
+def validate_preserved_application(python, run):
+    # Only the private snapshot is opened by SQLite; no init, upgrade or admin CLI.
+    run(
+        (
+            python,
+            "-I",
+            "-B",
+            "-c",
+            "import tempfile; from pathlib import Path; from sqlalchemy import select; "
+            "from postcardscene.doctor.data import configuration, snapshot; "
+            "from postcardscene.persistence import Database; "
+            "from postcardscene.accounts import Administrator; "
+            "configuration(); "
+            "\nwith tempfile.TemporaryDirectory() as scratch:\n"
+            " db=Database(snapshot(Path(scratch))); db.check()\n"
+            " with db.transaction() as session:\n"
+            "  assert session.scalar(select(Administrator.id).limit(1)) is not None\n"
+            " db.engine.dispose()",
+        ),
+        timeout=60,
+    )
+    run(
+        (
+            python,
+            "-I",
+            "-B",
+            "-c",
+            "from postcardscene.session_secret import read_secret; "
+            "read_secret('/var/lib/postcardscene-web/session.key')",
+        ),
+        user="postcardscene-web",
+    )
+
+
 class Installation:
     def __init__(self, bundle, run=None):
         self.bundle = bundle
@@ -73,6 +107,7 @@ class Installation:
         self.host = None
         self.phase = "validation"
         self.release = None
+        self.reinstall_parent = None
         self.durable = False
         self.activation = False
 
@@ -87,6 +122,13 @@ class Installation:
             raise InstallError(str(error)) from None
 
     def _install(self, version, wheel_name, wheel, requirements, preflight, host):
+        state = host.classify(version, wheel, preflight)
+        if state not in ("clean", "removed_preserved"):
+            raise InstallError("partial_or_unknown_manual_reconciliation_required")
+        if state == "removed_preserved":
+            return self._reinstall(
+                version, wheel_name, wheel, requirements, preflight, host
+            )
         result = preflight.preflight()
         if not result.ok:
             raise InstallError("preflight_rejected")
@@ -131,6 +173,73 @@ class Installation:
         self.run(("/usr/bin/systemctl", "is-active", "--quiet", *self.host.SERVICES))
         self.phase = "complete"
 
+    def _reinstall(self, version, wheel_name, wheel, requirements, preflight, host):
+        if os.geteuid() != 0:
+            raise InstallError("root_required")
+        result = preflight.preflight(installation="preserved")
+        if not result.ok:
+            raise InstallError("preflight_rejected")
+        self.phase = "packages"
+        host.install_packages(result.plan, self.run)
+        if host.classify(version, wheel, preflight) != "removed_preserved":
+            raise InstallError("partial_or_unknown_manual_reconciliation_required")
+        result = preflight.preflight(installation="preserved")
+        if not result.ok or any(t.state != "installed" for t in result.plan.tools):
+            raise InstallError("post_package_preflight_rejected")
+        self.phase = "payload"
+        self.reinstall_parent = host.directory(host.RELEASES)
+        self.release = host.RELEASES / version
+        python = host.stage_payload(
+            self.release, wheel_name, wheel, requirements, result.plan, self.run
+        )
+        self.phase = "preserved_compatibility"
+        validate_preserved_application(python, self.run)
+        runtime, _, shared, _ = host.preserved_authority()
+        host.require_no_processes(host.preserved_identities())
+        self.phase = "reprovisioning"
+        # From here installed assets may refer to the staged payload. Preserve it
+        # on failure and stop services; durable data is never bootstrapped.
+        self.durable = True
+        host.directory(Path("/var/cache/postcardscene"), runtime, shared, 0o700)
+        host.reserve_graphics(preflight, self.run, preserved=True)
+        host.install_assets(wheel, self.run)
+        host.require_stopped(preflight)
+        self.phase = "activation"
+        host.activate_payload(self.release)
+        self.activation = True
+        self.run(("/usr/bin/systemctl", "daemon-reload"))
+        self.run(("/usr/bin/systemctl", "enable", *host.SERVICES))
+        for unit in host.SERVICES:
+            self.run(("/usr/bin/systemctl", "start", unit))
+        self.run(("/usr/bin/systemctl", "is-active", "--quiet", *host.SERVICES))
+        if host.classify(version, wheel, preflight) != "installed_managed":
+            raise InstallError("reinstalled_authority_incoherent")
+        self.phase = "complete"
+
+    def remove(self):
+        version, _, wheel, _, preflight, self.host = validate_inputs(self.bundle)
+        if self.run is None:
+            self.run = self.host.command
+        if os.geteuid() != 0:
+            raise InstallError("root_required")
+        try:
+            state = self.host.classify(version, wheel, preflight)
+            if state == "removed_preserved":
+                self.phase = "already_removed_preserved"
+                return
+            if state != "installed_managed":
+                raise InstallError("partial_or_unknown_manual_reconciliation_required")
+            validate_preserved_application(
+                str(Path("/opt/postcardscene/venv/bin/python")), self.run
+            )
+            self.phase = "removal"
+            self.host.remove_managed(version, wheel, preflight, self.run)
+            if self.host.classify(version, wheel, preflight) != "removed_preserved":
+                raise InstallError("removal_incomplete_manual_reconciliation_required")
+            self.phase = "removed_preserved"
+        except (self.host.InstallError, preflight.Rejected) as error:
+            raise InstallError(str(error)) from None
+
     def recover(self):
         if self.durable:
             if self.activation:
@@ -161,8 +270,13 @@ class Installation:
         elif self.release is not None:
             # Exact fresh root-controlled payload only; never durable/config authority.
             try:
-                self.host.discard_staged_payload(self.release)
-            except OSError:
+                if self.reinstall_parent is not None:
+                    self.host.discard_reinstall_staging(
+                        self.release, self.reinstall_parent
+                    )
+                else:
+                    self.host.discard_staged_payload(self.release)
+            except (OSError, self.host.InstallError):
                 print(
                     "Staged payload cleanup failed; preserve it for inspection.",
                     file=sys.stderr,
@@ -177,11 +291,11 @@ class Installation:
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=("install",))
-    parser.parse_args()
+    parser.add_argument("action", choices=("install", "remove"))
+    args = parser.parse_args()
     operation = Installation(Path(__file__).resolve().parent)
     try:
-        operation.install()
+        getattr(operation, args.action)()
     except (
         InstallError,
         OSError,
@@ -195,11 +309,22 @@ def main():
     ) as error:
         if isinstance(error, InstallError):
             print("Install reason: " + str(error), file=sys.stderr)
-        operation.recover()
+        if args.action == "install":
+            operation.recover()
+        else:
+            print(
+                "Removal incomplete; preserve remaining targets and reconcile manually.",
+                file=sys.stderr,
+            )
         return 1
-    print(
-        "Installation complete; services active. Physical display readiness is unverified."
-    )
+    if args.action == "remove":
+        print(
+            f"{operation.phase}: preserved config, durable database/admin, private signing key, backups, service identities and /opt/postcardscene/service-conflicts.json. Host packages retained."
+        )
+    else:
+        print(
+            "Installation complete; services active. Physical display readiness is unverified."
+        )
     return 0
 
 

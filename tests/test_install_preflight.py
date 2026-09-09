@@ -230,6 +230,7 @@ def test_unknown_installation_and_service_rejected():
         "show",
         pf.UNITS[0],
         "--no-pager",
+        "--all",
         "--property=LoadState,ActiveState,UnitFileState",
     )
     host.overrides[command] = (
@@ -248,6 +249,7 @@ def test_service_competition_is_explicit_action_and_seat_is_selected():
                 "show",
                 unit,
                 "--no-pager",
+                "--all",
                 "--property=LoadState,ActiveState,UnitFileState",
             )
         ] = (0, "LoadState=loaded\nActiveState=active\nUnitFileState=enabled\n")
@@ -429,3 +431,58 @@ def test_read_only_mount_and_missing_installed_snap_launcher():
     host = FixtureHost()
     host.present.add("/snap/chromium/current")
     assert pf.preflight(host).reasons == ("tool_unavailable",)
+
+
+def test_internal_preserved_mode_retains_platform_policy_and_cli_default():
+    host = FixtureHost()
+    host.files["/etc/passwd"] += (
+        "postcardscene:x:100:100::/var/lib/postcardscene:/usr/sbin/nologin\n"
+    )
+    assert pf.preflight(host).reasons == ("existing_installation_unrecognized",)
+    result = pf.preflight(host, installation="preserved")
+    assert result.ok and result.plan.installation == "preserved"
+    host.arch = "x86_64"
+    assert not pf.preflight(host, installation="preserved").ok
+    assert not pf.preflight(FixtureHost(), installation="adopt").ok
+
+
+def test_preserved_prerequisites_allow_only_inactive_not_found_cached_units():
+    host = FixtureHost()
+    listing = (
+        "/usr/bin/systemctl",
+        "list-units",
+        "--all",
+        "--no-legend",
+        "--plain",
+        "--no-pager",
+        "postcardscene*",
+    )
+    host.overrides[listing] = (
+        0,
+        "postcardscene-runtime.service not-found inactive dead\n",
+    )
+    assert pf.preflight(host, installation="preserved").ok
+    assert not pf.preflight(host).ok
+    host.overrides[listing] = (
+        0,
+        "postcardscene-foreign.service not-found inactive dead\n",
+    )
+    assert not pf.preflight(host, installation="preserved").ok
+
+
+def test_empty_unit_file_listing_status_is_not_a_failed_inspection():
+    host = FixtureHost()
+    listing = (
+        "/usr/bin/systemctl",
+        "list-unit-files",
+        "--all",
+        "--no-legend",
+        "--plain",
+        "--no-pager",
+        "postcardscene*",
+    )
+    host.overrides[listing] = (1, "")
+    assert pf.preflight(host).ok
+    assert pf.preflight(host, installation="preserved").ok
+    host.overrides[listing] = (2, "")
+    assert not pf.preflight(host, installation="preserved").ok

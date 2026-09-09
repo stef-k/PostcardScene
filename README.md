@@ -126,7 +126,9 @@ External media libraries themselves are not copied into PostcardScene backups.
 run `sudo python3 -B install.py install` from trusted wheel/requirements/support
 inputs on a clean #139-supported host. It stages a versioned venv, provisions
 separate runtime/web identities, explicitly bootstraps state and activates the
-packaged services. Repeat invocations fail closed without resetting credentials.
+packaged services. Repeat invocations fail closed without resetting credentials. #142 adds
+[managed remove/reinstall](docs/operations/installation.md#managed-remove-and-reinstall-142),
+preserving configuration, durable DB/admin state, private signing key and identities.
 Use the installed [read-only doctor](docs/operations/installation.md#installed-read-only-diagnostics-141)
 for bounded host diagnostics. Published-bundle manifest/member verification remains #143; updates remain #144.
 Privileged Linux CI proves two-UID software permissions, not physical Pi support.
