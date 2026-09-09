@@ -300,9 +300,8 @@ def main():
     assert os.geteuid() == 0, "Run only as root in a disposable Linux CI VM"
     assert Path("/proc/1/comm").read_text().strip() == "systemd"
     spec = importlib.util.spec_from_file_location("native_install", ROOT / "install.py")
-    installer = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(installer)
-    entrypoint = installer
+    entrypoint = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(entrypoint)
     _, installer, _, _ = entrypoint.load_support(ROOT)
     # Refuse any existing installation; this smoke has no adoption or cleanup path.
     for path in (

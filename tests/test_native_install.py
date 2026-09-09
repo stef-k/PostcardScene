@@ -150,7 +150,7 @@ def test_ordering_and_failure_preservation(bundle, monkeypatch, failure, capsys)
     monkeypatch.setattr(host, "bootstrap", lambda *a: step("bootstrap"))
     monkeypatch.setattr(Path, "symlink_to", lambda *a: step("activation"))
     monkeypatch.setattr(
-        installer.shutil,
+        host.shutil,
         "rmtree",
         lambda *a: pytest.fail("durable failure deleted payload"),
     )

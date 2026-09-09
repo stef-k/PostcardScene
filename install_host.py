@@ -5,6 +5,7 @@ import io
 import json
 import os
 import pwd
+import shutil
 import signal
 import stat
 import subprocess
@@ -300,3 +301,14 @@ def bootstrap(python, run):
         interactive=True,
         timeout=900,
     )
+
+
+def activate_payload(release):
+    # Initial install only: atomic creation refuses any existing target.
+    Path("/opt/postcardscene/venv").symlink_to(release / "venv")
+
+
+def discard_staged_payload(release):
+    # Caller owns this exact fresh root-controlled release, never durable state.
+    if release.is_dir() and not release.is_symlink():
+        shutil.rmtree(release)

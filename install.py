@@ -6,7 +6,6 @@ import csv
 import hashlib
 import importlib.util
 import os
-import shutil
 import stat
 import subprocess
 import sys
@@ -17,7 +16,7 @@ from pathlib import Path
 # These are installer inputs, not a release manifest or published-bundle schema.
 INPUT_HASHES = {
     "install_inputs.py": "e30622cb3258479669f0a32ab06924b1b37dfa7151cb293c749859f675711218",
-    "install_host.py": "3db11151915a7fdd836f4b2d5a4aa001457f45b0542f513f292ffb30c67e3eb7",
+    "install_host.py": "f61201bf57bd4597b7ac198b2090276023560a714821022e0a12293efd35eb37",
     "install_preflight.py": "2dfd1d5df53ec933ed4fb38a1edbe4309b5dd4cff901a9a5de81a5c6ff050c57",
     "runtime-requirements.txt": "ca8eb8d430bd3d883523e592c99bec74c65c7537a765c52998001f0ae4c76d3a",
 }
@@ -123,8 +122,7 @@ class Installation:
         self.durable = True
         host.bootstrap(python, self.run)
         self.phase = "activation"
-        # Initial install only: symlink creation is atomic and refuses any target.
-        Path("/opt/postcardscene/venv").symlink_to(self.release / "venv")
+        host.activate_payload(self.release)
         self.activation = True
         self.run(("/usr/bin/systemctl", "daemon-reload"))
         self.run(("/usr/bin/systemctl", "enable", *self.host.SERVICES))
@@ -160,14 +158,10 @@ class Installation:
                     "Service stop failed; inspect and stop installed units before recovery.",
                     file=sys.stderr,
                 )
-        elif (
-            self.release is not None
-            and self.release.is_dir()
-            and not self.release.is_symlink()
-        ):
+        elif self.release is not None:
             # Exact fresh root-controlled payload only; never durable/config authority.
             try:
-                shutil.rmtree(self.release)
+                self.host.discard_staged_payload(self.release)
             except OSError:
                 print(
                     "Staged payload cleanup failed; preserve it for inspection.",
