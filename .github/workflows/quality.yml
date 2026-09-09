@@ -41,5 +41,10 @@ jobs:
           python-version: "3.12"
       - run: uv build --wheel --no-sources
       - run: sudo apt-get update && sudo apt-get install --yes python3-venv
+      - name: Prepare trusted parent in the disposable runner
+        run: |
+          stat -c '%U:%G %a %n' /opt
+          sudo chown root:root /opt
+          sudo chmod 0755 /opt
       - name: Real two-UID installed Linux software evidence
         run: sudo /usr/bin/python3 -B scripts/smoke_native_install.py dist/*.whl

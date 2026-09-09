@@ -264,3 +264,16 @@ def test_staging_enforces_isolated_hash_locked_binary_install(tmp_path, monkeypa
     )
     assert "--no-deps" in app
     assert "check" in calls[3]
+
+
+def test_blank_wheel_record_row_rejected_safely(bundle):
+    path = next(bundle.glob("*.whl"))
+    with zipfile.ZipFile(path) as wheel:
+        members = {name: wheel.read(name) for name in wheel.namelist()}
+    record = next(name for name in members if name.endswith("/RECORD"))
+    members[record] = b"\n" + members[record]
+    with zipfile.ZipFile(path, "w") as wheel:
+        for name, content in members.items():
+            wheel.writestr(name, content)
+    with pytest.raises(installer.InstallError, match="invalid_wheel_record"):
+        installer.validate_inputs(bundle)

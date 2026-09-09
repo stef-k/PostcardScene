@@ -122,7 +122,11 @@ def validate_record(wheel, info):
     record = f"{info}/RECORD"
     rows = list(csv.reader(io.StringIO(wheel.read(record).decode())))
     files = {entry.filename for entry in wheel.infolist() if not entry.is_dir()}
-    if len(rows) != len(files) or {r[0] for r in rows} != files:
+    if (
+        any(len(row) != 3 for row in rows)
+        or len(rows) != len(files)
+        or {r[0] for r in rows} != files
+    ):
         raise InstallError("invalid_wheel_record")
     for name, digest, size in rows:
         if name == record:
