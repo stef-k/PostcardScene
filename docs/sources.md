@@ -137,7 +137,7 @@ One isolated untrusted-web Chromium profile may retain ordinary cookies, local
 storage and site preferences across restarts/reboots. It is separate from
 administration and trusted images, replaceable, excluded from backup/restore,
 and may start clean on a replacement host. This is not supported third-party
-login provisioning or session portability; see [operations](operations.md).
+login provisioning or session portability; see [Chromium operations](operations/display.md#isolated-chromium-control-64).
 Scene/Sequence owns dwell. New presentations navigate freshly; no periodic reload
 setting is provided. Pages may run their own timers/scripts even when future
 Scene progression is paused. URL management/resolution is implemented by #82;

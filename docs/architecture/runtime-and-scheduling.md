@@ -35,7 +35,7 @@ a bounded join; no job framework or third service is added.
 five-second failure restart, five starts per minute, and a 30-second cgroup stop
 bound. Weak After/Wants graphics ordering preserves independent runtime lifetime.
 The CLI emits fixed stdlib lifecycle events to journald without exception text or
-tracebacks. See [installed service operations](../operations.md#installed-runtime-service-122)
+tracebacks. See [installed service operations](../operations/runtime.md#installed-runtime-service-122)
 for exact values and installed path ownership. #26 installs/enables/provisions it.
 
 #113 optionally constructs one `PanelCoordinator` and one panel-only local
@@ -50,7 +50,7 @@ the panel owner and catalog work, each with a five-second bound. Every cleanup i
 one fails; the primary error is preserved. Shutdown itself requests no panel
 transition. Disabled development hosts construct neither backends nor listener;
 `host.panel_status` reports configured false/unavailable. See the
-[panel protocol](../operations.md#live-panel-runtime-and-local-control-113).
+[panel protocol](../operations/display.md#live-panel-runtime-and-local-control-113).
 
 #124 adds exactly one `runtime.output.OutputMonitor` whenever trusted runtime
 configuration is supplied, including the packaged CLI with panel power disabled.

@@ -147,8 +147,8 @@ SQLite keeps installation and recovery simple. Original media remains in filesys
 The web/control and runtime/player processes must be independently restartable.
 #122 freezes `postcardscene-runtime.service`, weak graphics startup ordering,
 shared installed `/etc/postcardscene/config.py` consumption, and journald lifecycle
-logging; see the [installed service contract](operations.md#installed-runtime-service-122).
-#125 packages the independent [web unit](operations.md#installed-web-service-125)
+logging; see the [installed service contract](operations/runtime.md#installed-runtime-service-122).
+#125 packages the independent [web unit](operations/runtime.md#installed-web-service-125)
 with the #131 entry point and identity, bounded supervision and restricted filesystem/
 device authority. #26 retains installation and provisioning ownership. #124 connects one shared
 output monitor with [serialized signal-power coordination](architecture/graphics-and-panel.md#shared-display-mutation-124);
@@ -187,7 +187,7 @@ They are not replaced by the subsystem architecture contracts.
 #139 freezes the [managed-host read-only preflight](architecture/installation-recovery-and-operations.md#managed-host-preflight-139):
 ARM64 Ubuntu Server 24.04/26.04 LTS and Raspberry Pi OS/Debian 13 Trixie,
 with closed distro package/seat authority. #140 implements the
-[initial installer](architecture/installation-recovery-and-operations.md#managed-initial-installation-140)
+[initial installer](architecture/installation-recovery-and-operations/installation.md#managed-initial-installation-140)
 with explicit bootstrap, versioned activation and real two-UID Linux software
 evidence. #143 retains final published-bundle manifest/member authentication.
 

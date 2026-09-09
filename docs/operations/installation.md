@@ -1,0 +1,257 @@
+# Installation and diagnostics
+
+Use this guide for release inputs, host preflight, managed initial installation,
+failure recovery and installed read-only diagnostics.
+
+Return to [Appliance operations](../operations.md). For installed service operation,
+see [Runtime and services](runtime.md); for graphics and panel operation, see
+[Display, rendering and panel control](display.md).
+
+## Release inputs (#138)
+
+Released CPython 3.11–3.14 is the application compatibility boundary. Generic
+Linux CI is Python evidence only; Raspberry Pi ARM64/graphics/device support
+still requires the owning physical validation gates.
+
+The versioned application input is `postcardscene-<version>-py3-none-any.whl` plus
+`runtime-requirements.txt`, generated from the exact `uv.lock`. Installation must
+use hashes and binary dependencies only, followed by the wheel with `--no-deps`;
+a missing compatible dependency wheel fails rather than compiling on the target.
+No configuration, signing key, database, cache/profile or backup belongs in these
+release inputs.
+
+The future GitHub Release `postcardscene-<version>-linux-native.tar.gz` will carry
+those inputs, standalone `install.py` (#140), `install_preflight.py` (#139),
+and `release-manifest.json` (#143), plus explicitly reviewed metadata/checksums.
+Version comes only from
+`pyproject.toml`; tag, wheel, installed/Overview and manifest identity must agree.
+Publication and updates remain later work. See
+[development checks](../../README.md#release-input-development) and the
+[release contract](../architecture/installation-recovery-and-operations.md#deterministic-release-inputs-138).
+
+## Read-only managed-host preflight (#139)
+
+Run `python3 -B install_preflight.py` from the source/native support files, or add
+`--json` for the frozen result schema (`ok`, fixed `reasons`, nullable `plan`).
+This standalone stdlib module needs no installed PostcardScene or root execution.
+#140 `install.py` consumes `preflight()` directly; #143 ships the module
+beside it. Exit 0 means the clean host has a representable provisioning plan;
+exit 1 means inspection failed and there is no plan. It does not mean packages
+are already installed, conflicts resolved, or physical playback validated.
+
+| Managed target (Raspberry Pi 4/5-class ARM64) | Package authority |
+| --- | --- |
+| Ubuntu Server 24.04 LTS / Noble | Ubuntu archive native tools; Canonical Chromium snap, `latest/stable`, `/snap/bin/chromium`. |
+| Ubuntu Server 26.04 LTS / Resolute | Same authority and native runtime contracts. |
+| Raspberry Pi OS 64-bit / Debian 13 Trixie, preferably Lite | Debian/Raspberry Pi archive native tools and `chromium`, `/usr/bin/chromium`. |
+
+Point releases retain these release identities. Exact `ubuntu` with its matching
+release/codename, or `debian`/`raspbian` 13 with `trixie`, are recognized; `ID_LIKE`
+does not authorize derivatives. Machine ARM64, 64-bit bootstrap userland and dpkg
+`arm64` must agree. Containers, WSL and hosts without systemd PID 1 are rejected.
+This is the managed target matrix, not proof of Raspberry Pi model or HDMI support.
+
+The fixed apt set includes `labwc`, `wlr-randr`, `wlopm`, `mpv`, `ddcutil`,
+`v4l-utils` (owns `/usr/bin/cec-ctl`), `python3`, `python3-venv`, `systemd`,
+`systemd-sysv`, `libpam-systemd` and `libseat1`, plus Ubuntu `snapd` or Debian
+`chromium`. Other native tool paths are `/usr/bin/<tool>`. Default seat authority
+is active logind plus PAM; `--seat seatd` explicitly adds `seatd` and a socket
+access provisioning action, without automatic fallback. The packaged #62 PAM/VT
+and seatd templates remain authority for later installation.
+
+`/usr/bin/python3` must already provide distro-owned CPython 3.11–3.14 and
+importable venv/ensurepip with an available pip version. Missing bootstrap support
+fails `python_bootstrap_required`; an operator must supply the distro prerequisite
+before retrying. Preflight never creates a venv or installs into system Python.
+Missing native tools return `install_required` only when cached apt candidates
+have supported origins. No apt update/download is performed. Candidate and
+installed versions must be represented by the official Ubuntu ports/archive/
+security or Debian deb/security/Raspberry Pi archive URLs; custom mirrors and
+locally supplied package versions require explicit operator resolution.
+
+Installed executable authority is checked against dpkg ownership/integrity and
+root-controlled paths before bounded version probes. Modified packages, missing
+installed executables and malformed versions fail closed. Chromium uses package
+or local snap metadata, never a browser launch. Ubuntu's `chromium-browser` is
+only a transition to the snap; its wrapper alone cannot satisfy Chromium.
+Installed labwc retains #62's 0.7.1 floor; no new media/panel version minimum is
+invented. Package presence cannot prove seat, codec, audio, CEC or DDC behavior.
+
+The installed roots in the table below, plus `/opt/postcardscene`, are
+inspected only through existing ancestors/targets. Symlinks, foreign/writable
+ancestors and unrecognized existing roots fail closed. Supported local persistent
+filesystems are ext2/3/4, btrfs, xfs, f2fs and zfs; `/run` may also use tmpfs.
+Unknown/network mounts are rejected before inspecting their installation paths.
+Existing PostcardScene accounts or units are unrecognized until #140/#142 define
+managed recognition; even empty roots are never adopted. Loaded tty1 getty or
+display-manager units produce explicit `reserve_tty1`/`resolve_display_manager`
+actions, not implicit permission to stop or disable them.
+
+This snapshot makes no package/user/config/service/database mutation, recursive
+root scan or repair. Commands use fixed argv, a clean environment, five-second
+limits and 256 KiB output caps; failures omit raw output, identities and paths.
+The later installer must recheck current authority before mutation and explicitly
+handle every action. It must not treat serialized JSON as trusted installer input.
+Fixture tests and local Ubuntu x86/WSL rejection/package-query observations are
+software evidence only. ARM64 boot, real seat/device access and physical display
+validation remain with #66/#116/#127 and the release-candidate gates.
+
+Package evidence checked for #139: [Ubuntu release families](https://packages.ubuntu.com/),
+[Noble labwc 0.7.1/arm64](https://packages.ubuntu.com/noble/labwc),
+[Resolute wlopm](https://packages.ubuntu.com/resolute/wlopm),
+[Ubuntu Chromium transition](https://packages.ubuntu.com/en/chromium-browser),
+[Canonical Chromium snap](https://snapcraft.io/chromium),
+[Trixie Chromium](https://packages.debian.org/trixie/chromium) and
+[labwc](https://packages.debian.org/trixie/labwc),
+[v4l-utils arm64 file list](https://packages.debian.org/trixie/arm64/v4l-utils/filelist),
+and [Raspberry Pi OS Trixie images](https://www.raspberrypi.com/software/operating-systems/).
+These are package/provisioning evidence, not hard-coded current version promises.
+
+## Managed initial installation (#140)
+
+From one trusted, reviewed extracted input set, run `sudo python3 -B install.py
+install` in an interactive terminal. Keep exactly one application wheel beside
+`install.py`, `install_preflight.py` and `runtime-requirements.txt`; no checkout or
+preinstalled application is needed. The installer validates wheel identity,
+Python/pure-wheel metadata, entry points, required assets and wheel RECORD hashes.
+It checks the reviewed preflight and requirements bytes against installer input
+pins **before importing support or mutating the host**. The installer itself is
+trusted executable bootstrap authority. These checks do not authenticate a
+published release: #143 owns its final manifest schema, member hashes, extraction
+and publication checks. No final release-manifest format is defined here.
+
+The only initial path uses #139's default logind/PAM plan. Standalone preflight's
+explicit seatd inspection remains available; this initial command does not select
+seatd. Failed preflight or a non-root/non-interactive invocation changes nothing.
+Existing accounts, roots, config or units fail closed, including repeat invocations;
+installation never adopts legacy deployments, resets an administrator or replaces
+a signing key. Preserved-state reinstall and updates remain #142/#144.
+
+The mutation sequence is:
+
+1. Install the closed apt prerequisites (600-second update/900-second install
+   bounds) and, on Ubuntu, Canonical Chromium stable snap (600 seconds). Recheck
+   the clean-host preflight and require every planned tool to be installed before
+   creating application roots. Package failures retain distro package-manager
+   evidence and never trigger package rollback or application-state mutation.
+2. Create a root-controlled `/opt/postcardscene/releases/<wheel-version>/venv`,
+   using the supported distro Python. Install pinned requirements with required
+   hashes and binary-only policy, then the app wheel with `--no-deps`. Check pip
+   consistency, installed version, imports, entry points and packaged files before
+   bootstrap or activation. No distro-Python pip installation or source build runs.
+3. Create locked, nologin `postcardscene` and `postcardscene-web` users with shared
+   primary group `postcardscene`. Runtime supplementary groups are selected only
+   from actual root-owned group-readable/writable DRM, sound, CEC and I2C character
+   devices and their allowlisted `render`/`video`/`audio`/`i2c` groups. Logind owns
+   session device access. Web receives no supplementary/device/seat groups.
+4. Provision the authorities below, copy wheel-owned systemd/PAM assets, and keep
+   labwc configuration in the versioned wheel where its launcher already reads it.
+   Install web/runtime `UMask=0007` drop-ins and a tmpfiles entry for reproducible
+   `/run/postcardscene` creation. Record prior getty/display-manager states and
+   local unit symlink targets in root-controlled
+   `/opt/postcardscene/service-conflicts.json`, disable/stop loaded conflicts and
+   mask tty1 getty. No desktop profile is rewritten.
+5. Require inactive application services. Exclusively reserve the new empty
+   database as the runtime UID with mode `0660`: SQLite's default initial `0644`
+   cannot acquire group write through umask alone. Alembic owns all DB content.
+   As the web UID with umask `0007`, run
+   packaged `auth init-secret`, `db upgrade`, `db check` and `auth create-admin`.
+   Username/password prompts use the interactive CLI; passwords never enter argv,
+   environment, config or an installer log. No default password is generated.
+6. Atomically create `/opt/postcardscene/venv` pointing to the validated release
+   venv. Only then daemon-reload, enable graphics/runtime/web for multi-user boot,
+   start them in that order and check active state. Existing independent service
+   lifetime policies remain intact. Active units do not prove display readiness.
+
+| Authority | Installed owner/group and mode |
+| --- | --- |
+| `/opt/postcardscene` and releases | root-controlled, directories 0755; payload not service-writable |
+| `/etc/postcardscene`, `config.py` | root:postcardscene 0750 / 0640 |
+| `/var/lib/postcardscene` | postcardscene:postcardscene 2770; SQLite/WAL/SHM 0660 |
+| `/var/lib/postcardscene-web`, `session.key` | postcardscene-web:postcardscene-web 0700; web-owned key 0600 |
+| `/var/cache/postcardscene` | postcardscene:postcardscene 0700 |
+| `/run/postcardscene` | postcardscene:postcardscene 0750; panel socket 0660 |
+| `/run/postcardscene-wayland` | graphics unit-owned 0700, independent of shared IPC |
+
+Initial config selects the local shared database, private signing-key path and
+loopback trusted Hosts. #131's direct loopback HTTP defaults remain in effect;
+remote HTTP is not enabled. No provider credentials are written. Trusted roots
+must be real directories; existing files are never overwritten and unknown trees
+are never recursively chowned/chmodded.
+
+### Install failures and evidence
+
+Failure exits nonzero and reports the failed phase. Before bootstrap begins,
+cleanup removes only the newly staged release; created config/identities/roots,
+package changes and conflict records remain for inspection. After bootstrap starts,
+payload, config, database and key are preserved without downgrade or rollback.
+Activation failures attempt to disable and stop the new application units; a
+failed stop/disable is reported separately and requires operator attention before
+recovery or reboot. Do not delete durable authority or retry this as an update.
+
+For a bootstrap failure, keep services inactive and inspect the named release's
+venv and `/etc/postcardscene/config.py`. A host administrator can open a shell as
+`postcardscene-web`, set `umask 0007` and
+`POSTCARDSCENE_CONFIG=/etc/postcardscene/config.py`, then use that staged venv's
+`python -m flask --app postcardscene.web:create_app` with `auth init-secret`,
+`db upgrade`, `db check` and, only if initial creation did not complete,
+`auth create-admin`. These existing commands validate/reuse key/schema authority;
+first verify the database is runtime-owned, group `postcardscene`, mode `0660`.
+If reservation itself failed, investigate the conflict before any migration;
+do not let recovery implicitly create a replacement database with SQLite defaults.
+never use password reset as an install retry. Have the host administrator verify
+all phases before creating the active symlink or enabling services. Earlier
+partial provisioning requires deliberate host reconciliation; this command has
+no automatic cleanup/adoption/resume engine. The saved conflict record identifies
+which prior boot services were changed for later safe removal.
+
+The privileged disposable Linux CI smoke stages the real wheel at the installed
+paths, creates genuinely distinct UIDs, uses normal persistence transactions in
+both directions with live WAL/SHM sidecars, and exercises the group-authorized
+panel socket. It proves private-key, socket replacement, Wayland and representative
+character-device DAC separation and starts canonical runtime/web units under their
+installed identities. It deliberately bypasses ARM64/package detection on the CI
+VM. Graphics boot, actual distro provisioning on ARM64, HDMI/GPU/audio and physical
+Pi behavior remain unverified; #66/#116/#127 retain that evidence.
+
+## Installed read-only diagnostics (#141)
+
+Run `/opt/postcardscene/venv/bin/postcardscene-doctor` as an authorized local host
+administrator (normally via `sudo`); add `--json` for the same ordered, immutable
+check results in JSON. No configuration-path, command, impersonation or repair
+options are accepted. Exit **0** means all applicable checks are ready; **1** means
+degraded/unavailable checks need attention; **2** means an installation identity or
+configuration inconsistency (or invalid invocation); **3** is an internal command
+error. `backup: not_applicable (not_implemented)` is expected until #27 lands.
+
+Fixed check identifiers cover release/wheel identity, exact #140 assets and
+conflict-record structure, config/two-UID/key/DB/sidecar/IPC permissions, independent
+service states, DB/schema/catalog health, #123 storage thresholds, web serving,
+graphics and executable panel-tool prerequisites. No secrets, hostnames, media
+paths, URLs, symlink targets, raw configuration or tool/error output are printed.
+Each check has a five-second deadline and isolated failure; systemd output is
+limited to 16 KiB and three allowlisted properties. Storage warning/critical
+thresholds remain exactly #123's policy.
+
+Doctor never opens the installed database through SQLite, which could create
+sidecars even for a read-only query. It checks a private, disposable copy of only
+the main DB and existing WAL (64 MiB combined maximum), rejecting files that
+change while copied, then reuses `Database.check()` and persisted catalog health.
+Private 0700 scratch under `/tmp` and 0600 copies are removed after each check,
+including a check timeout. This is diagnostic sampling, **not a backup**. A busy,
+oversized or unreadable DB reports unavailable; catalog summaries cap Sources at
+1,000. Installed DB/WAL/SHM and signing-key authority are never repaired or created.
+
+To avoid executing host code, configuration inspection accepts literal Python
+assignments only. Valid dynamic Python remains service-owned and reports
+`config_not_inspectable`; doctor does not execute it. Serving classification uses
+the existing #131 validator without a listener. Graphics checks use the existing
+session and read-only output probes only under the runtime UID; outside that UID,
+including root, `capability_unavailable` is expected. Tool readiness means executable
+DAC prerequisites only, not device access or physical panel support.
+
+Doctor does not restart services, migrate, rescan media, read signing-key bytes,
+parse journals, mutate hardware or establish HDMI/4K/acceleration evidence. Use
+#140/#142 for provisioning/reinstall ownership, #144 for recovery-backed updates,
+#27 for backup/restore, and #66/#116/#127 for physical validation. Review individual
+service results independently; web failure does not imply runtime failure.

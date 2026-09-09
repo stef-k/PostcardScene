@@ -100,7 +100,7 @@ Panel protection also includes bounded static-content dwell, renderer/player wat
 The shared session foundation targets Raspberry Pi 4/5 ARM64 on **both Ubuntu
 Server LTS and Raspberry Pi OS 64-bit**, using native Wayland/labwc. Versioned
 appliance configuration, service/PAM templates and a bounded Python readiness
-probe are implemented in #62. See [appliance operations](docs/operations.md) for
+probe are implemented in #62. See [graphical session operations](docs/operations/display.md#linux-graphical-session-62) for
 provisioning ownership and validation limits. #63 implements the shared one-HDMI
 mode policy, bounded hotplug polling seam and safe diagnostics; #124 runs one
 monitor in RuntimeHost, serialized with intentional signal power operations. #64 provides one packaging-neutral isolated Chromium
@@ -122,12 +122,12 @@ The Foundation milestone is not complete merely when source code can display med
 
 External media libraries themselves are not copied into PostcardScene backups.
 
-#140 provides the [managed initial installer](docs/operations.md#managed-initial-installation-140):
+#140 provides the [managed initial installer](docs/operations/installation.md#managed-initial-installation-140):
 run `sudo python3 -B install.py install` from trusted wheel/requirements/support
 inputs on a clean #139-supported host. It stages a versioned venv, provisions
 separate runtime/web identities, explicitly bootstraps state and activates the
 packaged services. Repeat invocations fail closed without resetting credentials.
-Use the installed [read-only doctor](docs/operations.md#installed-read-only-diagnostics-141)
+Use the installed [read-only doctor](docs/operations/installation.md#installed-read-only-diagnostics-141)
 for bounded host diagnostics. Published-bundle manifest/member verification remains #143; updates remain #144.
 Privileged Linux CI proves two-UID software permissions, not physical Pi support.
 
@@ -173,7 +173,7 @@ It requires network access to the locked dependency wheels and runs once in
 Quality; all four supported Python series run locked sync, Ruff and the full
 application tests. This is generic Linux Python evidence, not ARM64/HDMI support.
 
-See [release inputs](docs/operations.md#release-inputs-138) for the future native
+See [release inputs](docs/operations/installation.md#release-inputs-138) for the future native
 bundle and lifecycle ownership.
 
 ### Managed-host prerequisite inspection
@@ -181,7 +181,7 @@ bundle and lifecycle ownership.
 `python3 -B install_preflight.py --json` performs #139's standalone read-only
 inspection for the ARM64 Ubuntu Server 24.04/26.04 LTS and Raspberry Pi OS Trixie
 managed targets. It returns a closed provisioning plan or fixed failure reasons;
-it installs nothing. See [preflight operations](docs/operations.md#read-only-managed-host-preflight-139)
+it installs nothing. See [preflight operations](docs/operations/installation.md#read-only-managed-host-preflight-139)
 for prerequisites, package authority, seat selection and evidence limits.
 
 ### Control shell development
@@ -201,7 +201,7 @@ The command starts only the web process. Stop it with Ctrl-C.
 The Flask development server is for local development only. It is not the managed
 production appliance server. V0 production uses only Waitress 3.x through the
 foreground `postcardscene-web` executable. See the
-[production web contract](docs/operations.md#production-control-plane-131) for
+[production web contract](docs/operations/runtime.md#production-control-plane-131) for
 mandatory `TRUSTED_HOSTS`, loopback HTTP defaults, explicit insecure private-LAN
 opt-in, and same-host HTTPS proxy configuration. #125 owns web systemd supervision;
 #26 owns installation and provisioning.
@@ -229,7 +229,7 @@ After `uv sync --locked`, run `uv run postcardscene-runtime`. The packaged
 `postcardscene-runtime` executable starts only the runtime host and waits until
 Ctrl-C (SIGINT) or SIGTERM requests cooperative shutdown. Normal exit is zero;
 fatal failure exits nonzero with fixed, sanitized stdlib lifecycle diagnostics.
-The packaged [installed runtime service](docs/operations.md#installed-runtime-service-122)
+The packaged [installed runtime service](docs/operations/runtime.md#installed-runtime-service-122)
 uses the shared trusted `/etc/postcardscene/config.py` path and journald logging;
 #26 owns installation and enablement.
 
@@ -239,7 +239,7 @@ Python file selected by `POSTCARDSCENE_CONFIG`; the runtime loader does not impo
 Flask. A configured missing/unreadable file or incompatible database fails runtime
 startup. The runtime performs explicitly requested catalog refreshes and monitors the
 shared graphics output. Trusted configuration optionally enables panel power;
-see [panel runtime operations](docs/operations.md#live-panel-runtime-and-local-control-113).
+see [panel runtime operations](docs/operations/display.md#live-panel-runtime-and-local-control-113).
 Playback, automatic scans and scheduling are not connected.
 Web and runtime restart independently; Overview still reports runtime unavailable
 until a later issue chooses and connects IPC.
@@ -449,7 +449,7 @@ invalid input leaves the previous value unchanged and shows form feedback. Keep
 the host timezone database installed and current. This stores appliance
 configuration only: it does not change the host clock. **Schedule** uses this
 timezone for weekly active windows and bounded temporary active/sleep overrides;
-see the [schedule operator guide](docs/operations.md#weekly-schedule-and-temporary-overrides).
+see the [schedule operator guide](docs/operations/runtime.md#weekly-schedule-and-temporary-overrides).
 Schedule shows configured intent; live playback/panel integration remains pending. The dark/light toggle remains a browser-local presentation choice.
 
 **Overview** shows the installed application version and the exact schema revision

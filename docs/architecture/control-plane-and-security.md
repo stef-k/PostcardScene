@@ -125,7 +125,7 @@ happens only at the web boundary, with end 00:00 representing minute 1440.
 Settings remains the timezone authority. The page labels configured intent and
 local override expiry, without claiming actual runtime/panel state. Errors are
 sanitized; there are no probes, runtime commands, schema or scheduler additions.
-See [operations](../operations.md#weekly-schedule-and-temporary-overrides).
+See [operations](../operations/runtime.md#weekly-schedule-and-temporary-overrides).
 
 ## Local panel control (#113)
 
@@ -154,8 +154,8 @@ no socket command; unavailable runtime status leaves durable management usable.
 Flask never imports/constructs panel hardware owners or invokes their tools.
 Accepted tests mean submitted, not completed physical transitions; cleanup failure
 requires runtime recovery and is never retried from Flask. General runtime/playback
-IPC remains #29 authority. See [Display guidance](../operations.md#display-settings-status-and-tests).
-See [wire protocol and operations](../operations.md#live-panel-runtime-and-local-control-113).
+IPC remains #29 authority. See [Display guidance](../operations/display.md#display-settings-status-and-tests).
+See [wire protocol and operations](../operations/display.md#live-panel-runtime-and-local-control-113).
 
 ## Authentication, network exposure, and secrets
 
@@ -184,7 +184,7 @@ process. It reads the shared trusted `POSTCARDSCENE_CONFIG` file, validates befo
 listening, and starts no runtime workers. Debug/testing are forced off; startup
 failure exits nonzero. Flask/Waitress diagnostics use fixed sanitized messages,
 without exception text or request-access logging. The factory/CLI remains usable
-without production serving settings. See [operations](../operations.md#production-control-plane-131)
+without production serving settings. See [operations](../operations/runtime.md#production-control-plane-131)
 for the exact configuration and installed paths.
 
 Production requires nonempty finite-sequence Flask `TRUSTED_HOSTS`: string
@@ -224,7 +224,7 @@ hard link. RuntimeHost never reads it. Shared SQLite state stays under
 secret via existing auth CLI as web UID, and exact DB/WAL/SHM modes/umask; #125/#26
 must prove two-UID database operation without web graphics authority. Application
 startup performs no recursive chmod/chown repair. #27 owns sensitive backup/restore.
-#125 packages the [independent web unit](../operations.md#installed-web-service-125)
+#125 packages the [independent web unit](../operations/runtime.md#installed-web-service-125)
 with no capabilities or device/Wayland access, read-only signing authority, and
 writes limited to shared state plus private temporary buffering. Network and
 fixed panel-client access remain available. #26 installs/provisions it; #29/#134

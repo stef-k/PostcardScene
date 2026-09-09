@@ -38,7 +38,7 @@ only fixed safe vocabulary. Systemd owns restart and bounded TERM/KILL cleanup;
 RuntimeHost remains application lifecycle authority. Renderers must be runtime
 children, never labwc autostart jobs. No generic supervisor is added.
 
-[Operations](../operations.md#linux-graphical-session-62) owns the service/PAM/seat
+[Operations](../operations/display.md#linux-graphical-session-62) owns the service/PAM/seat
 provisioning contract, readiness semantics and evidence limits. #63 implements
 connector/EDID/mode/hotplug policy below; #64 owns Chromium isolation/control, #65 shared
 surfaces/overlay/input capability, and #66 representative physical validation on
@@ -188,7 +188,7 @@ queue. Unavailable controls retire locally and playback can continue; uncertain
 cleanup sets shared cancellation and a fixed fatal failure for #93. Join is bounded
 to five seconds. This does not construct or modify RuntimeHost/content execution.
 
-[Operations](../operations.md#shared-surface-and-overlay-capability-65) records the
+[Operations](../operations/display.md#shared-surface-and-overlay-capability-65) records the
 protocol, software smoke and limits. #8 owns runtime/control UI integration, #6
 real mpv playback, #7 web policy, #10 panel protection, #26 system provisioning,
 and #66 representative physical/package evidence on both distro paths.
@@ -289,7 +289,7 @@ Matching readback proves signal state only; physical state always remains unknow
 The RuntimeHost output monitor coordinates intentional signal sleep with #63
 through the shared mutation guard below.
 
-[Operations](../operations.md#panel-power-capabilities-111) records host-tool
+[Operations](../operations/display.md#panel-power-capabilities-111) records host-tool
 prerequisites and evidence limits. #26 owns provisioning; #112/#113 own convergence
 and live ownership; #116 owns real panel validation. Software tests make no
 Pi/display compatibility, actual standby or non-root permission claims.
@@ -363,7 +363,7 @@ until confirmed signal on, including cancelled/uncertain readback and wake. The
 #124 output monitor suspends #63 mode reconciliation while this gate holds.
 It is an ownership gate, not physical standby evidence. The local panel-only
 socket exposes this gate with the fixed #112 status and diagnostic intents; see
-[operations](../operations.md#live-panel-runtime-and-local-control-113). #104/#115
+[operations](../operations/display.md#live-panel-runtime-and-local-control-113). #104/#115
 retain scheduling, playback suppression and static-protection integration.
 
 ### Shared display mutation (#124)
