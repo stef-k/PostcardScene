@@ -111,6 +111,7 @@ def test_symlink_support_rejected(bundle, name):
 
 def test_failed_preflight_has_no_mutation(bundle, monkeypatch):
     inputs = (*installer.validate_inputs(bundle)[:-1], host)
+    monkeypatch.setattr(host, "classify", lambda *a: "clean")
     inputs[-2].preflight = lambda: SimpleNamespace(ok=False)
     monkeypatch.setattr(installer, "validate_inputs", lambda _: inputs)
     calls = []
@@ -126,6 +127,7 @@ def test_failed_preflight_has_no_mutation(bundle, monkeypatch):
 def test_ordering_and_failure_preservation(bundle, monkeypatch, failure, capsys):
     inputs = (*installer.validate_inputs(bundle)[:-1], host)
     plan = SimpleNamespace(tools=())
+    monkeypatch.setattr(host, "classify", lambda *a: "clean")
     inputs[-2].preflight = lambda: SimpleNamespace(ok=True, plan=plan)
     monkeypatch.setattr(installer, "validate_inputs", lambda _: inputs)
     monkeypatch.setattr(installer.os, "geteuid", lambda: 0)

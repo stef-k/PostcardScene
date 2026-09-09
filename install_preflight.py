@@ -319,7 +319,7 @@ def python_check(host):
     return ".".join(map(str, version))
 
 
-def storage_check(host):
+def storage_check(host, installation="clean"):
     mounts = []
     for line in host.read("/proc/self/mountinfo").splitlines():
         fields = line.split()
@@ -344,7 +344,9 @@ def storage_check(host):
             raise Rejected("unsupported_install_storage")
 
         path = Path(root)
-        for ancestor in reversed((path, *path.parents)):
+        for ancestor in reversed(
+            path.parents if installation == "preserved" else (path, *path.parents)
+        ):
             if not host.exists(str(ancestor)):
                 continue
             info = host.lstat(str(ancestor))
@@ -354,8 +356,8 @@ def storage_check(host):
                 or info.st_mode & 0o022
             ):
                 raise Rejected("unsafe_install_root")
-        if host.exists(root):
-            # No managed marker exists before #140/#142: never adopt even empty roots.
+        if installation == "clean" and host.exists(root):
+            # Standalone inspection never adopts even empty roots.
             raise Rejected("existing_installation_unrecognized")
 
 
@@ -377,9 +379,9 @@ def service_state(host, unit):
     return values
 
 
-def service_check(host, seat):
+def service_check(host, seat, installation="clean"):
     for path in ("/etc/passwd", "/etc/group"):
-        if any(
+        if installation == "clean" and any(
             line.split(":", 1)[0] in ("postcardscene", "postcardscene-web")
             for line in host.read(path).splitlines()
         ):
@@ -493,16 +495,20 @@ def chromium_snap(host):
     return Tool("chromium", "/snap/bin/chromium", "installed")
 
 
-def preflight(host=None, *, seat="logind"):
+def preflight(host=None, *, seat="logind", installation="clean"):
+    # Internal prerequisite reuse only. The installer must separately recognize
+    # removed_preserved before requesting this mode; the CLI exposes no switch.
     host = host or Host()
     try:
+        if installation not in ("clean", "preserved"):
+            raise Rejected("unsupported_installation_mode")
         if seat not in ("logind", "seatd"):
             raise Rejected("unsupported_seat_authority")
         distro, release = identity(host)
         platform_check(host)
         python_version = python_check(host)
-        storage_check(host)
-        actions = service_check(host, seat)
+        storage_check(host, installation)
+        actions = service_check(host, seat, installation)
         packages = BASE_PACKAGES + (("snapd",) if distro == "ubuntu" else ("chromium",))
         seat_packages = ("seatd",) if seat == "seatd" else ()
         for package in packages + seat_packages:
@@ -532,6 +538,7 @@ def preflight(host=None, *, seat="logind"):
                 ("chromium", "latest/stable") if distro == "ubuntu" else (),
                 tools + (browser,),
                 actions,
+                installation,
             ),
         )
     except Rejected as exc:

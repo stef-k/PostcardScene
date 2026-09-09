@@ -154,17 +154,7 @@ def provision_identities(run):
                 "postcardscene",
             )
         )
-    runtime, web = pwd.getpwnam("postcardscene"), pwd.getpwnam("postcardscene-web")
-    shared = grp.getgrnam("postcardscene").gr_gid
-    if (
-        runtime.pw_uid == web.pw_uid
-        or 0 in (runtime.pw_uid, web.pw_uid)
-        or runtime.pw_gid != shared
-        or web.pw_gid != shared
-        or os.getgrouplist(web.pw_name, shared) != [shared]
-    ):
-        raise InstallError("invalid_service_identities")
-    return runtime.pw_uid, web.pw_uid, shared, grp.getgrnam("postcardscene-web").gr_gid
+    return preserved_identities()
 
 
 def install_packages(plan, run):
@@ -231,21 +221,14 @@ def stage_payload(release, wheel_name, wheel, requirements, plan, run):
 
 
 def install_assets(wheel, run):
-    with zipfile.ZipFile(io.BytesIO(wheel)) as archive:
-        for source, target in ASSETS.items():
-            write_new(Path(target), archive.read("postcardscene/" + source))
-    for name in ("runtime", "web"):
-        dropin = Path(f"/etc/systemd/system/postcardscene-{name}.service.d")
+    for dropin in DROPINS:
         directory(dropin)
-        write_new(dropin / "permissions.conf", b"[Service]\nUMask=0007\n")
-    write_new(
-        Path("/etc/tmpfiles.d/postcardscene.conf"),
-        b"d /run/postcardscene 0750 postcardscene postcardscene -\n",
-    )
-    run(("/usr/bin/systemd-tmpfiles", "--create", "/etc/tmpfiles.d/postcardscene.conf"))
+    for path, content in asset_bytes(wheel).items():
+        write_new(path, content)
+    run(("/usr/bin/systemd-tmpfiles", "--create", str(TMPFILES)))
 
 
-def reserve_graphics(preflight, run):
+def reserve_graphics(preflight, run, *, preserved=False):
     # Record prior state before changing boot conflicts; no desktop file is replaced.
     states = {
         unit: service_state(preflight, unit)
@@ -254,10 +237,12 @@ def reserve_graphics(preflight, run):
     for unit, state in states.items():
         alias = Path("/etc/systemd/system") / unit
         state["local_symlink"] = str(alias.readlink()) if alias.is_symlink() else None
-    write_new(
-        Path("/opt/postcardscene/service-conflicts.json"),
-        json.dumps(states, sort_keys=True).encode(),
-    )
+    destination = MARKER.with_suffix(".new") if preserved else MARKER
+    if preserved:
+        conflict_record()
+    write_new(destination, json.dumps(states, sort_keys=True).encode())
+    if preserved:
+        os.replace(destination, MARKER)
     for unit, state in states.items():
         if state["LoadState"] == "loaded":
             run(("/usr/bin/systemctl", "disable", "--now", unit))
@@ -312,3 +297,403 @@ def discard_staged_payload(release):
     # Caller owns this exact fresh root-controlled release, never durable state.
     if release.is_dir() and not release.is_symlink():
         shutil.rmtree(release)
+
+
+# Closed lifecycle paths; durable roots are inspected, never recursively repaired.
+ROOT = Path("/opt/postcardscene")
+RELEASES = ROOT / "releases"
+MARKER = ROOT / "service-conflicts.json"
+DATABASE = Path("/var/lib/postcardscene/postcardscene.sqlite3")
+KEY = Path("/var/lib/postcardscene-web/session.key")
+CONFLICTS = ("getty@tty1.service", "display-manager.service")
+DROPINS = tuple(
+    Path(f"/etc/systemd/system/postcardscene-{n}.service.d") for n in ("runtime", "web")
+)
+TMPFILES = Path("/etc/tmpfiles.d/postcardscene.conf")
+TRANSIENTS = (Path("/run/postcardscene"), Path("/run/postcardscene-wayland"))
+CACHE = Path("/var/cache/postcardscene")
+
+
+def metadata(path, uid=0, gid=0, mode=0o644, kind=stat.S_ISREG):
+    info = path.lstat()
+    if (
+        not kind(info.st_mode)
+        or info.st_uid != uid
+        or info.st_gid != gid
+        or stat.S_IMODE(info.st_mode) != mode
+        or (kind != stat.S_ISDIR and info.st_nlink != 1)
+    ):
+        raise InstallError("managed_authority_invalid")
+    if any(stat.S_ISLNK(p.lstat().st_mode) for p in path.parents):
+        raise InstallError("managed_authority_invalid")
+    return info
+
+
+def read_regular(path, limit=65536):
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    with os.fdopen(fd, "rb") as stream:
+        info = os.fstat(stream.fileno())
+        if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or info.st_size > limit:
+            raise InstallError("managed_authority_invalid")
+        data = stream.read(limit + 1)
+        if len(data) > limit:
+            raise InstallError("managed_authority_invalid")
+        return data
+
+
+def preserved_identities():
+    shadow = {
+        line.split(":")[0]: line.split(":")[1]
+        for line in read_regular(Path("/etc/shadow")).decode().splitlines()
+    }
+
+    runtime, web = pwd.getpwnam("postcardscene"), pwd.getpwnam("postcardscene-web")
+    shared, private = grp.getgrnam("postcardscene"), grp.getgrnam("postcardscene-web")
+    if (
+        runtime.pw_uid == web.pw_uid
+        or min(runtime.pw_uid, web.pw_uid, shared.gr_gid, private.gr_gid) <= 0
+        or shared.gr_gid == private.gr_gid
+        or private.gr_mem
+        or os.getgrouplist(web.pw_name, shared.gr_gid) != [shared.gr_gid]
+    ):
+        raise InstallError("managed_authority_invalid")
+    for account, home in ((runtime, DATABASE.parent), (web, KEY.parent)):
+        if (
+            account.pw_gid != shared.gr_gid
+            or account.pw_dir != str(home)
+            or account.pw_shell != "/usr/sbin/nologin"
+            or not shadow[account.pw_name].startswith(("!", "*"))
+        ):
+            raise InstallError("managed_authority_invalid")
+    allowed = {shared.gr_gid} | {
+        g.gr_gid
+        for g in grp.getgrall()
+        if g.gr_name in {"render", "video", "audio", "i2c"}
+    }
+    if set(os.getgrouplist(runtime.pw_name, shared.gr_gid)) - allowed:
+        raise InstallError("managed_authority_invalid")
+    return runtime.pw_uid, web.pw_uid, shared.gr_gid, private.gr_gid
+
+
+def preserved_authority():
+    import ast
+
+    runtime, web, shared, private = preserved_identities()
+    for path, uid, gid, mode in (
+        (ROOT, 0, 0, 0o755),
+        (Path("/etc/postcardscene"), 0, shared, 0o750),
+        (DATABASE.parent, runtime, shared, 0o2770),
+        (KEY.parent, web, private, 0o700),
+    ):
+        trusted_parent(path)
+        metadata(path, uid, gid, mode, stat.S_ISDIR)
+    config = Path("/etc/postcardscene/config.py")
+    metadata(config, 0, shared, 0o640)
+    # Match doctor's non-executing configuration boundary before privileged work.
+    values = {}
+    for node in ast.parse(read_regular(config)).body:
+        if (
+            not isinstance(node, ast.Assign)
+            or len(node.targets) != 1
+            or not isinstance(node.targets[0], ast.Name)
+        ):
+            raise InstallError("managed_authority_invalid")
+        values[node.targets[0].id] = ast.literal_eval(node.value)
+    if values.get("DATABASE_PATH", str(DATABASE)) != str(DATABASE) or values.get(
+        "SESSION_SECRET_PATH", str(KEY)
+    ) != str(KEY):
+        raise InstallError("managed_authority_invalid")
+    metadata(DATABASE, runtime, shared, 0o660)
+    for suffix in ("-wal", "-shm"):
+        path = Path(str(DATABASE) + suffix)
+        if os.path.lexists(path):
+            info = path.lstat()
+            if info.st_uid not in (runtime, web):
+                raise InstallError("managed_authority_invalid")
+            metadata(path, info.st_uid, shared, 0o660)
+    metadata(KEY, web, shared, 0o600)
+    if KEY.stat().st_size != 32:
+        raise InstallError("managed_authority_invalid")
+    return runtime, web, shared, private
+
+
+def conflict_record():
+    metadata(MARKER)
+    record = json.loads(read_regular(MARKER, 16384))
+    if not isinstance(record, dict) or set(record) != set(CONFLICTS):
+        raise InstallError("conflict_record_invalid")
+    for state in record.values():
+        if not isinstance(state, dict) or set(state) != {
+            "LoadState",
+            "ActiveState",
+            "UnitFileState",
+            "local_symlink",
+        }:
+            raise InstallError("conflict_record_invalid")
+        if (
+            state["LoadState"] not in {"loaded", "not-found", "masked"}
+            or state["ActiveState"] not in {"active", "inactive", "failed"}
+            or state["UnitFileState"]
+            not in {
+                "enabled",
+                "disabled",
+                "static",
+                "masked",
+                "",
+                "enabled-runtime",
+                "linked",
+                "linked-runtime",
+                "masked-runtime",
+                "indirect",
+                "alias",
+                "generated",
+                "transient",
+                "bad",
+            }
+        ):
+            raise InstallError("conflict_record_invalid")
+        target = state["local_symlink"]
+        if target is not None and (
+            type(target) is not str
+            or not target
+            or len(target) > 4096
+            or "\x00" in target
+        ):
+            raise InstallError("conflict_record_invalid")
+    return record
+
+
+def asset_bytes(wheel):
+    with zipfile.ZipFile(io.BytesIO(wheel)) as archive:
+        assets = {
+            Path(target): archive.read("postcardscene/" + source)
+            for source, target in ASSETS.items()
+        }
+    assets.update({p / "permissions.conf": b"[Service]\nUMask=0007\n" for p in DROPINS})
+    assets[TMPFILES] = b"d /run/postcardscene 0750 postcardscene postcardscene -\n"
+    return assets
+
+
+def validate_tree(root, uid, gid, *, payload=False):
+    # No mount crossing, hardlinks, devices or service-controlled symlink traversal.
+    device = root.lstat().st_dev
+    count = 0
+    for parent, directories, files in os.walk(root, followlinks=False):
+        for path in (Path(parent), *(Path(parent) / n for n in directories + files)):
+            count += 1
+            info = path.lstat()
+            if (
+                count > 100000
+                or info.st_dev != device
+                or info.st_uid != uid
+                or info.st_gid != gid
+            ):
+                raise InstallError("unsafe_removal_tree")
+            if stat.S_ISLNK(info.st_mode) and payload:
+                resolved = path.resolve(strict=True)
+                if not resolved.is_relative_to(root) and not (
+                    path.parent.name == "bin"
+                    and path.name.startswith("python")
+                    and resolved.parent == Path("/usr/bin")
+                ):
+                    raise InstallError("unsafe_removal_tree")
+            elif not (
+                stat.S_ISDIR(info.st_mode)
+                or stat.S_ISREG(info.st_mode)
+                and info.st_nlink == 1
+            ):
+                raise InstallError("unsafe_removal_tree")
+            if payload and not stat.S_ISLNK(info.st_mode) and info.st_mode & 0o022:
+                raise InstallError("unsafe_removal_tree")
+
+
+def installed_authority(version, wheel):
+    runtime, _, shared, _ = preserved_authority()
+    metadata(RELEASES, mode=0o755, kind=stat.S_ISDIR)
+    release = RELEASES / version
+    if set(RELEASES.iterdir()) != {release}:
+        raise InstallError("managed_authority_invalid")
+    for path in (release, release / "venv"):
+        metadata(path, mode=0o755, kind=stat.S_ISDIR)
+    active = ROOT / "venv"
+    metadata(active, mode=0o777, kind=stat.S_ISLNK)
+    if active.readlink() != release / "venv":
+        raise InstallError("managed_authority_invalid")
+    metadata(release / f"postcardscene-{version}-py3-none-any.whl")
+    if (
+        read_regular(
+            release / f"postcardscene-{version}-py3-none-any.whl", 32 * 1024 * 1024
+        )
+        != wheel
+    ):
+        raise InstallError("managed_authority_invalid")
+    validate_tree(release, 0, 0, payload=True)
+    for path, content in asset_bytes(wheel).items():
+        trusted_parent(path)
+        metadata(path)
+        if read_regular(path) != content:
+            raise InstallError("managed_authority_invalid")
+    for path in DROPINS:
+        metadata(path, mode=0o755, kind=stat.S_ISDIR)
+        if set(path.iterdir()) != {path / "permissions.conf"}:
+            raise InstallError("managed_authority_invalid")
+    metadata(CACHE, runtime, shared, 0o700, stat.S_ISDIR)
+    for path, mode in zip(TRANSIENTS, (0o750, 0o700), strict=True):
+        # systemd removes RuntimeDirectory when graphics is stopped.
+        if os.path.lexists(path):
+            metadata(path, runtime, shared, mode, stat.S_ISDIR)
+    if set(ROOT.iterdir()) != {MARKER, RELEASES, active}:
+        raise InstallError("managed_authority_invalid")
+
+
+def require_no_processes(identities):
+    owned = set(identities[:2])
+    for path in Path("/proc").iterdir():
+        if not path.name.isdecimal():
+            continue
+        try:
+            status = read_regular(path / "status").decode()
+        except FileNotFoundError:
+            continue
+        for line in status.splitlines():
+            if line.startswith("Uid:") and owned.intersection(
+                map(int, line.split()[1:])
+            ):
+                raise InstallError("owned_processes_remain")
+
+
+def classify(version, wheel, preflight):
+    try:
+        roots = tuple(Path(p) for p in preflight.ROOTS)
+        assets = (*map(Path, ASSETS.values()), *DROPINS, TMPFILES)
+        present = any(os.path.lexists(p) for p in (*roots, *assets))
+        accounts = any(
+            p.pw_name in {"postcardscene", "postcardscene-web"} for p in pwd.getpwall()
+        )
+        groups = any(
+            g.gr_name in {"postcardscene", "postcardscene-web"} for g in grp.getgrall()
+        )
+        if not present and not accounts and not groups:
+            preflight.service_check(preflight.Host(), None)
+            return "clean"
+        identities = preserved_authority()
+        conflict_record()
+        absent = (ROOT / "venv", RELEASES, *assets, CACHE, *TRANSIENTS)
+        if not any(os.path.lexists(p) for p in absent):
+            if set(ROOT.iterdir()) != {MARKER}:
+                return "partial_or_unknown"
+            preflight.service_check(preflight.Host(), None, "preserved")
+            require_no_processes(identities)
+            return "removed_preserved"
+        installed_authority(version, wheel)
+        return "installed_managed"
+    except (
+        OSError,
+        ValueError,
+        TypeError,
+        KeyError,
+        SyntaxError,
+        InstallError,
+        preflight.Rejected,
+    ):
+        return "partial_or_unknown"
+
+
+def validate_preserved_application(python, run):
+    # Only the private snapshot is opened by SQLite; no init, upgrade or admin CLI.
+    run(
+        (
+            python,
+            "-I",
+            "-B",
+            "-c",
+            "import tempfile; from pathlib import Path; from sqlalchemy import select; "
+            "from postcardscene.doctor.data import configuration, snapshot; "
+            "from postcardscene.persistence import Database; "
+            "from postcardscene.accounts import Administrator; "
+            "configuration(); "
+            "\nwith tempfile.TemporaryDirectory() as scratch:\n"
+            " db=Database(snapshot(Path(scratch))); db.check()\n"
+            " with db.transaction() as session:\n"
+            "  assert session.scalar(select(Administrator.id).limit(1)) is not None\n"
+            " db.engine.dispose()",
+        ),
+        timeout=60,
+    )
+    run(
+        (
+            python,
+            "-I",
+            "-B",
+            "-c",
+            "from postcardscene.session_secret import read_secret; "
+            "read_secret('/var/lib/postcardscene-web/session.key')",
+        ),
+        user="postcardscene-web",
+    )
+
+
+def restore_graphics(preflight, run, record):
+    for unit, state in record.items():
+        alias = Path("/etc/systemd/system") / unit
+        if os.path.lexists(alias):
+            if not alias.is_symlink() or alias.lstat().st_uid != 0:
+                raise InstallError("conflict_restore_uncertain")
+            target = str(alias.readlink())
+            if target not in ("/dev/null", state["local_symlink"]):
+                raise InstallError("conflict_restore_uncertain")
+            alias.unlink()
+        if state["local_symlink"] is not None:
+            alias.symlink_to(state["local_symlink"])
+        run(("/usr/bin/systemctl", "daemon-reload"))
+        enabled = state["UnitFileState"]
+        if enabled in ("enabled", "enabled-runtime"):
+            args = ("--runtime",) if enabled == "enabled-runtime" else ()
+            run(("/usr/bin/systemctl", "enable", *args, unit))
+        if state["ActiveState"] == "active":
+            run(("/usr/bin/systemctl", "start", unit))
+        if service_state(preflight, unit) != {
+            k: v for k, v in state.items() if k != "local_symlink"
+        }:
+            raise InstallError("conflict_restore_uncertain")
+
+
+def remove_transients(identities):
+    runtime, _, shared, _ = identities
+    for path, mode in zip(TRANSIENTS, (0o750, 0o700), strict=True):
+        if not os.path.lexists(path):
+            continue
+        metadata(path, runtime, shared, mode, stat.S_ISDIR)
+        # Owners should remove their sockets/locks on stop. Preserve any residue
+        # rather than guessing whether an arbitrary socket is safe to unlink.
+        path.rmdir()
+    metadata(CACHE, runtime, shared, 0o700, stat.S_ISDIR)
+    validate_tree(CACHE, runtime, shared)
+    shutil.rmtree(CACHE)
+
+
+def remove_managed(version, wheel, preflight, run):
+    installed_authority(version, wheel)
+    record = conflict_record()
+    identities = preserved_authority()
+    run(("/usr/bin/systemctl", "stop", *reversed(SERVICES)))
+    run(("/usr/bin/systemctl", "disable", *SERVICES))
+    require_stopped(preflight)
+    require_no_processes(identities)
+    restore_graphics(preflight, run, record)
+    # Revalidate immediately before deleting each exact authority.
+    installed_authority(version, wheel)
+    (ROOT / "venv").unlink()
+    release = RELEASES / version
+    validate_tree(release, 0, 0, payload=True)
+    shutil.rmtree(release)
+    for path, content in asset_bytes(wheel).items():
+        metadata(path)
+        if read_regular(path) != content:
+            raise InstallError("managed_authority_invalid")
+        path.unlink()
+    for path in DROPINS:
+        path.rmdir()
+    run(("/usr/bin/systemctl", "daemon-reload"))
+    remove_transients(identities)
+    RELEASES.rmdir()
