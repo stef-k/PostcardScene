@@ -296,7 +296,8 @@ It does not establish ARM64 provisioning, graphics boot or physical HDMI support
 ### Managed removal and reinstall (#142)
 
 `install.py` owns lifecycle dispatch and staged-application compatibility checks;
-`install_host.py` owns exact managed-state inspection, removal and reprovisioning.
+`install_host.py` owns initial mutating DB/key/migration/admin bootstrap and exact
+managed-state inspection, removal and reprovisioning.
 The four states are clean, installed managed, removed preserved and partial/unknown.
 Normal removal retains `/opt/postcardscene/service-conflicts.json` as root-controlled
 ownership evidence alongside config, durable DB, private key and stable users/groups.

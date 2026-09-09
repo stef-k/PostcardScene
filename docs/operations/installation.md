@@ -321,8 +321,10 @@ unproven compatibility requires the future update/restore workflow.
 On any failure, preserve config, DB, key, marker and remaining assets. Inspect
 protected service/package diagnostics and reconcile the reported phase manually;
 a partial state cannot be repaired by simply rerunning installation. Staged
-payload cleanup is limited to an exact validated inactive release. Reinstall
-success requires coherent installed authority and active services. Run
+payload cleanup is limited to an exact validated inactive release. Before durable
+reprovisioning, reinstall also removes its newly created, empty root-owned
+`releases` parent, restoring exact `removed_preserved` state. Uncertain cleanup
+authority is retained and reported for inspection. Reinstall success requires coherent installed authority and active services. Run
 `postcardscene-doctor` afterwards for current installation diagnostics.
 
 The privileged Linux smoke exercises remove/reinstall with real distinct UIDs,

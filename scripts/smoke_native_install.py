@@ -329,6 +329,50 @@ def rejected_layouts(entrypoint, bundle):
                 Path("/opt/postcardscene/unowned").rmdir()
 
 
+def failed_reinstalls(entrypoint, bundle, validated, before):
+    version, _, wheel, _, preflight, host = validated
+    compatibility = entrypoint.validate_preserved_application
+    stage = host.stage_payload
+
+    def reject(*args, **kwargs):
+        raise entrypoint.InstallError("injected_pre_durable_failure")
+
+    try:
+        for failure in ("before_release", "partial_stage", "compatibility"):
+            host.stage_payload = reject if failure == "before_release" else stage
+            entrypoint.validate_preserved_application = (
+                reject if failure == "compatibility" else compatibility
+            )
+            operation = entrypoint.Installation(
+                bundle, reject if failure == "partial_stage" else host.command
+            )
+            try:
+                operation.install()
+            except entrypoint.InstallError as error:
+                assert str(error) == "injected_pre_durable_failure"
+            else:
+                raise AssertionError("Injected reinstall failure was not reached")
+            assert not operation.durable
+            assert operation.phase == (
+                "preserved_compatibility" if failure == "compatibility" else "payload"
+            )
+            operation.recover()
+            assert not os.path.lexists(host.RELEASES)
+            assert host.classify(version, wheel, preflight) == "removed_preserved"
+            for path, expected in before.items():
+                info = path.stat()
+                assert (
+                    path.read_bytes(),
+                    info.st_uid,
+                    info.st_gid,
+                    info.st_mode,
+                ) == expected
+            print(f"Reinstall {failure}: recovered exact removed_preserved authority.")
+    finally:
+        host.stage_payload = stage
+        entrypoint.validate_preserved_application = compatibility
+
+
 def lifecycle_smoke(entrypoint, installer, runtime, web, shared):
     # Runtime/web are real systemd services; graphics start alone is substituted
     # because this x86 VM has no supported seat/display. No ownership gate is bypassed.
@@ -419,6 +463,7 @@ def lifecycle_smoke(entrypoint, installer, runtime, web, shared):
             host.command(args, **options)
 
         try:
+            failed_reinstalls(entrypoint, bundle, validated, before)
             reinstall = entrypoint.Installation(bundle, run)
             reinstall.install()
             assert reinstall.phase == "complete"
