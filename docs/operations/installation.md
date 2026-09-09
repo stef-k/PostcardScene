@@ -21,7 +21,8 @@ No configuration, signing key, database, cache/profile or backup belongs in thes
 release inputs.
 
 The future GitHub Release `postcardscene-<version>-linux-native.tar.gz` will carry
-those inputs, standalone `install.py` (#140), `install_preflight.py` (#139),
+those inputs, `install.py`, `install_inputs.py`, `install_host.py` (#153),
+`install_preflight.py` (#139),
 and `release-manifest.json` (#143), plus explicitly reviewed metadata/checksums.
 Version comes only from
 `pyproject.toml`; tag, wheel, installed/Overview and manifest identity must agree.
@@ -111,11 +112,17 @@ These are package/provisioning evidence, not hard-coded current version promises
 
 From one trusted, reviewed extracted input set, run `sudo python3 -B install.py
 install` in an interactive terminal. Keep exactly one application wheel beside
-`install.py`, `install_preflight.py` and `runtime-requirements.txt`; no checkout or
+`install.py`, `install_inputs.py`, `install_host.py`, `install_preflight.py` and
+`runtime-requirements.txt`; no checkout or
 preinstalled application is needed. The installer validates wheel identity,
 Python/pure-wheel metadata, entry points, required assets and wheel RECORD hashes.
-It checks the reviewed preflight and requirements bytes against installer input
-pins **before importing support or mutating the host**. The installer itself is
+It checks all three support modules and requirements against SHA-256 pins owned
+by `install.py` **before executing any support code or mutating the host**.
+Support reads reject symlinks, multiple hard links, non-regular files and oversized
+inputs; the loader executes only the verified bytes, without sibling imports.
+`install.py` owns CLI/lifecycle ordering, `install_inputs.py` deterministic wheel/input
+validation, `install_host.py` fixed provisioning primitives, and
+`install_preflight.py` the existing read-only host gate. The installer itself is
 trusted executable bootstrap authority. These checks do not authenticate a
 published release: #143 owns its final manifest schema, member hashes, extraction
 and publication checks. No final release-manifest format is defined here.

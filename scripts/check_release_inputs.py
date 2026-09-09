@@ -83,7 +83,13 @@ def main():
         wheels = list(scratch.glob("*.whl"))
         assert len(wheels) == 1, "Expected exactly one application wheel"
         check_wheel(wheels[0], project)
-        for name in ("install.py", "install_preflight.py", "runtime-requirements.txt"):
+        for name in (
+            "install.py",
+            "install_inputs.py",
+            "install_host.py",
+            "install_preflight.py",
+            "runtime-requirements.txt",
+        ):
             shutil.copyfile(ROOT / name, scratch / name)
         run(
             sys.executable,

@@ -212,7 +212,9 @@ The future GitHub Release archive is
 ```text
 postcardscene-<version>-py3-none-any.whl
 runtime-requirements.txt
-install.py                 # managed-install child #140
+install.py                 # trusted CLI/lifecycle entry point #140/#153
+install_inputs.py          # deterministic input/wheel validation #153
+install_host.py            # fixed host provisioning primitives #153
 install_preflight.py       # standalone read-only install support #139
 release-manifest.json      # release child #143
 ```
@@ -220,7 +222,8 @@ release-manifest.json      # release child #143
 Only explicitly documented release metadata/checksums may extend that shape.
 `install.py` will be a standalone stdlib-oriented entry point: no source checkout
 or preinstalled PostcardScene import is required. #138 supplies inputs and freezes
-this layout; it does not create an installer, mutate a host, migrate production
+the initial layout, expanded by #153 with the two reviewed support modules;
+it does not create an installer, mutate a host, migrate production
 state or publish a release. GitHub Releases is the V0 channel; no PyPI publication,
 `.deb`, APT repository, Docker or frontend build is introduced. Repacking different
 bytes creates a new artifact candidate requiring new checksum/evidence.
@@ -257,7 +260,15 @@ packages/paths, command bounds, package evidence and diagnostic interpretation.
 ### Managed initial installation (#140)
 
 Standalone `install.py install` consumes the validated #138 wheel/requirements
-and pinned reviewed #139 support before host mutation. It invokes clean-host
+and pinned reviewed support before host mutation. #153 separates deterministic
+input/wheel validation into `install_inputs.py` and fixed host provisioning into
+`install_host.py`; `install_preflight.py` retains read-only host inspection.
+`install.py` retains CLI, phase ordering, recovery dispatch and the initial trust
+authority. It reads the entire fixed support/requirements set with bounded,
+no-follow, regular-file, one-link checks and authenticates all SHA-256 pins before
+executing any helper. Only verified bytes are loaded; no ordinary sibling imports
+or preinstalled application are needed. #143 must include both new modules in
+its later fixed manifest/member hashes and clean archive smoke. It invokes clean-host
 preflight both before fixed package installation and before application-state
 provisioning. These installer input pins are not #143's final release manifest;
 published-bundle schema/member authentication remains with #143.
