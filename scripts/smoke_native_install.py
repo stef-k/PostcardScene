@@ -151,6 +151,23 @@ def doctor_layout():
     from postcardscene.doctor.cli import collect
     from postcardscene.doctor.metadata import PACKAGE, inspect
 
+    # Fixed installed payload metadata makes packaging/DAC failures reviewable.
+    for label, path in (
+        ("active", Path("/opt/postcardscene/venv")),
+        ("venv", PACKAGE.parents[3]),
+        ("package", PACKAGE),
+        ("labwc_config", PACKAGE / "graphics/labwc/rc.xml"),
+        ("labwc_autostart", PACKAGE / "graphics/labwc/autostart"),
+    ):
+        info = path.lstat()
+        print(
+            label,
+            info.st_uid,
+            info.st_gid,
+            oct(stat.S_IMODE(info.st_mode)),
+            info.st_nlink,
+            flush=True,
+        )
     ready = {
         "release",
         "config_authority",
