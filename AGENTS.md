@@ -332,7 +332,9 @@ Do not create a metrics/telemetry platform in V0 merely because diagnostics are 
 
 When a change alters user-visible behavior, configuration, installation, security, recovery, hardware support, or a consequential architectural boundary, update the smallest relevant authority document.
 
-Keep documentation lean. Prefer the current authority documents and a future cohesive `docs/operations.md` over many one-topic files until size/audience justifies splitting.
+Keep documentation lean. Use the [operations index](docs/operations.md) and its
+installation, runtime and display guides for operator contracts; extend the owning
+guide rather than creating one-topic files.
 
 Before a public distributable release, include the project license and required third-party notices/attributions. Hardware/support claims must distinguish physically tested evidence from intended but unverified configurations.
 
@@ -372,11 +374,10 @@ uv run python -c "import postcardscene; import postcardscene.web; import postcar
 
 For #12 itself these commands define the bootstrap contract to make valid. After #12 lands, they are the canonical project-local commands unless a later issue deliberately changes the toolchain.
 
-#138 records the already-reviewed cohesive `docs/operations.md` at 971 clean-main
-physical lines in `.agent-tools/code-guard.markdown-baseline.json`. This is a
-one-time document allowance, not an exclusion: growth remains REVIEW and section
-checks remain active. Never recreate/increase it after edits; an explicitly
-requested `--update-markdown-baseline` may only lower/prune the allowance.
+#152 splits operations into a landing page and three domain guides, all subject
+to ordinary Markdown document and section thresholds. The obsolete monolith
+allowance was pruned with `--update-markdown-baseline`; do not recreate it or add
+allowances for the guides merely to accommodate growth.
 
 Do not add repository-specific copies, wrappers, or configuration for capabilities already supplied by the global agent bootstrap unless PostcardScene develops a concrete project-specific need.
 

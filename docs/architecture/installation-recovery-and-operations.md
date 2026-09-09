@@ -5,7 +5,7 @@ Package bootstrap, shared persistence/migrations, reliability, release/install/u
 Read the [architecture entry point and map](../architecture.md) first. Together,
 the overview and linked subsystem documents form the architecture authority.
 
-Deployment instructions remain in [Operations](../operations.md); product usage and setup remain in the [README](../../README.md).
+Deployment instructions remain in [Installation and diagnostics](../operations/installation.md); product usage and setup remain in the [README](../../README.md).
 
 ## Bootstrap package and tooling
 
@@ -106,11 +106,11 @@ The runtime must tolerate:
 The control plane should remain reachable whenever the host itself is healthy.
 
 #122 freezes `postcardscene-runtime.service` supervision and the installed
-[path/logging contract](../operations.md#installed-runtime-service-122).
+[path/logging contract](../operations/runtime.md#installed-runtime-service-122).
 `/etc/postcardscene/config.py` is the shared trusted operator configuration for
 installed runtime and web services. #131 supplies foreground `postcardscene-web`
 using Waitress; #125 packages its independently supervised
-[web unit](../operations.md#installed-web-service-125), with persistent writes
+[web unit](../operations/runtime.md#installed-web-service-125), with persistent writes
 limited to shared state and read-only private signing authority. Web runs as `postcardscene-web` with primary
 GID `postcardscene`, without runtime device/Wayland authority. Shared SQLite
 under `/var/lib/postcardscene` uses group `postcardscene`; #26 owns exact modes,
@@ -251,7 +251,7 @@ No package/user/directory/config/venv/service/database mutation occurs in this
 gate. Existing managed-state recognition belongs to #140/#142; preflight currently
 accepts clean installation only. The plan is a snapshot, not a reusable grant of
 filesystem/service authority: the installer must revalidate before mutation.
-See [operations](../operations.md#read-only-managed-host-preflight-139) for fixed
+See [operations](../operations/installation.md#read-only-managed-host-preflight-139) for fixed
 packages/paths, command bounds, package evidence and diagnostic interpretation.
 
 ### Managed initial installation (#140)
@@ -274,7 +274,7 @@ successful bootstrap permits atomic active-symlink publication and service
 enablement/start. No legacy adoption, credential reset, update or DB rollback is
 introduced. Repeat installs reject existing authority unchanged.
 
-See [managed operations](../operations.md#managed-initial-installation-140) for
+See [managed operations](../operations/installation.md#managed-initial-installation-140) for
 exact modes, phase/failure recovery and conflict records. Privileged disposable
 Linux CI proves real distinct-UID SQLite/WAL/SHM and panel socket cooperation,
 private-key/Wayland/device separation and canonical runtime/web service identity.
@@ -296,7 +296,7 @@ private main/WAL copy, rejecting concurrent changes, so SQLite cannot create or
 modify installed sidecars. Only disposable scratch is writable and parent-owned
 cleanup survives check timeout. This sample is not a backup or recovery claim.
 Graphics ownership is not bypassed, and executable tool prerequisites do not
-establish device/physical capability. See [doctor operations](../operations.md#installed-read-only-diagnostics-141)
+establish device/physical capability. See [doctor operations](../operations/installation.md#installed-read-only-diagnostics-141)
 for limits, result/exit categories and repair/evidence ownership.
 
 ## Backup and restore boundary

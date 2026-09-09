@@ -222,7 +222,7 @@ protection/playback enforcement, Display UI and physical evidence remain later
 #122 packages the RuntimeHost unit with five-second failure restart, five starts
 per minute, a 30-second cleanup bound and weak graphics ordering. Installed
 services share `/etc/postcardscene/config.py`; durable/cache/transient roots and
-journald-only logs follow the [operations contract](operations.md#installed-runtime-service-122).
+journald-only logs follow the [operations contract](operations/runtime.md#installed-runtime-service-122).
 #26 installs/enables/provisions these assets; physical recovery evidence is #127.
 
 This work owns the behavior of an already-installed runtime. Physical panel standby is a separate subsystem, and release packaging/install/update is owned separately.
@@ -267,7 +267,7 @@ auto-update daemon, or transactional rollback engine.
 with separate runtime/web UIDs, shared SQLite sidecars, private signing authority,
 explicit bootstrap and versioned service activation. Real two-UID Linux CI proves
 software/DAC behavior; #143 final publication verification and physical Pi gates
-remain open. See [managed operations](operations.md#managed-initial-installation-140).
+remain open. See [managed operations](operations/installation.md#managed-initial-installation-140).
 
 ### Backup and restore
 
@@ -335,7 +335,9 @@ V0 documentation should remain lean while covering:
 - release notes/changelog discipline
 - responsive/accessibility baseline for the control UI
 
-Prefer updating the existing authority documents and, when needed, one cohesive `docs/operations.md` rather than creating many small documents prematurely.
+Prefer updating the existing authority documents and the installation, runtime
+and display guides linked from [Appliance operations](operations.md), rather than
+creating many small documents prematurely.
 
 ### V0 completion criteria
 
