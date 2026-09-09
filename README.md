@@ -162,6 +162,14 @@ application tests. This is generic Linux Python evidence, not ARM64/HDMI support
 See [release inputs](docs/operations.md#release-inputs-138) for the future native
 bundle and lifecycle ownership.
 
+### Managed-host prerequisite inspection
+
+`python3 -B install_preflight.py --json` performs #139's standalone read-only
+inspection for the ARM64 Ubuntu Server 24.04/26.04 LTS and Raspberry Pi OS Trixie
+managed targets. It returns a closed provisioning plan or fixed failure reasons;
+it installs nothing. See [preflight operations](docs/operations.md#read-only-managed-host-preflight-139)
+for prerequisites, package authority, seat selection and evidence limits.
+
 ### Control shell development
 
 After `uv sync --locked` and the database/authentication setup below, start the

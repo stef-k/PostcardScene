@@ -19,12 +19,91 @@ No configuration, signing key, database, cache/profile or backup belongs in thes
 release inputs.
 
 The future GitHub Release `postcardscene-<version>-linux-native.tar.gz` will carry
-those inputs, standalone `install.py` (#140) and `release-manifest.json` (#143),
-plus explicitly reviewed metadata/checksums. Version comes only from
+those inputs, standalone `install.py` (#140), `install_preflight.py` (#139),
+and `release-manifest.json` (#143), plus explicitly reviewed metadata/checksums.
+Version comes only from
 `pyproject.toml`; tag, wheel, installed/Overview and manifest identity must agree.
 Managed installation, publication and updates remain later work. See
 [development checks](../README.md#release-input-development) and the
 [release contract](architecture/installation-recovery-and-operations.md#deterministic-release-inputs-138).
+
+## Read-only managed-host preflight (#139)
+
+Run `python3 -B install_preflight.py` from the source/native support files, or add
+`--json` for the frozen result schema (`ok`, fixed `reasons`, nullable `plan`).
+This standalone stdlib module needs no installed PostcardScene or root execution.
+The later #140 `install.py` consumes `preflight()` directly; #143 ships the module
+beside it. Exit 0 means the clean host has a representable provisioning plan;
+exit 1 means inspection failed and there is no plan. It does not mean packages
+are already installed, conflicts resolved, or physical playback validated.
+
+| Managed target (Raspberry Pi 4/5-class ARM64) | Package authority |
+| --- | --- |
+| Ubuntu Server 24.04 LTS / Noble | Ubuntu archive native tools; Canonical Chromium snap, `latest/stable`, `/snap/bin/chromium`. |
+| Ubuntu Server 26.04 LTS / Resolute | Same authority and native runtime contracts. |
+| Raspberry Pi OS 64-bit / Debian 13 Trixie, preferably Lite | Debian/Raspberry Pi archive native tools and `chromium`, `/usr/bin/chromium`. |
+
+Point releases retain these release identities. Exact `ubuntu` with its matching
+release/codename, or `debian`/`raspbian` 13 with `trixie`, are recognized; `ID_LIKE`
+does not authorize derivatives. Machine ARM64, 64-bit bootstrap userland and dpkg
+`arm64` must agree. Containers, WSL and hosts without systemd PID 1 are rejected.
+This is the managed target matrix, not proof of Raspberry Pi model or HDMI support.
+
+The fixed apt set includes `labwc`, `wlr-randr`, `wlopm`, `mpv`, `ddcutil`,
+`v4l-utils` (owns `/usr/bin/cec-ctl`), `python3`, `python3-venv`, `systemd`,
+`systemd-sysv`, `libpam-systemd` and `libseat1`, plus Ubuntu `snapd` or Debian
+`chromium`. Other native tool paths are `/usr/bin/<tool>`. Default seat authority
+is active logind plus PAM; `--seat seatd` explicitly adds `seatd` and a socket
+access provisioning action, without automatic fallback. The packaged #62 PAM/VT
+and seatd templates remain authority for later installation.
+
+`/usr/bin/python3` must already provide distro-owned CPython 3.11–3.14 and
+importable venv/ensurepip with an available pip version. Missing bootstrap support
+fails `python_bootstrap_required`; an operator must supply the distro prerequisite
+before retrying. Preflight never creates a venv or installs into system Python.
+Missing native tools return `install_required` only when cached apt candidates
+have supported origins. No apt update/download is performed. Candidate and
+installed versions must be represented by the official Ubuntu ports/archive/
+security or Debian deb/security/Raspberry Pi archive URLs; custom mirrors and
+locally supplied package versions require explicit operator resolution.
+
+Installed executable authority is checked against dpkg ownership/integrity and
+root-controlled paths before bounded version probes. Modified packages, missing
+installed executables and malformed versions fail closed. Chromium uses package
+or local snap metadata, never a browser launch. Ubuntu's `chromium-browser` is
+only a transition to the snap; its wrapper alone cannot satisfy Chromium.
+Installed labwc retains #62's 0.7.1 floor; no new media/panel version minimum is
+invented. Package presence cannot prove seat, codec, audio, CEC or DDC behavior.
+
+The installed roots in the table below, plus `/opt/postcardscene`, are
+inspected only through existing ancestors/targets. Symlinks, foreign/writable
+ancestors and unrecognized existing roots fail closed. Supported local persistent
+filesystems are ext2/3/4, btrfs, xfs, f2fs and zfs; `/run` may also use tmpfs.
+Unknown/network mounts are rejected before inspecting their installation paths.
+Existing PostcardScene accounts or units are unrecognized until #140/#142 define
+managed recognition; even empty roots are never adopted. Loaded tty1 getty or
+display-manager units produce explicit `reserve_tty1`/`resolve_display_manager`
+actions, not implicit permission to stop or disable them.
+
+This snapshot makes no package/user/config/service/database mutation, recursive
+root scan or repair. Commands use fixed argv, a clean environment, five-second
+limits and 256 KiB output caps; failures omit raw output, identities and paths.
+The later installer must recheck current authority before mutation and explicitly
+handle every action. It must not treat serialized JSON as trusted installer input.
+Fixture tests and local Ubuntu x86/WSL rejection/package-query observations are
+software evidence only. ARM64 boot, real seat/device access and physical display
+validation remain with #66/#116/#127 and the release-candidate gates.
+
+Package evidence checked for #139: [Ubuntu release families](https://packages.ubuntu.com/),
+[Noble labwc 0.7.1/arm64](https://packages.ubuntu.com/noble/labwc),
+[Resolute wlopm](https://packages.ubuntu.com/resolute/wlopm),
+[Ubuntu Chromium transition](https://packages.ubuntu.com/en/chromium-browser),
+[Canonical Chromium snap](https://snapcraft.io/chromium),
+[Trixie Chromium](https://packages.debian.org/trixie/chromium) and
+[labwc](https://packages.debian.org/trixie/labwc),
+[v4l-utils arm64 file list](https://packages.debian.org/trixie/arm64/v4l-utils/filelist),
+and [Raspberry Pi OS Trixie images](https://www.raspberrypi.com/software/operating-systems/).
+These are package/provisioning evidence, not hard-coded current version promises.
 
 ## Installed runtime service (#122)
 
