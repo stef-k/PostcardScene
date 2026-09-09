@@ -442,3 +442,27 @@ def test_internal_preserved_mode_retains_platform_policy_and_cli_default():
     host.arch = "x86_64"
     assert not pf.preflight(host, installation="preserved").ok
     assert not pf.preflight(FixtureHost(), installation="adopt").ok
+
+
+def test_preserved_prerequisites_allow_only_inactive_not_found_cached_units():
+    host = FixtureHost()
+    listing = (
+        "/usr/bin/systemctl",
+        "list-units",
+        "--all",
+        "--no-legend",
+        "--plain",
+        "--no-pager",
+        "postcardscene*",
+    )
+    host.overrides[listing] = (
+        0,
+        "postcardscene-runtime.service not-found inactive dead\n",
+    )
+    assert pf.preflight(host, installation="preserved").ok
+    assert not pf.preflight(host).ok
+    host.overrides[listing] = (
+        0,
+        "postcardscene-foreign.service not-found inactive dead\n",
+    )
+    assert not pf.preflight(host, installation="preserved").ok

@@ -355,6 +355,20 @@ def lifecycle_smoke(entrypoint, installer, runtime, web, shared):
                 ("ps", "-u", "postcardscene,postcardscene-web", "-o", "pid,uid,comm"),
                 check=False,
             )
+            _, support, observer, _ = entrypoint.load_support(bundle)
+            for label, probe in (
+                ("durable", support.preserved_authority),
+                ("marker", lambda: support.conflict_record(observer)),
+                (
+                    "units",
+                    lambda: observer.service_check(observer.Host(), None, "preserved"),
+                ),
+            ):
+                try:
+                    probe()
+                    print(label, "valid", flush=True)
+                except (support.InstallError, observer.Rejected) as error:
+                    print(label, str(error), flush=True)
             raise
         assert operation.phase == "removed_preserved"
         marker = Path("/opt/postcardscene/service-conflicts.json")

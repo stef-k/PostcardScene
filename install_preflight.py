@@ -424,10 +424,13 @@ def service_check(host, seat, installation="clean"):
             for line in host.read(path).splitlines()
         ):
             raise Rejected("existing_installation_unrecognized")
-    if unit_names(host):
+    # systemd can retain inactive not-found entries after daemon-reload.
+    allowed = set(UNITS) if installation == "preserved" else set()
+    if unit_names(host) - allowed:
         raise Rejected("existing_service_unrecognized")
     for unit in UNITS:
-        if service_state(host, unit)["LoadState"] != "not-found":
+        state = service_state(host, unit)
+        if state["LoadState"] != "not-found" or state["ActiveState"] != "inactive":
             raise Rejected("existing_service_unrecognized")
     actions = []
     for unit, action in (
