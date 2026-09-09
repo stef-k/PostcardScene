@@ -11,14 +11,21 @@ permissions:
 jobs:
   quality:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.12", "3.13", "3.14"]
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
         with:
           version: "0.12.10"
-          python-version: "3.11"
+          python-version: ${{ matrix.python }}
       - run: uv sync --locked
       - run: uv run ruff format --check .
       - run: uv run ruff check .
       - run: uv run pytest
       - run: uv build
+        if: matrix.python == '3.11'
+      - run: uv run python scripts/check_release_inputs.py
+        if: matrix.python == '3.11'

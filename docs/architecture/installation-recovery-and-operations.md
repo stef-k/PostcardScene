@@ -10,15 +10,18 @@ Deployment instructions remain in [Operations](../operations.md); product usage 
 ## Bootstrap package and tooling
 
 Issue #12 establishes one `postcardscene` distribution under `src/postcardscene`,
-with side-effect-free `web` and `runtime` namespaces. Python 3.11 is the bootstrap
-compatibility floor; #26 owns the supported release matrix and version identity.
-The initial package version is `0.0.0`. Issue #13 adds Flask as the control-plane
+with side-effect-free `web` and `runtime` namespaces. #138 freezes released
+CPython 3.11–3.14 support (`>=3.11,<3.15`), excluding 3.15 prerelease. Static
+`[project].version` in `pyproject.toml` is the sole application version authority,
+currently `0.1.0.dev0`; the first stable V0 line is `0.1.x`. No runtime constant,
+Git-derived version or environment override is added. Issue #13 adds Flask as the control-plane
 dependency; the core and runtime namespaces remain independent of Flask.
 
 uv and the committed `uv.lock` own project environments and dependency resolution;
 `uv_build` owns builds. Ruff is the sole project-local formatter/linter and pytest
-the test runner. The bootstrap CI gate checks locked sync, formatting, lint,
-tests, and builds on Python 3.11. No mandatory static type checker is introduced;
+the test runner. Quality checks locked sync, formatting, lint and the full tests on every supported
+Python series, with one build/package smoke on 3.11. Generic Linux CI proves
+Python portability only, not Raspberry Pi ARM64, graphics, codecs or devices. No mandatory static type checker is introduced;
 revisit typing when substantive contracts warrant it.
 
 ## Shared persistence
@@ -179,7 +182,47 @@ backup destination
 
 Normal managed installation should use an isolated project-owned Python environment or another equally safe supported mechanism rather than modifying distro-owned Python through privileged pip installation.
 
-The exact release artifact format remains open: wheel, archive, or another small Python-native shape may be selected by #26.
+### Deterministic release inputs (#138)
+
+The canonical application payload is one standards-compliant
+`postcardscene-<version>-py3-none-any.whl`, built from an immutable source candidate
+with `uv build --wheel --no-sources`. A native/platform wheel fails validation.
+The wheel carries Python modules/console scripts, Alembic migrations, Flask
+static/templates, runtime/web units and graphics systemd/PAM/labwc/helper assets.
+Payload validation compares all package files with tracked source; no generated
+host configuration, secrets, database, cache/profile, backup or credentials belong
+in it. Release secret/dependency auditing remains #29's responsibility.
+
+`uv.lock` remains resolution authority. The generated `runtime-requirements.txt`
+is the exact pip-compatible runtime-only export, with hashes and without the local
+project or development dependencies. A stale export fails the repository package
+check. Clean installation uses `pip install --require-hashes --only-binary=:all:
+-r runtime-requirements.txt`, then installs the application wheel `--no-deps`.
+Targets never resolve fresh unconstrained dependencies or fall back to source
+builds; unavailable compatible wheels fail visibly.
+
+Future release tags must be exactly `v<project.version>`, such as `v0.1.0rc1` or
+`v0.1.0`. Tag, wheel metadata, installed `importlib.metadata.version("postcardscene")`,
+Overview and release manifest must agree exactly before publication; #143 owns
+that publication gate and final manifest/checksums.
+
+The future GitHub Release archive is
+`postcardscene-<version>-linux-native.tar.gz`, containing:
+
+```text
+postcardscene-<version>-py3-none-any.whl
+runtime-requirements.txt
+install.py                 # managed-install child #140
+release-manifest.json      # release child #143
+```
+
+Only explicitly documented release metadata/checksums may extend that shape.
+`install.py` will be a standalone stdlib-oriented entry point: no source checkout
+or preinstalled PostcardScene import is required. #138 supplies inputs and freezes
+this layout; it does not create an installer, mutate a host, migrate production
+state or publish a release. GitHub Releases is the V0 channel; no PyPI publication,
+`.deb`, APT repository, Docker or frontend build is introduced. Repacking different
+bytes creates a new artifact candidate requiring new checksum/evidence.
 
 Stable releases should be tied to immutable source/tag/version identity and final artifact checksums. Clean-install smoke tests, explicit migrations, diagnostics, backup-backed forward updates, and safe removal/reinstall are V0 lifecycle requirements.
 

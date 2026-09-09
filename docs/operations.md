@@ -5,6 +5,27 @@ and updates remain with #26. The templates
 below are versioned provisioning inputs, not an installer or a claim of a
 physically validated release.
 
+## Release inputs (#138)
+
+Released CPython 3.11–3.14 is the application compatibility boundary. Generic
+Linux CI is Python evidence only; Raspberry Pi ARM64/graphics/device support
+still requires the owning physical validation gates.
+
+The versioned application input is `postcardscene-<version>-py3-none-any.whl` plus
+`runtime-requirements.txt`, generated from the exact `uv.lock`. Installation must
+use hashes and binary dependencies only, followed by the wheel with `--no-deps`;
+a missing compatible dependency wheel fails rather than compiling on the target.
+No configuration, signing key, database, cache/profile or backup belongs in these
+release inputs.
+
+The future GitHub Release `postcardscene-<version>-linux-native.tar.gz` will carry
+those inputs, standalone `install.py` (#140) and `release-manifest.json` (#143),
+plus explicitly reviewed metadata/checksums. Version comes only from
+`pyproject.toml`; tag, wheel, installed/Overview and manifest identity must agree.
+Managed installation, publication and updates remain later work. See
+[development checks](../README.md#release-input-development) and the
+[release contract](architecture/installation-recovery-and-operations.md#deterministic-release-inputs-138).
+
 ## Installed runtime service (#122)
 
 The package asset `postcardscene/runtime/systemd/postcardscene-runtime.service`

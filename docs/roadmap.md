@@ -252,7 +252,16 @@ This work owns the behavior of an already-installed runtime. Physical panel stan
 - exact release-candidate evidence tied to source/tag/version/artifact checksum
 - release and upgrade notes
 
-The exact release artifact format is intentionally open until implementation compares the smallest practical Python-native options. V0 does not require a `.deb`, APT repository, Docker image, auto-update daemon, or transactional rollback engine.
+#138 freezes static `pyproject.toml` version authority (`0.1.0.dev0`), exact
+`v<version>` release-tag agreement, and released CPython 3.11–3.14 CI coverage.
+The canonical pure-Python wheel and reproducible hash-locked runtime requirements
+are validated by a clean binary-only install. The future GitHub Release native
+archive adds #140's standalone installer and #143's manifest/checksums; those
+children retain all host mutation and publication. See the
+[release-input architecture](architecture/installation-recovery-and-operations.md#deterministic-release-inputs-138).
+Generic Linux CI does not establish ARM64 or display support. V0 does not require
+PyPI publication, a `.deb`, APT repository, Docker image, target source builds,
+auto-update daemon, or transactional rollback engine.
 
 ### Backup and restore
 
