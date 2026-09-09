@@ -22,7 +22,11 @@ from postcardscene.web.sources import sources
 from postcardscene.web.widgets import widgets
 
 
-def create_app(config: Mapping[str, Any] | None = None) -> Flask:
+def create_app(
+    config: Mapping[str, Any] | None = None,
+    *,
+    operator_config: Mapping[str, Any] | None = None,
+) -> Flask:
     """Load defaults, optional operator-owned Python config, then explicit overrides."""
     app = Flask(__name__)
     app.config.from_mapping(
@@ -41,7 +45,9 @@ def create_app(config: Mapping[str, Any] | None = None) -> Flask:
         SESSION_REFRESH_EACH_REQUEST=False,
         MAX_CONTENT_LENGTH=16 * 1024,
     )
-    app.config.from_mapping(load_operator_config())
+    app.config.from_mapping(
+        load_operator_config() if operator_config is None else operator_config
+    )
     if config is not None:
         app.config.from_mapping(config)
     init_database(app)
