@@ -351,3 +351,21 @@ def test_private_key_is_metadata_only_with_installer_primary_group(monkeypatch):
     metadata.permissions("private_key_permissions")
     assert seen[0][1:4] == (2002, 2002, 0o700)
     assert seen[1][1:] == (2002, 2001, 0o600)
+
+
+def test_invalid_invocation_does_not_echo_private_arguments(monkeypatch, capsys):
+    monkeypatch.setattr("sys.argv", ["postcardscene-doctor", "--config=" + SECRET])
+    with pytest.raises(SystemExit) as error:
+        cli.main()
+    assert error.value.code == 2
+    assert SECRET not in capsys.readouterr().err
+
+
+def test_redirected_managed_config_is_fatal(tmp_path, monkeypatch):
+    config = tmp_path / "config.py"
+    config.write_text(f"DATABASE_PATH = {SECRET!r}\n")
+    monkeypatch.setattr(data, "CONFIG", config)
+    monkeypatch.setattr(data, "permissions", lambda identifier: None)
+    assert data.web_config("web_config") == Check(
+        "web_config", "fatal", "config_invalid"
+    )

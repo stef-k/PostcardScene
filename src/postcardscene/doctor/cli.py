@@ -1,6 +1,7 @@
 """Bounded read-only diagnostics for a managed PostcardScene installation."""
 
 import argparse
+import sys
 import tempfile
 from functools import partial
 from pathlib import Path
@@ -39,8 +40,14 @@ def collect():
     return Report(tuple(results))
 
 
+class DiagnosticParser(argparse.ArgumentParser):
+    def error(self, message):
+        print("Doctor invocation invalid.", file=sys.stderr)
+        raise SystemExit(2)
+
+
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = DiagnosticParser(description=__doc__)
     parser.add_argument("--json", action="store_true", dest="structured")
     args = parser.parse_args()
     try:

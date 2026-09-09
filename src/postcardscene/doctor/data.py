@@ -23,6 +23,10 @@ SNAPSHOT_LIMIT = 64 * 1024 * 1024
 SOURCE_LIMIT = 1000
 
 
+class ConfigAuthorityError(ValueError):
+    """Literal configuration redirects an exact managed durable authority."""
+
+
 def configuration():
     permissions("config_authority")
     # Executing trusted Python can mutate the host. Inspect literal assignments
@@ -43,13 +47,15 @@ def configuration():
         or values.get("SESSION_SECRET_PATH", "/var/lib/postcardscene-web/session.key")
         != "/var/lib/postcardscene-web/session.key"
     ):
-        raise ValueError("Managed authority mismatch.")
+        raise ConfigAuthorityError("Managed authority mismatch.")
     return values
 
 
 def web_config(identifier):
     try:
         config = configuration()
+    except ConfigAuthorityError:
+        return Check(identifier, "fatal", "config_invalid")
     except (OSError, ValueError, SyntaxError):
         return Check(identifier, "unavailable", "config_not_inspectable")
     try:
