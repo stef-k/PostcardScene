@@ -499,3 +499,29 @@ def test_process_inspection_checks_all_uid_authority_fields(tmp_path, monkeypatc
     assert host.owned_processes((11, 12, 13, 14))
     status.write_text("Name:\ttest\nUid:\t0\t0\t0\t0\n")
     assert not host.owned_processes((11, 12, 13, 14))
+
+
+def test_restore_active_masked_unit_starts_before_restoring_mask(tmp_path, monkeypatch):
+    state = {
+        "LoadState": "masked",
+        "ActiveState": "active",
+        "UnitFileState": "masked",
+        "local_symlink": "/dev/null",
+    }
+    monkeypatch.setattr(host, "Path", lambda _: tmp_path)
+    monkeypatch.setattr(
+        host,
+        "service_state",
+        lambda *a: {k: v for k, v in state.items() if k != "local_symlink"},
+    )
+    alias = tmp_path / "getty@tty1.service"
+    calls = []
+
+    def run(args):
+        calls.append(args[1])
+        if args[1] == "start":
+            assert not alias.is_symlink()
+
+    host.restore_graphics(None, run, {"getty@tty1.service": state})
+    assert alias.readlink() == Path("/dev/null")
+    assert calls == ["daemon-reload", "start", "daemon-reload"]

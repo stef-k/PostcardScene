@@ -603,7 +603,10 @@ def restore_graphics(preflight, run, record):
             if target not in ("/dev/null", state["local_symlink"]):
                 raise InstallError("conflict_restore_uncertain")
             alias.unlink()
-        if state["local_symlink"] is not None:
+        masked_active = (
+            state["ActiveState"] == "active" and state["local_symlink"] == "/dev/null"
+        )
+        if state["local_symlink"] is not None and not masked_active:
             alias.symlink_to(state["local_symlink"])
         run(("/usr/bin/systemctl", "daemon-reload"))
         enabled = state["UnitFileState"]
@@ -612,6 +615,9 @@ def restore_graphics(preflight, run, record):
             run(("/usr/bin/systemctl", "enable", *args, unit))
         if state["ActiveState"] == "active":
             run(("/usr/bin/systemctl", "start", unit))
+        if masked_active:
+            alias.symlink_to("/dev/null")
+            run(("/usr/bin/systemctl", "daemon-reload"))
         if service_state(preflight, unit) != {
             k: v for k, v in state.items() if k != "local_symlink"
         }:
