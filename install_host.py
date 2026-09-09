@@ -385,8 +385,7 @@ def preserved_authority():
             if info.st_uid not in (runtime, web):
                 raise InstallError("managed_authority_invalid")
             metadata(path, info.st_uid, shared, 0o660)
-    metadata(KEY, web, shared, 0o600)
-    if KEY.stat().st_size != 32:
+    if metadata(KEY, web, shared, 0o600).st_size != 32:
         raise InstallError("managed_authority_invalid")
     return runtime, web, shared, private
 
@@ -500,13 +499,9 @@ def installed_authority(version, wheel):
     metadata(active, mode=0o777, kind=stat.S_ISLNK)
     if active.readlink() != release / "venv":
         raise InstallError("managed_authority_invalid")
-    metadata(release / f"postcardscene-{version}-py3-none-any.whl")
-    if (
-        read_regular(
-            release / f"postcardscene-{version}-py3-none-any.whl", 32 * 1024 * 1024
-        )
-        != wheel
-    ):
+    wheel_path = release / f"postcardscene-{version}-py3-none-any.whl"
+    metadata(wheel_path)
+    if read_regular(wheel_path, 32 * 1024 * 1024) != wheel:
         raise InstallError("managed_authority_invalid")
     validate_tree(release, 0, 0, payload=True)
     for path, content in asset_bytes(wheel).items():

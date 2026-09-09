@@ -16,7 +16,7 @@ from pathlib import Path
 # These are installer inputs, not a release manifest or published-bundle schema.
 INPUT_HASHES = {
     "install_inputs.py": "e30622cb3258479669f0a32ab06924b1b37dfa7151cb293c749859f675711218",
-    "install_host.py": "0f8e8b9215a10ff5dc69d848d961945465cb61a9909d0b743fd8686fec35ec3f",
+    "install_host.py": "21c8d6ade650e4badc8a0743a4ff6169736c7bcc267058432f3f61b39ce8507d",
     "install_preflight.py": "7f4e9b1d8819abf55bf9f835d2173ccb5a37cc8c1b9508187c02dac1b54f22bc",
     "runtime-requirements.txt": "ca8eb8d430bd3d883523e592c99bec74c65c7537a765c52998001f0ae4c76d3a",
 }
