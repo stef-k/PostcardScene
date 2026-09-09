@@ -1,6 +1,6 @@
 # Appliance operations
 
-This document records implemented operating contracts. Managed installation,
+This document records implemented operating contracts. Managed installation
 and updates remain with #26. The templates
 below are versioned provisioning inputs, not an installer or a claim of a
 physically validated release.
@@ -93,8 +93,9 @@ Hardening uses `NoNewPrivileges=yes`, empty bounding/ambient capability sets,
 `/var/lib/postcardscene` writable in the persistent filesystem. The private
 `/var/lib/postcardscene-web/session.key` remains readable, but read-only inside the
 service; initialize/recover it separately while web is stopped. `ProtectHome=yes`
-hides home directories, and `InaccessiblePaths=-/run/postcardscene-wayland` hides
-Wayland authority even when present after boot. `PrivateTmp=yes` provides disposable
+hides home directories, and `InaccessiblePaths=-/run/postcardscene-wayland` masks
+Wayland authority when present at startup. If graphics creates it later, its
+runtime-owned 0700 mode still denies the separate web UID access. `PrivateTmp=yes` provides disposable
 private temporary space needed for Waitress request/response buffering. It is not
 a durable cache or an application log tree.
 
@@ -119,11 +120,17 @@ correct trusted configuration/provisioning before resetting the start limit.
 
 Asset assertions and real foreground loopback tests cover both transport modes,
 private-key loading, unchanged durable bytes, sanitized logs and bounded SIGTERM.
-They model installed roots under the test UID; they do not exercise systemd mount
-namespaces, actual two-UID DB/WAL/SHM permissions or live service stop propagation.
-Those privileged installed-host checks remain required with #26 provisioning;
-physical Raspberry Pi/unattended evidence remains #127. No physical-support claim
-follows from these software tests.
+They model installed roots under the test UID. A separate local systemd user-service
+smoke on 2026-09-09 used the built wheel and locked dependencies, the unit's
+hardening/supervision properties, `PrivateUsers=yes`, and disposable bind-mounted
+installed roots. Both transport modes served login/static assets, loaded the private
+key, wrote SQLite, connected to the read-only runtime directory's panel socket,
+and stopped through systemd. Home/device access was denied and the key was
+read-only. The smoke used the test UID and invoked the same Python entry function
+through the mapped environment; it does not prove installed two-UID DB/WAL/SHM
+permissions or real runtime/graphics stop propagation. Those installed-host checks
+remain required with #26 provisioning; physical Raspberry Pi/unattended evidence
+remains #127. No physical-support claim follows from these software tests.
 
 ## Production control plane (#131)
 
