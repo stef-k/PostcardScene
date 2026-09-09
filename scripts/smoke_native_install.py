@@ -347,7 +347,15 @@ def lifecycle_smoke(entrypoint, installer, runtime, web, shared):
             shutil.copyfile(ROOT / name, bundle / name)
         rejected_layouts(entrypoint, bundle)
         operation = entrypoint.Installation(bundle)
-        operation.remove()
+        try:
+            operation.remove()
+        except entrypoint.InstallError:
+            # Disposable runner diagnostics omit process arguments and secrets.
+            subprocess.run(
+                ("ps", "-u", "postcardscene,postcardscene-web", "-o", "pid,uid,comm"),
+                check=False,
+            )
+            raise
         assert operation.phase == "removed_preserved"
         marker = Path("/opt/postcardscene/service-conflicts.json")
         retained = marker.read_bytes()

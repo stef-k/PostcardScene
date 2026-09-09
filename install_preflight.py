@@ -44,6 +44,22 @@ UNITS = (
     "postcardscene-web.service",
     "postcardscene-graphics.service",
 )
+UNIT_FILE_STATES = {
+    "enabled",
+    "disabled",
+    "static",
+    "masked",
+    "",
+    "enabled-runtime",
+    "linked",
+    "linked-runtime",
+    "masked-runtime",
+    "indirect",
+    "alias",
+    "generated",
+    "transient",
+    "bad",
+}
 LOCAL_FILESYSTEMS = frozenset({"ext4", "ext3", "ext2", "btrfs", "xfs", "f2fs", "zfs"})
 ENV = {"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LC_ALL": "C", "LANG": "C"}
 
@@ -375,6 +391,8 @@ def service_state(host, unit):
     if status or values.get("LoadState") not in ("loaded", "not-found", "masked"):
         raise Rejected("service_state_unavailable")
     if values.get("ActiveState") not in ("active", "inactive", "failed"):
+        raise Rejected("service_state_unavailable")
+    if values.get("UnitFileState") not in UNIT_FILE_STATES:
         raise Rejected("service_state_unavailable")
     return values
 

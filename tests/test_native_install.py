@@ -422,7 +422,7 @@ def test_remove_failure_preserves_payload_and_uncertain_targets(monkeypatch, fai
     events = []
     monkeypatch.setattr(host, "installed_authority", lambda *a: None)
     monkeypatch.setattr(host, "service_authority", lambda *a: None)
-    monkeypatch.setattr(host, "conflict_record", lambda: {})
+    monkeypatch.setattr(host, "conflict_record", lambda *a: {})
     monkeypatch.setattr(host, "preserved_authority", lambda: (11, 12, 13, 14))
     monkeypatch.setattr(host, "require_stopped", lambda *a: None)
 
@@ -474,3 +474,17 @@ def test_foreign_effective_service_authority_rejected(extra):
     )
     with pytest.raises(host.InstallError, match="managed_service_authority_invalid"):
         host.service_authority(preflight)
+
+
+def test_process_quiescence_waits_boundedly_without_killing_foreign_processes(
+    monkeypatch,
+):
+    states = iter((True, False))
+    monkeypatch.setattr(host, "owned_processes", lambda _: next(states))
+    monkeypatch.setattr(host.time, "sleep", lambda _: None)
+    host.require_no_processes((11, 12, 13, 14))
+    monkeypatch.setattr(host, "owned_processes", lambda _: True)
+    times = iter((0, 16))
+    monkeypatch.setattr(host.time, "monotonic", lambda: next(times))
+    with pytest.raises(host.InstallError, match="owned_processes_remain"):
+        host.require_no_processes((11, 12, 13, 14))

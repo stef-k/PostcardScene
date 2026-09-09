@@ -295,7 +295,7 @@ Do not delete, edit or replace it with a symlink to make a partial state appear
 managed.
 
 Removal stops/disables only the three PostcardScene units, verifies that no
-service-UID process survives, then restores recorded getty/display-manager state
+service-UID process survives (with a bounded 15-second retirement grace), then restores recorded getty/display-manager state
 before deleting validated payload/assets and replaceable roots. Unexpected
 owners, symlinks, mounts, socket residue, changed assets or uncertain service
 restoration cause nonzero failure and preserve uncertain targets. There is no

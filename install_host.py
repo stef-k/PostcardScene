@@ -10,6 +10,7 @@ import shutil
 import signal
 import stat
 import subprocess
+import time
 import zipfile
 from pathlib import Path
 
@@ -237,7 +238,7 @@ def reserve_graphics(preflight, run, *, preserved=False):
         state["local_symlink"] = str(alias.readlink()) if alias.is_symlink() else None
     destination = MARKER.with_suffix(".new") if preserved else MARKER
     if preserved:
-        conflict_record()
+        conflict_record(preflight)
     write_new(destination, json.dumps(states, sort_keys=True).encode())
     if preserved:
         os.replace(destination, MARKER)
@@ -390,7 +391,7 @@ def preserved_authority():
     return runtime, web, shared, private
 
 
-def conflict_record():
+def conflict_record(preflight):
     metadata(MARKER)
     record = json.loads(read_regular(MARKER, 16384))
     if not isinstance(record, dict) or set(record) != set(CONFLICTS):
@@ -406,23 +407,7 @@ def conflict_record():
         if (
             state["LoadState"] not in {"loaded", "not-found", "masked"}
             or state["ActiveState"] not in {"active", "inactive", "failed"}
-            or state["UnitFileState"]
-            not in {
-                "enabled",
-                "disabled",
-                "static",
-                "masked",
-                "",
-                "enabled-runtime",
-                "linked",
-                "linked-runtime",
-                "masked-runtime",
-                "indirect",
-                "alias",
-                "generated",
-                "transient",
-                "bad",
-            }
+            or state["UnitFileState"] not in preflight.UNIT_FILE_STATES
         ):
             raise InstallError("conflict_record_invalid")
         target = state["local_symlink"]
@@ -522,7 +507,7 @@ def installed_authority(version, wheel):
         raise InstallError("managed_authority_invalid")
 
 
-def require_no_processes(identities):
+def owned_processes(identities):
     owned = set(identities[:2])
     for path in Path("/proc").iterdir():
         if not path.name.isdecimal():
@@ -535,7 +520,17 @@ def require_no_processes(identities):
             if line.startswith("Uid:") and owned.intersection(
                 map(int, line.split()[1:])
             ):
-                raise InstallError("owned_processes_remain")
+                return True
+
+    return False
+
+
+def require_no_processes(identities):
+    deadline = time.monotonic() + 15
+    while owned_processes(identities):
+        if time.monotonic() >= deadline:
+            raise InstallError("owned_processes_remain")
+        time.sleep(0.1)
 
 
 def service_authority(preflight):
@@ -574,7 +569,7 @@ def classify(version, wheel, preflight):
             preflight.service_check(preflight.Host(), None)
             return "clean"
         identities = preserved_authority()
-        conflict_record()
+        conflict_record(preflight)
         absent = (ROOT / "venv", RELEASES, *assets, CACHE, *TRANSIENTS)
         if not any(os.path.lexists(p) for p in absent):
             if set(ROOT.iterdir()) != {MARKER}:
@@ -639,7 +634,7 @@ def remove_transients(identities):
 def remove_managed(version, wheel, preflight, run):
     installed_authority(version, wheel)
     service_authority(preflight)
-    record = conflict_record()
+    record = conflict_record(preflight)
     identities = preserved_authority()
     run(("/usr/bin/systemctl", "stop", *reversed(SERVICES)))
     run(("/usr/bin/systemctl", "disable", *SERVICES))
