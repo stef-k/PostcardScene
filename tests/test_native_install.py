@@ -149,7 +149,7 @@ def test_ordering_and_failure_preservation(bundle, monkeypatch, failure, capsys)
     monkeypatch.setattr(host, "install_assets", lambda *a: step("assets"))
     monkeypatch.setattr(host, "reserve_graphics", lambda *a: step("conflicts"))
     monkeypatch.setattr(host, "require_stopped", lambda *a: step("stopped"))
-    monkeypatch.setattr(installer, "bootstrap", lambda *a: step("bootstrap"))
+    monkeypatch.setattr(host, "bootstrap", lambda *a: step("bootstrap"))
     monkeypatch.setattr(Path, "symlink_to", lambda *a: step("activation"))
     monkeypatch.setattr(
         host.shutil,
@@ -188,7 +188,7 @@ def test_ordering_and_failure_preservation(bundle, monkeypatch, failure, capsys)
 
 def test_bootstrap_uses_web_cli_without_password_arguments():
     calls = []
-    installer.bootstrap(
+    host.bootstrap(
         "/release/venv/bin/python", lambda args, **kw: calls.append((args, kw))
     )
     assert calls[0][1]["user"] == "postcardscene"

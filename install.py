@@ -16,7 +16,7 @@ from pathlib import Path
 # These are installer inputs, not a release manifest or published-bundle schema.
 INPUT_HASHES = {
     "install_inputs.py": "e30622cb3258479669f0a32ab06924b1b37dfa7151cb293c749859f675711218",
-    "install_host.py": "51eef34dad46663b1a1ec3544b08bc5b678ed3537aa967aca2c982d39406a92c",
+    "install_host.py": "7278ea875ece7346959a9605c5a65c40888316641db53ea13c990c789f8084c1",
     "install_preflight.py": "b01b5e1f71325b44e1b8812da4d6132eb6ef70e64f14869f83de872036aeb107",
     "runtime-requirements.txt": "ca8eb8d430bd3d883523e592c99bec74c65c7537a765c52998001f0ae4c76d3a",
 }
@@ -66,31 +66,6 @@ def validate_inputs(bundle):
     return *validated, preflight, host
 
 
-def bootstrap(python, run):
-    # SQLite's initial 0644 creation mode cannot gain group write from umask.
-    # Reserve only a new empty file as its runtime owner; Alembic owns all content.
-    run(
-        (
-            python,
-            "-I",
-            "-c",
-            "import os; fd=os.open('/var/lib/postcardscene/postcardscene.sqlite3', "
-            "os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o660); os.close(fd)",
-        ),
-        user="postcardscene",
-    )
-    cli = (python, "-I", "-m", "flask", "--app", "postcardscene.web:create_app")
-    run((*cli, "auth", "init-secret"), user="postcardscene-web")
-    run((*cli, "db", "upgrade"), user="postcardscene-web")
-    run((*cli, "db", "check"), user="postcardscene-web")
-    run(
-        (*cli, "auth", "create-admin"),
-        user="postcardscene-web",
-        interactive=True,
-        timeout=900,
-    )
-
-
 def validate_preserved_application(python, run):
     # Only the private snapshot is opened by SQLite; no init, upgrade or admin CLI.
     run(
@@ -132,6 +107,7 @@ class Installation:
         self.host = None
         self.phase = "validation"
         self.release = None
+        self.reinstall_parent = None
         self.durable = False
         self.activation = False
 
@@ -186,7 +162,7 @@ class Installation:
         host.require_stopped(preflight)
         self.phase = "bootstrap"
         self.durable = True
-        bootstrap(python, self.run)
+        host.bootstrap(python, self.run)
         self.phase = "activation"
         host.activate_payload(self.release)
         self.activation = True
@@ -211,8 +187,8 @@ class Installation:
         if not result.ok or any(t.state != "installed" for t in result.plan.tools):
             raise InstallError("post_package_preflight_rejected")
         self.phase = "payload"
-        host.directory(Path("/opt/postcardscene/releases"))
-        self.release = Path("/opt/postcardscene/releases") / version
+        self.reinstall_parent = host.directory(host.RELEASES)
+        self.release = host.RELEASES / version
         python = host.stage_payload(
             self.release, wheel_name, wheel, requirements, result.plan, self.run
         )
@@ -294,7 +270,12 @@ class Installation:
         elif self.release is not None:
             # Exact fresh root-controlled payload only; never durable/config authority.
             try:
-                self.host.discard_staged_payload(self.release)
+                if self.reinstall_parent is not None:
+                    self.host.discard_reinstall_staging(
+                        self.release, self.reinstall_parent
+                    )
+                else:
+                    self.host.discard_staged_payload(self.release)
             except (OSError, self.host.InstallError):
                 print(
                     "Staged payload cleanup failed; preserve it for inspection.",

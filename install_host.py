@@ -18,12 +18,10 @@ SERVICES = tuple(
     f"postcardscene-{name}.service" for name in ("graphics", "runtime", "web")
 )
 ASSETS = {
-    **{
-        f"{name}/systemd/postcardscene-{name}.service": f"/etc/systemd/system/postcardscene-{name}.service"
-        for name in ("graphics", "runtime", "web")
-    },
-    "graphics/pam.d/postcardscene-graphics": "/etc/pam.d/postcardscene-graphics",
+    f"{name}/systemd/postcardscene-{name}.service": f"/etc/systemd/system/postcardscene-{name}.service"
+    for name in ("graphics", "runtime", "web")
 }
+ASSETS["graphics/pam.d/postcardscene-graphics"] = "/etc/pam.d/postcardscene-graphics"
 CONFIG = b"""# Managed initial configuration; trusted host Python, never web input.
 DATABASE_PATH = "/var/lib/postcardscene/postcardscene.sqlite3"
 SESSION_SECRET_PATH = "/var/lib/postcardscene-web/session.key"
@@ -87,6 +85,7 @@ def directory(path, uid=0, gid=0, mode=0o755):
     path.mkdir(mode=0o700)
     os.chown(path, uid, gid)
     path.chmod(mode)
+    return path.stat()
 
 
 def write_new(path, content, mode=0o644, gid=0):
@@ -125,47 +124,32 @@ def device_groups():
 def provision_identities(run):
     for group in ("postcardscene", "postcardscene-web"):
         run(("/usr/sbin/groupadd", "--system", group))
+    useradd = (
+        "/usr/sbin/useradd",
+        "--system",
+        "--gid=postcardscene",
+        "--no-create-home",
+        "--shell=/usr/sbin/nologin",
+        "--password=!",
+    )
     for user, home in (
         ("postcardscene", "/var/lib/postcardscene"),
         ("postcardscene-web", "/var/lib/postcardscene-web"),
     ):
-        run(
-            (
-                "/usr/sbin/useradd",
-                "--system",
-                "--gid",
-                "postcardscene",
-                "--no-create-home",
-                "--home-dir",
-                home,
-                "--shell",
-                "/usr/sbin/nologin",
-                "--password",
-                "!",
-                user,
-            )
-        )
+        run((*useradd, "--home-dir", home, user))
     groups = device_groups()
     if groups:
-        run(
-            (
-                "/usr/sbin/usermod",
-                "--append",
-                "--groups",
-                ",".join(groups),
-                "postcardscene",
-            )
-        )
+        members = ",".join(groups)
+        run(("/usr/sbin/usermod", "--append", "--groups", members, "postcardscene"))
     return preserved_identities()
 
 
 def install_packages(plan, run):
-    run(("/usr/bin/apt-get", "-o", "DPkg::Lock::Timeout=60", "update"), timeout=600)
+    apt = ("/usr/bin/apt-get", "-o", "DPkg::Lock::Timeout=60")
+    run((*apt, "update"), timeout=600)
     run(
         (
-            "/usr/bin/apt-get",
-            "-o",
-            "DPkg::Lock::Timeout=60",
+            *apt,
             "--yes",
             "--no-install-recommends",
             "install",
@@ -212,9 +196,7 @@ def stage_payload(release, wheel_name, wheel, requirements, plan, run):
             "-I",
             "-c",
             "import importlib.metadata as m; import postcardscene.web, postcardscene.runtime; "
-            "d=m.distribution('postcardscene'); assert d.version == "
-            + repr(release.name)
-            + "; "
+            f"d=m.distribution('postcardscene'); assert d.version == {release.name!r}; "
             "assert all(callable(e.load()) for e in d.entry_points if e.group == 'console_scripts'); "
             "assert all(f.locate().is_file() for f in d.files)",
         )
@@ -256,10 +238,29 @@ def service_state(preflight, unit):
 
 
 def require_stopped(preflight):
-    if any(
-        service_state(preflight, unit)["ActiveState"] != "inactive" for unit in SERVICES
-    ):
-        raise InstallError("services_must_be_stopped")
+    for unit in SERVICES:
+        if service_state(preflight, unit)["ActiveState"] != "inactive":
+            raise InstallError("services_must_be_stopped")
+
+
+def bootstrap(python, run):
+    # SQLite's initial 0644 creation mode cannot gain group write from umask.
+    # Reserve only a new empty file as its runtime owner; Alembic owns all content.
+    reserve_database = (
+        "import os; fd=os.open('/var/lib/postcardscene/postcardscene.sqlite3', "
+        "os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o660); os.close(fd)"
+    )
+    run((python, "-I", "-c", reserve_database), user="postcardscene")
+    cli = (python, "-I", "-m", "flask", "--app", "postcardscene.web:create_app")
+    run((*cli, "auth", "init-secret"), user="postcardscene-web")
+    run((*cli, "db", "upgrade"), user="postcardscene-web")
+    run((*cli, "db", "check"), user="postcardscene-web")
+    run(
+        (*cli, "auth", "create-admin"),
+        user="postcardscene-web",
+        interactive=True,
+        timeout=900,
+    )
 
 
 def activate_payload(release):
@@ -272,6 +273,20 @@ def discard_staged_payload(release):
     metadata(release, mode=0o755, kind=stat.S_ISDIR)
     validate_tree(release, 0, 0, payload=True)
     shutil.rmtree(release)
+
+
+def discard_reinstall_staging(release, created_parent):
+    # Only the parent exclusively created by this reinstall grants cleanup scope.
+    trusted_parent(RELEASES)
+    current = metadata(RELEASES, mode=0o755, kind=stat.S_ISDIR)
+    if not os.path.samestat(current, created_parent) or release.parent != RELEASES:
+        raise InstallError("reinstall_cleanup_uncertain")
+    if os.path.lexists(ROOT / "venv") or set(RELEASES.iterdir()) - {release}:
+        raise InstallError("reinstall_cleanup_uncertain")
+    validate_tree(RELEASES, 0, 0, payload=True)
+    if os.path.lexists(release):
+        discard_staged_payload(release)
+    RELEASES.rmdir()
 
 
 # Closed lifecycle paths; durable roots are inspected, never recursively repaired.
@@ -293,9 +308,7 @@ def metadata(path, uid=0, gid=0, mode=0o644, kind=stat.S_ISREG):
     info = path.lstat()
     if (
         not kind(info.st_mode)
-        or info.st_uid != uid
-        or info.st_gid != gid
-        or stat.S_IMODE(info.st_mode) != mode
+        or (info.st_uid, info.st_gid, stat.S_IMODE(info.st_mode)) != (uid, gid, mode)
         or (kind != stat.S_ISDIR and info.st_nlink != 1)
     ):
         raise InstallError("managed_authority_invalid")
@@ -397,13 +410,9 @@ def conflict_record(preflight):
     record = json.loads(read_regular(MARKER, 16384))
     if not isinstance(record, dict) or set(record) != set(CONFLICTS):
         raise InstallError("conflict_record_invalid")
+    fields = {"LoadState", "ActiveState", "UnitFileState", "local_symlink"}
     for state in record.values():
-        if not isinstance(state, dict) or set(state) != {
-            "LoadState",
-            "ActiveState",
-            "UnitFileState",
-            "local_symlink",
-        }:
+        if not isinstance(state, dict) or set(state) != fields:
             raise InstallError("conflict_record_invalid")
         if (
             state["LoadState"] not in {"loaded", "not-found", "masked"}
@@ -449,11 +458,10 @@ def validate_tree(root, uid, gid, *, payload=False):
         for path in (Path(parent), *(Path(parent) / n for n in directories + files)):
             count += 1
             info = path.lstat()
-            if (
-                count > 100000
-                or info.st_dev != device
-                or info.st_uid != uid
-                or info.st_gid != gid
+            if count > 100000 or (info.st_dev, info.st_uid, info.st_gid) != (
+                device,
+                uid,
+                gid,
             ):
                 raise InstallError("unsafe_removal_tree")
             if stat.S_ISLNK(info.st_mode) and payload:
@@ -474,6 +482,13 @@ def validate_tree(root, uid, gid, *, payload=False):
                 raise InstallError("unsafe_removal_tree")
 
 
+def validate_asset(path, content):
+    trusted_parent(path)
+    metadata(path)
+    if read_regular(path) != content:
+        raise InstallError("managed_authority_invalid")
+
+
 def installed_authority(version, wheel):
     runtime, _, shared, _ = preserved_authority()
     release = RELEASES / version
@@ -491,10 +506,7 @@ def installed_authority(version, wheel):
         raise InstallError("managed_authority_invalid")
     validate_tree(release, 0, 0, payload=True)
     for path, content in asset_bytes(wheel).items():
-        trusted_parent(path)
-        metadata(path)
-        if read_regular(path) != content:
-            raise InstallError("managed_authority_invalid")
+        validate_asset(path, content)
     for path in DROPINS:
         metadata(path, mode=0o755, kind=stat.S_ISDIR)
         if set(path.iterdir()) != {path / "permissions.conf"}:
@@ -510,11 +522,9 @@ def installed_authority(version, wheel):
 
 def owned_processes(identities):
     owned = set(identities[:2])
-    for path in Path("/proc").iterdir():
-        if not path.name.isdecimal():
-            continue
+    for path in Path("/proc").glob("[0-9]*/status"):
         try:
-            status = read_regular(path / "status").decode()
+            status = read_regular(path).decode()
         except FileNotFoundError:
             continue
         for line in status.splitlines():
@@ -654,9 +664,7 @@ def remove_managed(version, wheel, preflight, run):
     release = RELEASES / version
     discard_staged_payload(release)
     for path, content in asset_bytes(wheel).items():
-        metadata(path)
-        if read_regular(path) != content:
-            raise InstallError("managed_authority_invalid")
+        validate_asset(path, content)
         path.unlink()
     for path in DROPINS:
         path.rmdir()

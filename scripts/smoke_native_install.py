@@ -504,7 +504,7 @@ def main():
     installer.directory(Path("/run/postcardscene-wayland"), runtime, shared, 0o700)
     os.mknod(DEVICE, stat.S_IFCHR | 0o660, os.makedev(1, 3))
     DEVICE.chmod(0o660)
-    entrypoint.bootstrap(
+    installer.bootstrap(
         python, lambda args, **kw: bootstrap_runner(installer, args, **kw)
     )
     Path("/opt/postcardscene/venv").symlink_to(release / "venv")
