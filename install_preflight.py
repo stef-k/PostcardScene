@@ -95,7 +95,11 @@ class Host:
         return data.decode("utf-8", errors="strict")
 
     def exists(self, path):
-        return os.path.lexists(path)
+        try:
+            os.lstat(path)
+        except FileNotFoundError:
+            return False
+        return True
 
     def lstat(self, path):
         return os.lstat(path)
@@ -139,7 +143,20 @@ class Host:
                     continue
                 chunk = os.read(process.stdout.fileno(), 8192)
                 if not chunk:
-                    return process.wait(timeout=1), data.decode("utf-8", "strict")
+                    # Observe exit without reaping, retaining process-group authority.
+                    while time.monotonic() < deadline:
+                        result = os.waitid(
+                            os.P_PID, process.pid, os.WEXITED | os.WNOWAIT | os.WNOHANG
+                        )
+                        if result is not None:
+                            status = (
+                                result.si_status
+                                if result.si_code == os.CLD_EXITED
+                                else -result.si_status
+                            )
+                            return status, data.decode("utf-8", "strict")
+                        time.sleep(0.01)
+                    break
                 data.extend(chunk)
                 if len(data) > 262144:
                     break
@@ -214,7 +231,7 @@ def owned(host, package, path):
         raise Rejected("unsupported_tool_authority")
 
 
-def package_available(host, package, distro):
+def package_available(host, package, distro, release):
     status, output = host.command(
         (
             "/usr/bin/apt-cache",
@@ -228,28 +245,57 @@ def package_available(host, package, distro):
     )
     if status or not re.search(r"Candidate: (?!\(none\))\S+", output):
         raise Rejected("package_unavailable")
-    # Require the candidate's origin, not any unrelated version in the cache.
+    # Candidate and installed versions must both have an approved cached origin.
     candidate = re.search(r"Candidate: (\S+)", output).group(1)
-    section = re.search(
-        r"^\s*(?:\*\*\* )?" + re.escape(candidate) + r" \d+\n((?:\s{8,}.*\n?)*)",
-        output,
-        re.MULTILINE,
-    )
-    if not section:
-        raise Rejected("unsupported_package_authority")
+    installed = re.search(r"Installed: (\S+)", output)
+    versions = {candidate}
+    if installed and installed.group(1) != "(none)":
+        versions.add(installed.group(1))
     domains = (
         r"(?:ports|archive|security)\.ubuntu\.com"
         if distro == "ubuntu"
         else r"(?:deb|security)\.debian\.org|archive\.raspberrypi\.com"
     )
-    if not re.search(r"https?://(?:" + domains + r")/", section.group(1)):
-        raise Rejected("unsupported_package_authority")
+    for version in versions:
+        section = re.search(
+            r"^ +(?:\*\*\* )?" + re.escape(version) + r" \d+\n((?: {8,}.*\n?)*)",
+            output,
+            re.MULTILINE,
+        )
+        if not section:
+            raise Rejected("unsupported_package_authority")
+        sources = [
+            line.split()
+            for line in section.group(1).splitlines()
+            if "/var/lib/dpkg/status" not in line
+        ]
+        codename = {"24.04": "noble", "26.04": "resolute", "13": "trixie"}[release]
+        for source in sources:
+            if (
+                len(source) != 5
+                or not re.fullmatch(r"https?://(?:" + domains + r")/\S*", source[1])
+                or not re.fullmatch(
+                    codename + r"(?:-updates|-security|-backports)?/\S+", source[2]
+                )
+                or source[3:] != ["arm64", "Packages"]
+            ):
+                raise Rejected("unsupported_package_authority")
+        if not sources:
+            raise Rejected("unsupported_package_authority")
+        if package == "labwc":
+            number = re.match(r"(?:\d+:)?(\d+)\.(\d+)\.(\d+)", version)
+            if not number or tuple(map(int, number.groups())) < (0, 7, 1):
+                raise Rejected("tool_version_unsupported")
 
 
 def python_check(host):
     if not package_status(host, "python3") or not package_status(host, "python3-venv"):
         raise Rejected("python_bootstrap_required")
     owned(host, "python3-minimal", "/usr/bin/python3")
+    resolved = host.realpath("/usr/bin/python3")
+    if not re.fullmatch(r"/usr/bin/python3\.\d+", resolved):
+        raise Rejected("python_bootstrap_required")
+    owned(host, Path(resolved).name + "-minimal", resolved)
     script = (
         "import sys,struct,platform,venv,ensurepip,json; "
         "print(json.dumps([platform.python_implementation(),"
@@ -266,7 +312,7 @@ def python_check(host):
             and (3, 11) <= tuple(version[:2]) < (3, 15)
             and re.fullmatch(r"\d+(?:\.\d+)+", pip)
         )
-    except (ValueError, TypeError):
+    except (ValueError, TypeError, AttributeError):
         valid = False
     if status or not valid:
         raise Rejected("python_bootstrap_required")
@@ -279,8 +325,24 @@ def storage_check(host):
         fields = line.split()
         separator = fields.index("-")
         path = re.sub(r"\\([0-7]{3})", lambda m: chr(int(m[1], 8)), fields[4])
-        mounts.append((path, fields[separator + 1]))
+        mounts.append((path, fields[separator + 1], "rw" in fields[5].split(",")))
     for root in ROOTS:
+        filesystem = max(
+            (
+                (p, fs, writable)
+                for p, fs, writable in mounts
+                if root == p or root.startswith(p.rstrip("/") + "/")
+            ),
+            key=lambda item: len(item[0]),
+            default=("", "unknown", False),
+        )
+        if not filesystem[2]:
+            raise Rejected("unsupported_install_storage")
+        filesystem = filesystem[1]
+        allowed = LOCAL_FILESYSTEMS | ({"tmpfs"} if root.startswith("/run/") else set())
+        if filesystem not in allowed:
+            raise Rejected("unsupported_install_storage")
+
         path = Path(root)
         for ancestor in reversed((path, *path.parents)):
             if not host.exists(str(ancestor)):
@@ -295,18 +357,6 @@ def storage_check(host):
         if host.exists(root):
             # No managed marker exists before #140/#142: never adopt even empty roots.
             raise Rejected("existing_installation_unrecognized")
-        filesystem = max(
-            (
-                (p, fs)
-                for p, fs in mounts
-                if root == p or root.startswith(p.rstrip("/") + "/")
-            ),
-            key=lambda item: len(item[0]),
-            default=("", "unknown"),
-        )[1]
-        allowed = LOCAL_FILESYSTEMS | ({"tmpfs"} if root.startswith("/run/") else set())
-        if filesystem not in allowed:
-            raise Rejected("unsupported_install_storage")
 
 
 def service_state(host, unit):
@@ -328,6 +378,28 @@ def service_state(host, unit):
 
 
 def service_check(host, seat):
+    for path in ("/etc/passwd", "/etc/group"):
+        if any(
+            line.split(":", 1)[0] in ("postcardscene", "postcardscene-web")
+            for line in host.read(path).splitlines()
+        ):
+            raise Rejected("existing_installation_unrecognized")
+    for operation in ("list-unit-files", "list-units"):
+        status, output = host.command(
+            (
+                "/usr/bin/systemctl",
+                operation,
+                "--all",
+                "--no-legend",
+                "--plain",
+                "--no-pager",
+                "postcardscene*",
+            )
+        )
+        if status:
+            raise Rejected("service_state_unavailable")
+        if output.strip():
+            raise Rejected("existing_service_unrecognized")
     for unit in UNITS:
         if service_state(host, unit)["LoadState"] != "not-found":
             raise Rejected("existing_service_unrecognized")
@@ -363,6 +435,8 @@ def tool_check(host, package, executable):
     if not installed:
         raise Rejected("unsupported_tool_authority")
     owned(host, package, path)
+    if not host.lstat(host.realpath(path)).st_mode & 0o111:
+        raise Rejected("tool_unavailable")
     if executable == "chromium":
         # Browser wrappers can create per-user state even for version queries.
         status, output = host.command(
@@ -374,7 +448,8 @@ def tool_check(host, package, executable):
             )
         )
     else:
-        status, output = host.command((path, "--version"))
+        options = ("--no-config", "--load-scripts=no") if executable == "mpv" else ()
+        status, output = host.command((path, *options, "--version"))
     match = re.search(r"\b(\d+)\.(\d+)(?:\.(\d+))?", output)
     if status or not match:
         raise Rejected("tool_version_invalid")
@@ -394,6 +469,8 @@ def chromium_snap(host):
     if host.exists("/usr/bin/chromium-browser"):
         owned(host, "chromium-browser", "/usr/bin/chromium-browser")
     if not host.exists("/snap/bin/chromium"):
+        if host.exists("/snap/chromium/current"):
+            raise Rejected("tool_unavailable")
         return Tool("chromium", "/snap/bin/chromium", "install_required")
     owned(host, "snapd", "/usr/bin/snap")
     status, output = host.command(("/usr/bin/snap", "list", "chromium"))
@@ -408,6 +485,8 @@ def chromium_snap(host):
         or fields[4] not in ("canonical✓", "canonical**")
         or fields[5] != "-"
     ):
+        raise Rejected("unsupported_tool_authority")
+    if host.lstat("/snap/bin/chromium").st_uid != 0:
         raise Rejected("unsupported_tool_authority")
     if host.realpath("/snap/bin/chromium") != "/usr/bin/snap":
         raise Rejected("unsupported_tool_authority")
@@ -427,7 +506,7 @@ def preflight(host=None, *, seat="logind"):
         packages = BASE_PACKAGES + (("snapd",) if distro == "ubuntu" else ("chromium",))
         seat_packages = ("seatd",) if seat == "seatd" else ()
         for package in packages + seat_packages:
-            package_available(host, package, distro)
+            package_available(host, package, distro, release)
         tools = tuple(tool_check(host, p, e) for p, e in TOOLS)
         browser = (
             chromium_snap(host)
@@ -476,6 +555,19 @@ def main():
         print(
             "Apt packages: "
             + ", ".join(result.plan.apt_packages + result.plan.seat_packages)
+        )
+        if result.plan.snap:
+            print("Snap: " + " ".join(result.plan.snap))
+        print(
+            "Missing tools: "
+            + (
+                ", ".join(
+                    tool.executable
+                    for tool in result.plan.tools
+                    if tool.state == "install_required"
+                )
+                or "none"
+            )
         )
         print("Required actions: " + (", ".join(result.plan.actions) or "none"))
     else:

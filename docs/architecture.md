@@ -184,6 +184,10 @@ User/operator/product documents retain separate roles: [Composition](composition
 [Operations](operations.md), [UI design](ui-design.md) and [Roadmap](roadmap.md).
 They are not replaced by the subsystem architecture contracts.
 
+#139 freezes the [managed-host read-only preflight](architecture/installation-recovery-and-operations.md#managed-host-preflight-139):
+ARM64 Ubuntu Server 24.04/26.04 LTS and Raspberry Pi OS/Debian 13 Trixie,
+with closed distro package/seat authority. #140 retains all installation mutation.
+
 ## Open architectural decisions
 
 The following are intentionally unresolved until the owning issue has enough evidence:

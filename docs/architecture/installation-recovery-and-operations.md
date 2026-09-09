@@ -228,6 +228,31 @@ Stable releases should be tied to immutable source/tag/version identity and fina
 
 V0 does not require an APT repository, mandatory `.deb`, Docker, an auto-update daemon, or a transactional application/database rollback engine.
 
+### Managed-host preflight (#139)
+
+The standalone stdlib `install_preflight.py` freezes the read-only gate consumed
+by #140's native installer and shipped beside it by #143. Managed V0 targets are
+Raspberry Pi 4/5-class ARM64 with Ubuntu Server 24.04/Noble or 26.04/Resolute LTS,
+or Raspberry Pi OS 64-bit / Debian 13 Trixie. Point releases keep those identities;
+generic x86 CI remains portability evidence. Distro differences are provisioning
+data, never alternate application or graphics architectures.
+
+The frozen result contains either safe failure categories with no plan, or a
+closed immutable package/tool/seat/action plan. Ubuntu uses archive tools and
+Canonical's Chromium snap; Debian/RPi uses native Chromium. Distro CPython
+3.11–3.14 with venv/ensurepip is required before provisioning. Default logind/PAM
+and explicit seatd retain #62 ownership. Missing installable tools are actionable;
+unknown package authority, unsafe/non-local roots, existing unrecognized
+accounts/installations/units and unavailable host facts fail closed. Tty1/getty
+and display-manager conflicts remain explicit actions for the installer.
+
+No package/user/directory/config/venv/service/database mutation occurs in this
+gate. Existing managed-state recognition belongs to #140/#142; preflight currently
+accepts clean installation only. The plan is a snapshot, not a reusable grant of
+filesystem/service authority: the installer must revalidate before mutation.
+See [operations](../operations.md#read-only-managed-host-preflight-139) for fixed
+packages/paths, command bounds, package evidence and diagnostic interpretation.
+
 ## Backup and restore boundary
 
 PostcardScene backup owns PostcardScene durable state, not the user's original media libraries.

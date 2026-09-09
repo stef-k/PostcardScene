@@ -21,6 +21,8 @@ SPEC.loader.exec_module(pf)
 class FixtureHost:
     def __init__(self, distro="ubuntu", version="24.04", code="noble"):
         self.files = {
+            "/etc/passwd": "root:x:0:0:root:/root:/bin/bash\n",
+            "/etc/group": "root:x:0:\n",
             "/etc/os-release": f'ID={distro}\nVERSION_ID="{version}"\nVERSION_CODENAME={code}\n',
             "/proc/sys/kernel/osrelease": "6.8.0-linux",
             "/proc/1/comm": "systemd\n",
@@ -42,6 +44,7 @@ class FixtureHost:
         self.stats = {}
         self.commands = []
         self.distro = distro
+        self.codename = code
 
     def read(self, path):
         return self.files[path]
@@ -55,7 +58,10 @@ class FixtureHost:
         )
 
     def realpath(self, path):
-        return "/usr/bin/snap" if path == "/snap/bin/chromium" else path
+        return {
+            "/snap/bin/chromium": "/usr/bin/snap",
+            "/usr/bin/python3": "/usr/bin/python3.12",
+        }.get(path, path)
 
     def machine(self):
         return self.arch
@@ -74,11 +80,11 @@ class FixtureHost:
         if args[:2] == ("/usr/bin/dpkg", "--verify"):
             return 0, ""
         if args[:2] == ("/usr/bin/dpkg-query", "-S"):
-            package = (
-                "python3-minimal"
-                if args[2] == "/usr/bin/python3"
-                else Path(args[2]).name
-            )
+            package = {
+                "/usr/bin/python3": "python3-minimal",
+                "/usr/bin/python3.12": "python3.12-minimal",
+                "/usr/bin/snap": "snapd",
+            }.get(args[2], Path(args[2]).name)
             return 0, f"{package}: {args[2]}\n"
         if args[:2] == ("/usr/bin/dpkg-query", "-W"):
             if args[2] == "-f=${Version}":
@@ -95,8 +101,13 @@ class FixtureHost:
             )
             return (
                 0,
-                f"{args[-1]}:\n  Installed: (none)\n  Candidate: 1.0\n  Version table:\n     1.0 500\n        500 http://{domain} stable/main arm64 Packages\n",
+                f"{args[-1]}:\n  Installed: (none)\n  Candidate: 1.0.0\n  Version table:\n     1.0.0 500\n        500 http://{domain} {self.codename}/main arm64 Packages\n",
             )
+        if args[0] == "/usr/bin/systemctl" and args[1] in (
+            "list-unit-files",
+            "list-units",
+        ):
+            return 0, ""
         if args[:2] == ("/usr/bin/systemctl", "show"):
             if args[2] == "systemd-logind.service":
                 return 0, "LoadState=loaded\nActiveState=active\nUnitFileState=static\n"
@@ -335,3 +346,86 @@ def test_preflight_mutation_sentinel(monkeypatch, tmp_path):
     assert host.files == before
     assert tuple(tmp_path.iterdir()) == initial_files
     assert "secret" not in json.dumps(asdict(pf.preflight(host)))
+
+
+def test_missing_pam_logind_and_foreign_account():
+    host = FixtureHost()
+    host.present.remove("/etc/pam.d/common-session")
+    assert pf.preflight(host).reasons == ("pam_required",)
+    host.present.add("/etc/pam.d/common-session")
+    host.files["/etc/passwd"] += "postcardscene:x:1000:1000:secret:/secret:/bin/sh\n"
+    assert pf.preflight(host).reasons == ("existing_installation_unrecognized",)
+
+
+def test_installed_snap_authority_and_sanitized_failure():
+    host = FixtureHost()
+    host.present.add("/snap/bin/chromium")
+    command = ("/usr/bin/snap", "list", "chromium")
+    host.overrides[command] = (
+        0,
+        "Name Version Rev Tracking Publisher Notes\nchromium 135.0.0 123 latest/stable canonical** -\n",
+    )
+    assert pf.preflight(host).plan.tools[-1].state == "installed"
+    host.overrides[command] = (0, "secret invalid publisher\n")
+    result = pf.preflight(host)
+    assert result == pf.Result(False, ("unsupported_tool_authority",))
+    assert "secret" not in json.dumps(asdict(result))
+
+
+def test_real_read_only_command_boundary_ignores_injected_environment(
+    monkeypatch, tmp_path
+):
+    monkeypatch.setenv("PYTHONPATH", "/secret")
+    monkeypatch.setenv("HOME", str(tmp_path))
+    status, output = pf.Host().command(
+        (
+            sys.executable,
+            "-I",
+            "-B",
+            "-c",
+            "import os; print(os.getenv('PYTHONPATH')); print(os.getenv('HOME'))",
+        )
+    )
+    assert status == 0
+    assert output == "None\nNone\n"
+
+
+def test_command_output_limit_and_fail_closed_read_error():
+    with pytest.raises(pf.Rejected, match="command_unavailable"):
+        pf.Host().command((sys.executable, "-I", "-B", "-c", "print('x'*300000)"))
+    host = FixtureHost()
+    del host.files["/proc/self/mountinfo"]
+    assert pf.preflight(host) == pf.Result(False, ("host_inspection_unavailable",))
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "500 https://secret.invalid/ noble/main arm64 Packages",
+        "500 http://ports.ubuntu.com/ubuntu-ports jammy/main arm64 Packages",
+        "500 http://ports.ubuntu.com/ubuntu-ports noble/main amd64 Packages",
+    ],
+)
+def test_mixed_or_wrong_release_package_authority_fails(source):
+    host = FixtureHost()
+    command = (
+        "/usr/bin/apt-cache",
+        "-o",
+        "Dir::Cache::pkgcache=",
+        "-o",
+        "Dir::Cache::srcpkgcache=",
+        "policy",
+        "labwc",
+    )
+    _, output = host.command(command)
+    host.overrides[command] = (0, output + "        " + source + "\n")
+    assert pf.preflight(host).reasons == ("unsupported_package_authority",)
+
+
+def test_read_only_mount_and_missing_installed_snap_launcher():
+    host = FixtureHost()
+    host.files["/proc/self/mountinfo"] = "1 0 8:1 / / ro - ext4 /dev/root rw\n"
+    assert pf.preflight(host).reasons == ("unsupported_install_storage",)
+    host = FixtureHost()
+    host.present.add("/snap/chromium/current")
+    assert pf.preflight(host).reasons == ("tool_unavailable",)
