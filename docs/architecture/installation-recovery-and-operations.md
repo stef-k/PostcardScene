@@ -106,7 +106,9 @@ The control plane should remain reachable whenever the host itself is healthy.
 [path/logging contract](../operations.md#installed-runtime-service-122).
 `/etc/postcardscene/config.py` is the shared trusted operator configuration for
 installed runtime and web services. #131 supplies foreground `postcardscene-web`
-using Waitress; #125 owns its unit. Web runs as `postcardscene-web` with primary
+using Waitress; #125 packages its independently supervised
+[web unit](../operations.md#installed-web-service-125), with persistent writes
+limited to shared state and read-only private signing authority. Web runs as `postcardscene-web` with primary
 GID `postcardscene`, without runtime device/Wayland authority. Shared SQLite
 under `/var/lib/postcardscene` uses group `postcardscene`; #26 owns exact modes,
 umask and two-UID WAL/SHM evidence. Private durable signing authority is instead

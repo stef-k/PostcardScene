@@ -1,0 +1,33 @@
+[Unit]
+Description=PostcardScene control plane
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=exec
+User=postcardscene-web
+Group=postcardscene
+Environment=POSTCARDSCENE_CONFIG=/etc/postcardscene/config.py
+ExecStart=/opt/postcardscene/venv/bin/postcardscene-web
+Restart=on-failure
+RestartSec=5
+TimeoutStartSec=15
+TimeoutStopSec=30
+KillMode=control-group
+SendSIGKILL=yes
+StandardOutput=journal
+StandardError=journal
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+PrivateDevices=yes
+DevicePolicy=closed
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/lib/postcardscene
+InaccessiblePaths=-/run/postcardscene-wayland
+PrivateTmp=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+[Install]
+WantedBy=multi-user.target
