@@ -5,7 +5,7 @@ import secrets
 import stat
 from pathlib import Path
 
-DEFAULT_SECRET_PATH = Path("/var/lib/postcardscene/session.key")
+DEFAULT_SECRET_PATH = Path("/var/lib/postcardscene-web/session.key")
 
 
 def secret_path(path):

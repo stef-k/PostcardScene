@@ -68,6 +68,7 @@ Initial application direction:
 ```text
 Python
 Flask
+Waitress 3.x             # sole production WSGI server
 SQLAlchemy
 SQLite
 Alembic (direct integration with a thin Flask CLI adapter)
@@ -194,7 +195,7 @@ The following are intentionally unresolved until the owning issue has enough evi
 9. **Graphics output and renderer integration** — Wayland/labwc session, output/hotplug policy and shared Chromium control and surface/overlay/input capability are frozen by #62–#65; physical validation remains with #66.
 10. **Kiosk authenticated-session persistence** — whether V0 persists third-party web-session cookies and how that state is isolated/recovered.
 11. **Release artifact format** — wheel/archive/other small managed-native distribution shape, owned by #26.
-12. **Production web serving/network boundary** — exact WSGI server and HTTP/HTTPS/reverse-proxy model, owned by #29/#26.
+12. **Production web serving/network boundary** — frozen by #131: Waitress, loopback direct HTTP or one same-host HTTPS proxy, mandatory trusted Hosts and separate web UID/private signing authority. See the [control-plane contract](architecture/control-plane-and-security.md#production-serving-131); #125 owns supervision and #26 provisioning.
 13. **Renderer live-update transport** — ordinary HTTP polling is preferred where adequate; SSE, WebSockets, or another server-push mechanism is selected only if a concrete V1/V2 requirement proves it useful.
 
 These are deliberate implementation decisions, not reasons to invent answers early. When one is resolved, update this entry point and the affected subsystem contract in the same change that relies on the decision.

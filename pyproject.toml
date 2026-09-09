@@ -13,10 +13,12 @@ dependencies = [
     "flask-wtf>=1.2.2,<2",
     "pillow>=11,<13",
     "sqlalchemy>=2.0,<3",
+    "waitress>=3,<4",
     "websockets>=15,<17",
 ]
 
 [project.scripts]
+postcardscene-web = "postcardscene.web.server:main"
 postcardscene-input-emitter = "postcardscene.graphics.local_input:main"
 postcardscene-runtime = "postcardscene.runtime.cli:main"
 
