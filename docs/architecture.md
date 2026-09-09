@@ -148,7 +148,9 @@ The web/control and runtime/player processes must be independently restartable.
 #122 freezes `postcardscene-runtime.service`, weak graphics startup ordering,
 shared installed `/etc/postcardscene/config.py` consumption, and journald lifecycle
 logging; see the [installed service contract](operations.md#installed-runtime-service-122).
-#26 retains installation and provisioning ownership. #124 connects one shared
+#125 packages the independent [web unit](operations.md#installed-web-service-125)
+with the #131 entry point and identity, bounded supervision and restricted filesystem/
+device authority. #26 retains installation and provisioning ownership. #124 connects one shared
 output monitor with [serialized signal-power coordination](architecture/graphics-and-panel.md#shared-display-mutation-124);
 physical graphics validation remains #66.
 

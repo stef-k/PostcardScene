@@ -1,7 +1,7 @@
 # Appliance operations
 
 This document records implemented operating contracts. Managed installation,
-updates remain with #26; web service supervision remains #125. The templates
+and updates remain with #26. The templates
 below are versioned provisioning inputs, not an installer or a claim of a
 physically validated release.
 
@@ -11,8 +11,7 @@ The package asset `postcardscene/runtime/systemd/postcardscene-runtime.service`
 is the canonical RuntimeHost unit. #26 supplies the managed environment at
 `/opt/postcardscene/venv`, installs/enables the unit for `multi-user.target`, and
 provisions users, groups, directories and protected configuration. These assets
-perform no installation or host mutation themselves. The later production web
-service remains #29/#125.
+perform no installation or host mutation themselves. The independent web unit is described below.
 
 The unit executes `/opt/postcardscene/venv/bin/postcardscene-runtime` directly as
 `postcardscene:postcardscene`, with `Type=exec`. Its only application environment
@@ -63,6 +62,68 @@ Restart constructs a fresh RuntimeHost and discards transient playback state.
 Startup checks existing database compatibility/integrity without auto-migration
 or repair. Unit/text/process tests establish software behavior only; actual Pi
 boot, abrupt power-loss recovery and complete unattended evidence remain #127.
+
+## Installed web service (#125)
+
+The packaged `postcardscene/web/systemd/postcardscene-web.service` executes exactly
+`/opt/postcardscene/venv/bin/postcardscene-web` as `postcardscene-web:postcardscene`.
+Its only application environment setting is
+`POSTCARDSCENE_CONFIG=/etc/postcardscene/config.py`. The [production serving
+contract](#production-control-plane-131) owns all bind, Host, proxy and cookie
+settings in that trusted file; the unit duplicates none of them.
+
+The unit uses `Type=exec`, `Restart=on-failure`, `RestartSec=5`,
+`StartLimitIntervalSec=60`, `StartLimitBurst=5`, `TimeoutStartSec=15`,
+`TimeoutStopSec=30`, `KillMode=control-group`, `SendSIGKILL=yes` and
+`WantedBy=multi-user.target`. Execution is not HTTP readiness. Invalid startup
+exits nonzero and is eligible for restart/rate limiting. Default SIGTERM terminates
+Waitress's foreground process, including its threads; it does not promise request
+draining or emit the normal-return “stopped” message. Systemd treats SIGTERM as a
+clean termination for this service type; explicit stop does not trigger restart.
+After the stop timeout systemd kills remaining cgroup processes.
+
+There is no runtime/graphics ordering or lifetime dependency in the web unit and
+no reverse web dependency in those units. Stopping, restarting or losing one
+service cannot propagate a systemd stop to the others. Control-plane availability
+still depends on its own healthy configuration, signing authority and database.
+Startup neither migrates nor repairs the database or filesystem permissions.
+
+Hardening uses `NoNewPrivileges=yes`, empty bounding/ambient capability sets,
+`PrivateDevices=yes` and `DevicePolicy=closed`. `ProtectSystem=strict` leaves only
+`/var/lib/postcardscene` writable in the persistent filesystem. The private
+`/var/lib/postcardscene-web/session.key` remains readable, but read-only inside the
+service; initialize/recover it separately while web is stopped. `ProtectHome=yes`
+hides home directories, and `InaccessiblePaths=-/run/postcardscene-wayland` hides
+Wayland authority even when present after boot. `PrivateTmp=yes` provides disposable
+private temporary space needed for Waitress request/response buffering. It is not
+a durable cache or an application log tree.
+
+`RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6` preserves the panel client and
+both configured IP transport modes; no private network namespace is introduced.
+The runtime-owned 0750 `/run/postcardscene` remains visible and read-only: connecting
+to its 0660 socket does not require directory writes. The shared primary GID
+satisfies the existing SO_PEERCRED check for the fixed `status|test_on|test_off`
+protocol. Web gets no device supplementary groups or hardware command authority.
+
+#26 provisions both identities, trusted config, shared DB/WAL/SHM permissions,
+private web key, package/static assets and any proxy, then copies/enables this
+versioned unit. Custom development database/key paths under home or outside these
+installed roots are not supported by this unit. No directories, keys or schemas
+are created by systemd startup hooks. #29/#134 retain the final privilege audit.
+
+Stdout/stderr go only to journald: inspect with
+`journalctl -u postcardscene-web.service`. Existing fixed startup/server diagnostics
+omit request URLs, cookies, form fields and credentials. There is no access log
+or duplicate `/var/log/postcardscene` tree. Diagnose repeated startup failures and
+correct trusted configuration/provisioning before resetting the start limit.
+
+Asset assertions and real foreground loopback tests cover both transport modes,
+private-key loading, unchanged durable bytes, sanitized logs and bounded SIGTERM.
+They model installed roots under the test UID; they do not exercise systemd mount
+namespaces, actual two-UID DB/WAL/SHM permissions or live service stop propagation.
+Those privileged installed-host checks remain required with #26 provisioning;
+physical Raspberry Pi/unattended evidence remains #127. No physical-support claim
+follows from these software tests.
 
 ## Production control plane (#131)
 

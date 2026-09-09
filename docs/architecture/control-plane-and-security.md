@@ -224,7 +224,11 @@ hard link. RuntimeHost never reads it. Shared SQLite state stays under
 secret via existing auth CLI as web UID, and exact DB/WAL/SHM modes/umask; #125/#26
 must prove two-UID database operation without web graphics authority. Application
 startup performs no recursive chmod/chown repair. #27 owns sensitive backup/restore.
-#125 adds the service unit; #131 does not install or supervise it.
+#125 packages the [independent web unit](../operations.md#installed-web-service-125)
+with no capabilities or device/Wayland access, read-only signing authority, and
+writes limited to shared state plus private temporary buffering. Network and
+fixed panel-client access remain available. #26 installs/provisions it; #29/#134
+retain the final privilege audit.
 
 ## Privilege boundaries
 
