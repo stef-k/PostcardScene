@@ -429,3 +429,16 @@ def test_read_only_mount_and_missing_installed_snap_launcher():
     host = FixtureHost()
     host.present.add("/snap/chromium/current")
     assert pf.preflight(host).reasons == ("tool_unavailable",)
+
+
+def test_internal_preserved_mode_retains_platform_policy_and_cli_default():
+    host = FixtureHost()
+    host.files["/etc/passwd"] += (
+        "postcardscene:x:100:100::/var/lib/postcardscene:/usr/sbin/nologin\n"
+    )
+    assert pf.preflight(host).reasons == ("existing_installation_unrecognized",)
+    result = pf.preflight(host, installation="preserved")
+    assert result.ok and result.plan.installation == "preserved"
+    host.arch = "x86_64"
+    assert not pf.preflight(host, installation="preserved").ok
+    assert not pf.preflight(FixtureHost(), installation="adopt").ok

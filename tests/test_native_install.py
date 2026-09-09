@@ -149,7 +149,7 @@ def test_ordering_and_failure_preservation(bundle, monkeypatch, failure, capsys)
     monkeypatch.setattr(host, "install_assets", lambda *a: step("assets"))
     monkeypatch.setattr(host, "reserve_graphics", lambda *a: step("conflicts"))
     monkeypatch.setattr(host, "require_stopped", lambda *a: step("stopped"))
-    monkeypatch.setattr(host, "bootstrap", lambda *a: step("bootstrap"))
+    monkeypatch.setattr(installer, "bootstrap", lambda *a: step("bootstrap"))
     monkeypatch.setattr(Path, "symlink_to", lambda *a: step("activation"))
     monkeypatch.setattr(
         host.shutil,
@@ -188,7 +188,7 @@ def test_ordering_and_failure_preservation(bundle, monkeypatch, failure, capsys)
 
 def test_bootstrap_uses_web_cli_without_password_arguments():
     calls = []
-    host.bootstrap(
+    installer.bootstrap(
         "/release/venv/bin/python", lambda args, **kw: calls.append((args, kw))
     )
     assert calls[0][1]["user"] == "postcardscene"
@@ -335,3 +335,142 @@ def test_invalid_support_never_executes_or_mutates(bundle, monkeypatch, name, ki
         operation.install()
     assert operation.phase == "validation"
     assert operation.release is None
+
+
+@pytest.mark.parametrize("state", ["clean", "installed_managed", "partial_or_unknown"])
+def test_reinstall_cannot_request_preserved_preflight_before_recognition(
+    bundle, monkeypatch, state
+):
+    inputs = (*installer.validate_inputs(bundle)[:-1], host)
+    monkeypatch.setattr(installer, "validate_inputs", lambda _: inputs)
+    monkeypatch.setattr(host, "classify", lambda *a: state)
+
+    def preflight(**options):
+        assert options.get("installation", "clean") == "clean"
+        return SimpleNamespace(ok=False)
+
+    inputs[-2].preflight = preflight
+    with pytest.raises(installer.InstallError):
+        installer.Installation(bundle, lambda *a: pytest.fail("mutation")).install()
+
+
+def test_removed_remove_is_idempotent_without_restoration(bundle, monkeypatch):
+    inputs = (*installer.validate_inputs(bundle)[:-1], host)
+    monkeypatch.setattr(installer, "validate_inputs", lambda _: inputs)
+    monkeypatch.setattr(installer.os, "geteuid", lambda: 0)
+    monkeypatch.setattr(host, "classify", lambda *a: "removed_preserved")
+    monkeypatch.setattr(
+        host, "remove_managed", lambda *a: pytest.fail("destructive replay")
+    )
+    operation = installer.Installation(bundle, lambda *a: pytest.fail("service replay"))
+    operation.remove()
+    assert operation.phase == "already_removed_preserved"
+
+
+def test_reinstall_incompatible_database_stops_before_reprovisioning(
+    bundle, monkeypatch
+):
+    inputs = (*installer.validate_inputs(bundle)[:-1], host)
+    monkeypatch.setattr(installer, "validate_inputs", lambda _: inputs)
+    monkeypatch.setattr(installer.os, "geteuid", lambda: 0)
+    monkeypatch.setattr(host, "classify", lambda *a: "removed_preserved")
+    modes = []
+
+    def preflight(**options):
+        modes.append(options["installation"])
+        return SimpleNamespace(ok=True, plan=SimpleNamespace(tools=()))
+
+    inputs[-2].preflight = preflight
+    monkeypatch.setattr(host, "install_packages", lambda *a: None)
+    monkeypatch.setattr(host, "directory", lambda *a: None)
+    monkeypatch.setattr(host, "stage_payload", lambda *a: "/staged/bin/python")
+
+    def incompatible(*args):
+        raise host.InstallError("command_failed")
+
+    monkeypatch.setattr(installer, "validate_preserved_application", incompatible)
+    for name in ("install_assets", "reserve_graphics", "activate_payload"):
+        monkeypatch.setattr(
+            host, name, lambda *a: pytest.fail("mutated preserved authority")
+        )
+    operation = installer.Installation(bundle, lambda *a: pytest.fail("mutation"))
+    with pytest.raises(installer.InstallError):
+        operation.install()
+    assert modes == ["preserved", "preserved"]
+    assert operation.phase == "preserved_compatibility"
+    assert not operation.activation and not operation.durable
+
+
+def test_preserved_application_checks_only_detached_database_and_existing_key():
+    calls = []
+    installer.validate_preserved_application(
+        "/staged/python", lambda args, **kw: calls.append((args, kw))
+    )
+    assert len(calls) == 2
+    assert "snapshot(Path(scratch))" in calls[0][0][-1]
+    assert "Administrator" in calls[0][0][-1]
+    assert "read_secret" in calls[1][0][-1]
+    assert calls[1][1]["user"] == "postcardscene-web"
+    assert all(
+        "upgrade" not in str(call) and "initialize_secret" not in str(call)
+        for call in calls
+    )
+
+
+@pytest.mark.parametrize("failure", ["stop", "process", "restore"])
+def test_remove_failure_preserves_payload_and_uncertain_targets(monkeypatch, failure):
+    events = []
+    monkeypatch.setattr(host, "installed_authority", lambda *a: None)
+    monkeypatch.setattr(host, "service_authority", lambda *a: None)
+    monkeypatch.setattr(host, "conflict_record", lambda: {})
+    monkeypatch.setattr(host, "preserved_authority", lambda: (11, 12, 13, 14))
+    monkeypatch.setattr(host, "require_stopped", lambda *a: None)
+
+    def step(name):
+        events.append(name)
+        if failure == name:
+            raise host.InstallError("command_failed")
+
+    monkeypatch.setattr(host, "require_no_processes", lambda *a: step("process"))
+    monkeypatch.setattr(host, "restore_graphics", lambda *a: step("restore"))
+    monkeypatch.setattr(
+        Path, "unlink", lambda *a: pytest.fail("deleted uncertain authority")
+    )
+    with pytest.raises(host.InstallError):
+        host.remove_managed("0.1.0.dev0", b"", None, lambda args: step(args[1]))
+    assert events[-1] == failure
+    assert all(name in {"stop", "disable", "process", "restore"} for name in events)
+
+
+def test_nested_same_device_mount_is_not_a_removable_tree(tmp_path, monkeypatch):
+    nested = tmp_path / "nested"
+    nested.mkdir()
+    data = nested / "external-data"
+    data.write_bytes(b"keep")
+    monkeypatch.setattr(
+        host,
+        "read_regular",
+        lambda *a: f"1 0 8:1 /elsewhere {nested} rw - ext4 /dev/root rw\n".encode(),
+    )
+    with pytest.raises(host.InstallError, match="unsafe_removal_tree"):
+        host.validate_tree(tmp_path, tmp_path.stat().st_uid, tmp_path.stat().st_gid)
+    assert data.read_bytes() == b"keep"
+
+
+@pytest.mark.parametrize("extra", ["dropin", "unit"])
+def test_foreign_effective_service_authority_rejected(extra):
+    observer = SimpleNamespace(
+        command=lambda args: (
+            0,
+            f"FragmentPath=/etc/systemd/system/{args[2]}\nDropInPaths=/run/systemd/system/foreign.conf\n",
+        )
+    )
+    preflight = SimpleNamespace(
+        Host=lambda: observer,
+        unit_names=lambda _: (
+            set(host.SERVICES)
+            | ({"postcardscene-extra.service"} if extra == "unit" else set())
+        ),
+    )
+    with pytest.raises(host.InstallError, match="managed_service_authority_invalid"):
+        host.service_authority(preflight)

@@ -16,8 +16,8 @@ from pathlib import Path
 # These are installer inputs, not a release manifest or published-bundle schema.
 INPUT_HASHES = {
     "install_inputs.py": "e30622cb3258479669f0a32ab06924b1b37dfa7151cb293c749859f675711218",
-    "install_host.py": "1e9fc7ece8b139e964bf6f77249c40ab65938e7ec668547173df2cd66128c7fb",
-    "install_preflight.py": "70ef06a1bc8e00797d66e8bec58336831ae6e49a9595ff78763bf0c5f87c45fc",
+    "install_host.py": "0f8e8b9215a10ff5dc69d848d961945465cb61a9909d0b743fd8686fec35ec3f",
+    "install_preflight.py": "7f4e9b1d8819abf55bf9f835d2173ccb5a37cc8c1b9508187c02dac1b54f22bc",
     "runtime-requirements.txt": "ca8eb8d430bd3d883523e592c99bec74c65c7537a765c52998001f0ae4c76d3a",
 }
 
@@ -64,6 +64,65 @@ def validate_inputs(bundle):
     except inputs.InstallError as error:
         raise InstallError(str(error)) from None
     return *validated, preflight, host
+
+
+def bootstrap(python, run):
+    # SQLite's initial 0644 creation mode cannot gain group write from umask.
+    # Reserve only a new empty file as its runtime owner; Alembic owns all content.
+    run(
+        (
+            python,
+            "-I",
+            "-c",
+            "import os; fd=os.open('/var/lib/postcardscene/postcardscene.sqlite3', "
+            "os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o660); os.close(fd)",
+        ),
+        user="postcardscene",
+    )
+    cli = (python, "-I", "-m", "flask", "--app", "postcardscene.web:create_app")
+    run((*cli, "auth", "init-secret"), user="postcardscene-web")
+    run((*cli, "db", "upgrade"), user="postcardscene-web")
+    run((*cli, "db", "check"), user="postcardscene-web")
+    run(
+        (*cli, "auth", "create-admin"),
+        user="postcardscene-web",
+        interactive=True,
+        timeout=900,
+    )
+
+
+def validate_preserved_application(python, run):
+    # Only the private snapshot is opened by SQLite; no init, upgrade or admin CLI.
+    run(
+        (
+            python,
+            "-I",
+            "-B",
+            "-c",
+            "import tempfile; from pathlib import Path; from sqlalchemy import select; "
+            "from postcardscene.doctor.data import configuration, snapshot; "
+            "from postcardscene.persistence import Database; "
+            "from postcardscene.accounts import Administrator; "
+            "configuration(); "
+            "\nwith tempfile.TemporaryDirectory() as scratch:\n"
+            " db=Database(snapshot(Path(scratch))); db.check()\n"
+            " with db.transaction() as session:\n"
+            "  assert session.scalar(select(Administrator.id).limit(1)) is not None\n"
+            " db.engine.dispose()",
+        ),
+        timeout=60,
+    )
+    run(
+        (
+            python,
+            "-I",
+            "-B",
+            "-c",
+            "from postcardscene.session_secret import read_secret; "
+            "read_secret('/var/lib/postcardscene-web/session.key')",
+        ),
+        user="postcardscene-web",
+    )
 
 
 class Installation:
@@ -127,7 +186,7 @@ class Installation:
         host.require_stopped(preflight)
         self.phase = "bootstrap"
         self.durable = True
-        host.bootstrap(python, self.run)
+        bootstrap(python, self.run)
         self.phase = "activation"
         host.activate_payload(self.release)
         self.activation = True
@@ -158,7 +217,7 @@ class Installation:
             self.release, wheel_name, wheel, requirements, result.plan, self.run
         )
         self.phase = "preserved_compatibility"
-        host.validate_preserved_application(python, self.run)
+        validate_preserved_application(python, self.run)
         runtime, _, shared, _ = host.preserved_authority()
         host.require_no_processes(host.preserved_identities())
         self.phase = "reprovisioning"
@@ -194,7 +253,7 @@ class Installation:
                 return
             if state != "installed_managed":
                 raise InstallError("partial_or_unknown_manual_reconciliation_required")
-            self.host.validate_preserved_application(
+            validate_preserved_application(
                 str(Path("/opt/postcardscene/venv/bin/python")), self.run
             )
             self.phase = "removal"
@@ -236,7 +295,7 @@ class Installation:
             # Exact fresh root-controlled payload only; never durable/config authority.
             try:
                 self.host.discard_staged_payload(self.release)
-            except OSError:
+            except (OSError, self.host.InstallError):
                 print(
                     "Staged payload cleanup failed; preserve it for inspection.",
                     file=sys.stderr,

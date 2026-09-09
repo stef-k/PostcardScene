@@ -5,6 +5,7 @@ import io
 import json
 import os
 import pwd
+import re
 import shutil
 import signal
 import stat
@@ -230,10 +231,7 @@ def install_assets(wheel, run):
 
 def reserve_graphics(preflight, run, *, preserved=False):
     # Record prior state before changing boot conflicts; no desktop file is replaced.
-    states = {
-        unit: service_state(preflight, unit)
-        for unit in ("getty@tty1.service", "display-manager.service")
-    }
+    states = {unit: service_state(preflight, unit) for unit in CONFLICTS}
     for unit, state in states.items():
         alias = Path("/etc/systemd/system") / unit
         state["local_symlink"] = str(alias.readlink()) if alias.is_symlink() else None
@@ -263,31 +261,6 @@ def require_stopped(preflight):
         raise InstallError("services_must_be_stopped")
 
 
-def bootstrap(python, run):
-    # SQLite's initial 0644 creation mode cannot gain group write from umask.
-    # Reserve only a new empty file as its runtime owner; Alembic owns all content.
-    run(
-        (
-            python,
-            "-I",
-            "-c",
-            "import os; fd=os.open('/var/lib/postcardscene/postcardscene.sqlite3', "
-            "os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o660); os.close(fd)",
-        ),
-        user="postcardscene",
-    )
-    cli = (python, "-I", "-m", "flask", "--app", "postcardscene.web:create_app")
-    run((*cli, "auth", "init-secret"), user="postcardscene-web")
-    run((*cli, "db", "upgrade"), user="postcardscene-web")
-    run((*cli, "db", "check"), user="postcardscene-web")
-    run(
-        (*cli, "auth", "create-admin"),
-        user="postcardscene-web",
-        interactive=True,
-        timeout=900,
-    )
-
-
 def activate_payload(release):
     # Initial install only: atomic creation refuses any existing target.
     Path("/opt/postcardscene/venv").symlink_to(release / "venv")
@@ -295,8 +268,9 @@ def activate_payload(release):
 
 def discard_staged_payload(release):
     # Caller owns this exact fresh root-controlled release, never durable state.
-    if release.is_dir() and not release.is_symlink():
-        shutil.rmtree(release)
+    metadata(release, mode=0o755, kind=stat.S_ISDIR)
+    validate_tree(release, 0, 0, payload=True)
+    shutil.rmtree(release)
 
 
 # Closed lifecycle paths; durable roots are inspected, never recursively repaired.
@@ -476,6 +450,14 @@ def asset_bytes(wheel):
 
 def validate_tree(root, uid, gid, *, payload=False):
     # No mount crossing, hardlinks, devices or service-controlled symlink traversal.
+    for line in (
+        read_regular(Path("/proc/self/mountinfo"), 1024 * 1024).decode().splitlines()
+    ):
+        mounted = Path(
+            re.sub(r"\\([0-7]{3})", lambda m: chr(int(m[1], 8)), line.split()[4])
+        )
+        if mounted == root or mounted.is_relative_to(root):
+            raise InstallError("unsafe_removal_tree")
     device = root.lstat().st_dev
     count = 0
     for parent, directories, files in os.walk(root, followlinks=False):
@@ -509,11 +491,10 @@ def validate_tree(root, uid, gid, *, payload=False):
 
 def installed_authority(version, wheel):
     runtime, _, shared, _ = preserved_authority()
-    metadata(RELEASES, mode=0o755, kind=stat.S_ISDIR)
     release = RELEASES / version
     if set(RELEASES.iterdir()) != {release}:
         raise InstallError("managed_authority_invalid")
-    for path in (release, release / "venv"):
+    for path in (RELEASES, release, release / "venv"):
         metadata(path, mode=0o755, kind=stat.S_ISDIR)
     active = ROOT / "venv"
     metadata(active, mode=0o777, kind=stat.S_ISLNK)
@@ -562,18 +543,39 @@ def require_no_processes(identities):
                 raise InstallError("owned_processes_remain")
 
 
+def service_authority(preflight):
+    observer = preflight.Host()
+    if preflight.unit_names(observer) - set(SERVICES):
+        raise InstallError("managed_service_authority_invalid")
+    for unit in SERVICES:
+        status, output = observer.command(
+            ("/usr/bin/systemctl", "show", unit, "--property=FragmentPath,DropInPaths")
+        )
+        values = dict(line.split("=", 1) for line in output.splitlines())
+        expected = (
+            []
+            if unit == SERVICES[0]
+            else [f"/etc/systemd/system/{unit}.d/permissions.conf"]
+        )
+        if (
+            status
+            or values.get("FragmentPath") != f"/etc/systemd/system/{unit}"
+            or values.get("DropInPaths", "").split() != expected
+        ):
+            raise InstallError("managed_service_authority_invalid")
+
+
 def classify(version, wheel, preflight):
     try:
         roots = tuple(Path(p) for p in preflight.ROOTS)
         assets = (*map(Path, ASSETS.values()), *DROPINS, TMPFILES)
         present = any(os.path.lexists(p) for p in (*roots, *assets))
-        accounts = any(
-            p.pw_name in {"postcardscene", "postcardscene-web"} for p in pwd.getpwall()
-        )
-        groups = any(
-            g.gr_name in {"postcardscene", "postcardscene-web"} for g in grp.getgrall()
-        )
-        if not present and not accounts and not groups:
+        names = {p.pw_name for p in pwd.getpwall()} | {
+            g.gr_name for g in grp.getgrall()
+        }
+        if not present and not names.intersection(
+            {"postcardscene", "postcardscene-web"}
+        ):
             preflight.service_check(preflight.Host(), None)
             return "clean"
         identities = preserved_authority()
@@ -586,6 +588,7 @@ def classify(version, wheel, preflight):
             require_no_processes(identities)
             return "removed_preserved"
         installed_authority(version, wheel)
+        service_authority(preflight)
         return "installed_managed"
     except (
         OSError,
@@ -597,40 +600,6 @@ def classify(version, wheel, preflight):
         preflight.Rejected,
     ):
         return "partial_or_unknown"
-
-
-def validate_preserved_application(python, run):
-    # Only the private snapshot is opened by SQLite; no init, upgrade or admin CLI.
-    run(
-        (
-            python,
-            "-I",
-            "-B",
-            "-c",
-            "import tempfile; from pathlib import Path; from sqlalchemy import select; "
-            "from postcardscene.doctor.data import configuration, snapshot; "
-            "from postcardscene.persistence import Database; "
-            "from postcardscene.accounts import Administrator; "
-            "configuration(); "
-            "\nwith tempfile.TemporaryDirectory() as scratch:\n"
-            " db=Database(snapshot(Path(scratch))); db.check()\n"
-            " with db.transaction() as session:\n"
-            "  assert session.scalar(select(Administrator.id).limit(1)) is not None\n"
-            " db.engine.dispose()",
-        ),
-        timeout=60,
-    )
-    run(
-        (
-            python,
-            "-I",
-            "-B",
-            "-c",
-            "from postcardscene.session_secret import read_secret; "
-            "read_secret('/var/lib/postcardscene-web/session.key')",
-        ),
-        user="postcardscene-web",
-    )
 
 
 def restore_graphics(preflight, run, record):
@@ -674,6 +643,7 @@ def remove_transients(identities):
 
 def remove_managed(version, wheel, preflight, run):
     installed_authority(version, wheel)
+    service_authority(preflight)
     record = conflict_record()
     identities = preserved_authority()
     run(("/usr/bin/systemctl", "stop", *reversed(SERVICES)))
@@ -685,8 +655,7 @@ def remove_managed(version, wheel, preflight, run):
     installed_authority(version, wheel)
     (ROOT / "venv").unlink()
     release = RELEASES / version
-    validate_tree(release, 0, 0, payload=True)
-    shutil.rmtree(release)
+    discard_staged_payload(release)
     for path, content in asset_bytes(wheel).items():
         metadata(path)
         if read_regular(path) != content:

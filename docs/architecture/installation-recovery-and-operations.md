@@ -251,8 +251,9 @@ accounts/installations/units and unavailable host facts fail closed. Tty1/getty
 and display-manager conflicts remain explicit actions for the installer.
 
 No package/user/directory/config/venv/service/database mutation occurs in this
-gate. Existing managed-state recognition belongs to #140/#142; preflight currently
-accepts clean installation only. The plan is a snapshot, not a reusable grant of
+gate. Existing managed-state recognition belongs to #140/#142; standalone preflight
+accepts clean installation only. #142 adds an installer-internal preserved mode
+only after exact removed-state classification; prerequisite policy is unchanged. The plan is a snapshot, not a reusable grant of
 filesystem/service authority: the installer must revalidate before mutation.
 See [operations](../operations/installation.md#read-only-managed-host-preflight-139) for fixed
 packages/paths, command bounds, package evidence and diagnostic interpretation.
@@ -283,13 +284,32 @@ owning subsystems' policies. Root-owned web/runtime umask drop-ins grant shared
 SQLite sidecar access without broadening private signing-key authority. Only
 successful bootstrap permits atomic active-symlink publication and service
 enablement/start. No legacy adoption, credential reset, update or DB rollback is
-introduced. Repeat installs reject existing authority unchanged.
+introduced. Repeat installs reject installed authority unchanged; #142 recognizes
+only the exact removed-preserved footprint for compatible reinstall.
 
 See [managed operations](../operations/installation.md#managed-initial-installation-140) for
 exact modes, phase/failure recovery and conflict records. Privileged disposable
 Linux CI proves real distinct-UID SQLite/WAL/SHM and panel socket cooperation,
 private-key/Wayland/device separation and canonical runtime/web service identity.
 It does not establish ARM64 provisioning, graphics boot or physical HDMI support.
+
+### Managed removal and reinstall (#142)
+
+`install.py` owns lifecycle dispatch and staged-application compatibility checks;
+`install_host.py` owns exact managed-state inspection, removal and reprovisioning.
+The four states are clean, installed managed, removed preserved and partial/unknown.
+Normal removal retains `/opt/postcardscene/service-conflicts.json` as root-controlled
+ownership evidence alongside config, durable DB, private key and stable users/groups.
+Payload, canonical service assets, cache and runtime roots are removed only after
+validated ownership and service/process quiescence. Repeated removal is idempotent.
+
+Reinstall classifies preserved state before the internal prerequisite seam, checks
+incoming schema/application identity using a detached DB snapshot, and reuses admin
+and key authority without migration or initialization. Current conflict state is
+atomically recaptured before reserving graphics. Partial layouts fail closed.
+See [remove/reinstall operations](../operations/installation.md#managed-remove-and-reinstall-142).
+The full fixed support set remains authenticated before any helper execution;
+#143 publication and #144 recovery-backed updates remain separate.
 
 ## Installed doctor (#141)
 

@@ -379,13 +379,8 @@ def service_state(host, unit):
     return values
 
 
-def service_check(host, seat, installation="clean"):
-    for path in ("/etc/passwd", "/etc/group"):
-        if installation == "clean" and any(
-            line.split(":", 1)[0] in ("postcardscene", "postcardscene-web")
-            for line in host.read(path).splitlines()
-        ):
-            raise Rejected("existing_installation_unrecognized")
+def unit_names(host):
+    names = set()
     for operation in ("list-unit-files", "list-units"):
         status, output = host.command(
             (
@@ -400,8 +395,19 @@ def service_check(host, seat, installation="clean"):
         )
         if status:
             raise Rejected("service_state_unavailable")
-        if output.strip():
-            raise Rejected("existing_service_unrecognized")
+        names.update(line.split()[0] for line in output.splitlines())
+    return names
+
+
+def service_check(host, seat, installation="clean"):
+    for path in ("/etc/passwd", "/etc/group"):
+        if installation == "clean" and any(
+            line.split(":", 1)[0] in ("postcardscene", "postcardscene-web")
+            for line in host.read(path).splitlines()
+        ):
+            raise Rejected("existing_installation_unrecognized")
+    if unit_names(host):
+        raise Rejected("existing_service_unrecognized")
     for unit in UNITS:
         if service_state(host, unit)["LoadState"] != "not-found":
             raise Rejected("existing_service_unrecognized")

@@ -87,7 +87,7 @@ def denied(operation):
 def child(action, user, *, hold=False):
     account = pwd.getpwnam(user)
     process = subprocess.Popen(
-        [PYTHON, "-I", "/opt/postcardscene/smoke.py", "worker", action],
+        [PYTHON, "-I", "/opt/postcardscene-smoke.py", "worker", action],
         user=account.pw_uid,
         group=account.pw_gid,
         extra_groups=[],
@@ -296,13 +296,133 @@ def service_smoke(installer, runtime, web):
     )
 
 
+def rejected_layouts(entrypoint, bundle):
+    marker = Path("/opt/postcardscene/service-conflicts.json")
+    saved = Path("/opt/postcardscene-marker-smoke")
+    retained = marker.read_bytes()
+    for kind in ("missing", "damaged", "symlink", "foreign", "mixed"):
+        marker.rename(saved)
+        try:
+            if kind == "damaged":
+                marker.write_bytes(b"{}")
+            elif kind == "symlink":
+                marker.symlink_to(saved)
+            elif kind in ("foreign", "mixed"):
+                marker.write_bytes(retained)
+                if kind == "foreign":
+                    os.chown(marker, pwd.getpwnam("postcardscene").pw_uid, 0)
+                else:
+                    Path("/opt/postcardscene/unowned").mkdir()
+            try:
+                entrypoint.Installation(bundle).remove()
+            except entrypoint.InstallError:
+                pass
+            else:
+                raise AssertionError("Unrecognized layout was removed")
+            assert Path("/opt/postcardscene/venv").is_symlink()
+            assert KEY.exists() and (STATE / "postcardscene.sqlite3").exists()
+        finally:
+            if os.path.lexists(marker):
+                marker.unlink()
+            saved.rename(marker)
+            if kind == "mixed":
+                Path("/opt/postcardscene/unowned").rmdir()
+
+
+def lifecycle_smoke(entrypoint, installer, runtime, web, shared):
+    # Runtime/web are real systemd services; graphics start alone is substituted
+    # because this x86 VM has no supported seat/display. No ownership gate is bypassed.
+    before = {
+        p: (p.read_bytes(), p.stat().st_uid, p.stat().st_gid, p.stat().st_mode)
+        for p in (
+            STATE / "postcardscene.sqlite3",
+            KEY,
+            Path("/etc/postcardscene/config.py"),
+        )
+    }
+    with tempfile.TemporaryDirectory() as scratch:
+        bundle = Path(scratch)
+        shutil.copyfile(sys.argv[1], bundle / Path(sys.argv[1]).name)
+        for name in entrypoint.INPUT_HASHES:
+            shutil.copyfile(ROOT / name, bundle / name)
+        rejected_layouts(entrypoint, bundle)
+        operation = entrypoint.Installation(bundle)
+        operation.remove()
+        assert operation.phase == "removed_preserved"
+        marker = Path("/opt/postcardscene/service-conflicts.json")
+        retained = marker.read_bytes()
+        operation.remove()
+        assert operation.phase == "already_removed_preserved"
+        assert marker.read_bytes() == retained
+        # Deliberate operator change while removed must become the next restore target.
+        installer.command(("/usr/bin/systemctl", "mask", "getty@tty1.service"))
+        validated = entrypoint.validate_inputs(bundle)
+        preflight, host = validated[-2:]
+        plan = SimpleNamespace(python="/usr/bin/python3", tools=())
+        preflight.preflight = lambda **kw: SimpleNamespace(ok=True, plan=plan)
+        host.install_packages = lambda *args: None
+        original = entrypoint.validate_inputs
+        entrypoint.validate_inputs = lambda _: validated
+
+        def run(args, **options):
+            if args == (
+                "/usr/bin/systemctl",
+                "start",
+                "postcardscene-graphics.service",
+            ):
+                host.directory(
+                    Path("/run/postcardscene-wayland"), runtime, shared, 0o700
+                )
+                return
+            if args[:3] == ("/usr/bin/systemctl", "is-active", "--quiet"):
+                args = (
+                    *args[:3],
+                    *[u for u in args[3:] if u != "postcardscene-graphics.service"],
+                )
+            host.command(args, **options)
+
+        try:
+            reinstall = entrypoint.Installation(bundle, run)
+            reinstall.install()
+            assert reinstall.phase == "complete"
+        finally:
+            entrypoint.validate_inputs = original
+        refreshed = json.loads(marker.read_bytes())
+        assert refreshed["getty@tty1.service"]["LoadState"] == "masked"
+        host.command(("/usr/bin/systemctl", "stop", *host.SERVICES))
+        for path, expected in before.items():
+            assert (
+                path.read_bytes(),
+                path.stat().st_uid,
+                path.stat().st_gid,
+                path.stat().st_mode,
+            ) == expected
+        assert host.preserved_identities()[:3] == (runtime, web, shared)
+        if not Path("/run/postcardscene-wayland").exists():
+            host.directory(Path("/run/postcardscene-wayland"), runtime, shared, 0o700)
+        subprocess.run(
+            (PYTHON, "-I", "-B", "/opt/postcardscene-smoke.py", "worker", "doctor"),
+            check=True,
+            timeout=60,
+            env=host.ENV,
+        )
+        permissions(runtime, web, shared)
+        entrypoint.Installation(bundle).remove()
+        assert (
+            host.service_state(preflight, "getty@tty1.service")["LoadState"] == "masked"
+        )
+    print(
+        "Real remove/reinstall preserved DB/admin/config/key bytes and stable UIDs; refreshed conflict restoration passed."
+    )
+
+
 def main():
     assert os.geteuid() == 0, "Run only as root in a disposable Linux CI VM"
     assert Path("/proc/1/comm").read_text().strip() == "systemd"
     spec = importlib.util.spec_from_file_location("native_install", ROOT / "install.py")
     entrypoint = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(entrypoint)
-    _, installer, _, _ = entrypoint.load_support(ROOT)
+    _, installer, preflight, _ = entrypoint.load_support(ROOT)
     # Refuse any existing installation; this smoke has no adoption or cleanup path.
     for path in (
         *installer.ASSETS.values(),
@@ -347,35 +467,23 @@ def main():
     installer.directory(Path("/run/postcardscene-wayland"), runtime, shared, 0o700)
     os.mknod(DEVICE, stat.S_IFCHR | 0o660, os.makedev(1, 3))
     DEVICE.chmod(0o660)
-    installer.bootstrap(
+    entrypoint.bootstrap(
         python, lambda args, **kw: bootstrap_runner(installer, args, **kw)
     )
     Path("/opt/postcardscene/venv").symlink_to(release / "venv")
     installer.write_new(
-        Path("/opt/postcardscene/smoke.py"), Path(__file__).read_bytes()
+        Path("/opt/postcardscene-smoke.py"), Path(__file__).read_bytes()
     )
     permissions(runtime, web, shared)
-    installer.write_new(
-        Path("/opt/postcardscene/service-conflicts.json"),
-        json.dumps(
-            {
-                unit: {
-                    "LoadState": "not-found",
-                    "ActiveState": "inactive",
-                    "UnitFileState": "",
-                    "local_symlink": None,
-                }
-                for unit in ("getty@tty1.service", "display-manager.service")
-            }
-        ).encode(),
-    )
+    installer.reserve_graphics(preflight, installer.command)
     subprocess.run(
-        (PYTHON, "-I", "-B", "/opt/postcardscene/smoke.py", "worker", "doctor"),
+        (PYTHON, "-I", "-B", "/opt/postcardscene-smoke.py", "worker", "doctor"),
         check=True,
         timeout=60,
         env=installer.ENV,
     )
     service_smoke(installer, runtime, web)
+    lifecycle_smoke(entrypoint, installer, runtime, web, shared)
     print(
         "Real two-UID SQLite/WAL/SHM, private key, panel socket and device/Wayland DAC passed."
     )

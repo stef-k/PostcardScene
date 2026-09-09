@@ -132,7 +132,7 @@ explicit seatd inspection remains available; this initial command does not selec
 seatd. Failed preflight or a non-root/non-interactive invocation changes nothing.
 Existing accounts, roots, config or units fail closed, including repeat invocations;
 installation never adopts legacy deployments, resets an administrator or replaces
-a signing key. Preserved-state reinstall and updates remain #142/#144.
+a signing key. Exact preserved-state reinstall is documented below; updates remain #144.
 
 The mutation sequence is:
 
@@ -262,3 +262,70 @@ parse journals, mutate hardware or establish HDMI/4K/acceleration evidence. Use
 #140/#142 for provisioning/reinstall ownership, #144 for recovery-backed updates,
 #27 for backup/restore, and #66/#116/#127 for physical validation. Review individual
 service results independently; web failure does not imply runtime failure.
+
+## Managed remove and reinstall (#142)
+
+Use the trusted extracted input set matching the installed wheel and run
+`sudo python3 -B install.py remove`. The complete helper/requirements set is
+SHA-verified before any helper executes. Removal requires exact managed root,
+identity, asset, configuration, database and key authority; source checkouts,
+foreign layouts and partial installations are never adopted. Dynamic Python
+configuration that cannot be inspected without execution requires manual
+reconciliation, as with doctor.
+
+The four lifecycle states are `clean`, `installed_managed`, `removed_preserved`
+and `partial_or_unknown`. Only the first accepts initial installation. Only
+`installed_managed` accepts removal. A normal successful removal leaves exactly:
+
+```text
+/opt/postcardscene/                         root:root 0755
+/opt/postcardscene/service-conflicts.json   root:root 0644
+/etc/postcardscene/config.py                existing config authority
+/var/lib/postcardscene/                     existing DB and durable state
+/var/lib/postcardscene-web/                 existing private signing authority
+postcardscene + postcardscene-web           existing users and groups
+```
+
+Config directory authority, DB/admin credentials, signing key and backups remain
+unchanged. The active venv, releases directory, canonical units/drop-ins/PAM/
+tmpfiles assets, cache and both runtime directories are absent. Host prerequisite
+packages remain installed; no uninstall/autoremove, purge or factory reset exists.
+The retained root-controlled conflict record is required ownership evidence.
+Do not delete, edit or replace it with a symlink to make a partial state appear
+managed.
+
+Removal stops/disables only the three PostcardScene units, verifies that no
+service-UID process survives, then restores recorded getty/display-manager state
+before deleting validated payload/assets and replaceable roots. Unexpected
+owners, symlinks, mounts, socket residue, changed assets or uncertain service
+restoration cause nonzero failure and preserve uncertain targets. There is no
+recursive ownership repair. Repeating remove on exact `removed_preserved` succeeds
+without deleting anything or replaying boot-service restoration.
+
+For reinstall, run `sudo python3 -B install.py install` from a compatible trusted
+input set. The installer must first positively recognize `removed_preserved`.
+Only then can it request the internal preserved-state prerequisite mode. The
+standalone preflight CLI continues to require a clean host and has no adoption
+switch. Distro, architecture, Python, package/tool, seat and local-filesystem
+policy are unchanged.
+
+Reinstall stages a fresh payload and validates a private DB snapshot against the
+incoming application's schema/identity and existing administrator. It validates
+the existing key as the web UID. It never runs migrations, admin bootstrap or key
+initialization. It then recreates replaceable authority, atomically refreshes the
+conflict record from current host state, reserves graphics and activates services.
+Operator getty/display-manager changes made while removed become the state
+restored by the next removal. Installing older bytes is not database rollback;
+unproven compatibility requires the future update/restore workflow.
+
+On any failure, preserve config, DB, key, marker and remaining assets. Inspect
+protected service/package diagnostics and reconcile the reported phase manually;
+a partial state cannot be repaired by simply rerunning installation. Staged
+payload cleanup is limited to an exact validated inactive release. Reinstall
+success requires coherent installed authority and active services. Run
+`postcardscene-doctor` afterwards for current installation diagnostics.
+
+The privileged Linux smoke exercises remove/reinstall with real distinct UIDs,
+SQLite/admin/config/key preservation, fresh conflict capture and doctor checks.
+Its x86 package/platform and graphics-start substitutions provide software/DAC
+evidence only, with no physical Raspberry Pi, seat, HDMI or 4K claim.
