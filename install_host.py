@@ -317,10 +317,10 @@ def read_regular(path, limit=65536):
 
 
 def preserved_identities():
-    shadow = {
-        line.split(":")[0]: line.split(":")[1]
+    shadow = dict(
+        line.split(":", 2)[:2]
         for line in read_regular(Path("/etc/shadow")).decode().splitlines()
-    }
+    )
 
     runtime, web = pwd.getpwnam("postcardscene"), pwd.getpwnam("postcardscene-web")
     shared, private = grp.getgrnam("postcardscene"), grp.getgrnam("postcardscene-web")
@@ -329,6 +329,7 @@ def preserved_identities():
         or min(runtime.pw_uid, web.pw_uid, shared.gr_gid, private.gr_gid) <= 0
         or shared.gr_gid == private.gr_gid
         or private.gr_mem
+        or set(shared.gr_mem) - {runtime.pw_name, web.pw_name}
         or os.getgrouplist(web.pw_name, shared.gr_gid) != [shared.gr_gid]
     ):
         raise InstallError("managed_authority_invalid")

@@ -369,6 +369,21 @@ def lifecycle_smoke(entrypoint, installer, runtime, web, shared):
                     print(label, "valid", flush=True)
                 except (support.InstallError, observer.Rejected) as error:
                     print(label, str(error), flush=True)
+                    if label == "units":
+                        for unit in (*support.SERVICES, *support.CONFLICTS):
+                            print(
+                                unit,
+                                observer.Host().command(
+                                    (
+                                        "/usr/bin/systemctl",
+                                        "show",
+                                        unit,
+                                        "--all",
+                                        "--property=LoadState,ActiveState,UnitFileState",
+                                    )
+                                ),
+                                flush=True,
+                            )
             raise
         assert operation.phase == "removed_preserved"
         marker = Path("/opt/postcardscene/service-conflicts.json")

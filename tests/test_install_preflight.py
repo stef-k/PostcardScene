@@ -230,6 +230,7 @@ def test_unknown_installation_and_service_rejected():
         "show",
         pf.UNITS[0],
         "--no-pager",
+        "--all",
         "--property=LoadState,ActiveState,UnitFileState",
     )
     host.overrides[command] = (
@@ -248,6 +249,7 @@ def test_service_competition_is_explicit_action_and_seat_is_selected():
                 "show",
                 unit,
                 "--no-pager",
+                "--all",
                 "--property=LoadState,ActiveState,UnitFileState",
             )
         ] = (0, "LoadState=loaded\nActiveState=active\nUnitFileState=enabled\n")

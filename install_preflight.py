@@ -384,6 +384,7 @@ def service_state(host, unit):
             "show",
             unit,
             "--no-pager",
+            "--all",
             "--property=LoadState,ActiveState,UnitFileState",
         )
     )

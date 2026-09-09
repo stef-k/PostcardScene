@@ -16,8 +16,8 @@ from pathlib import Path
 # These are installer inputs, not a release manifest or published-bundle schema.
 INPUT_HASHES = {
     "install_inputs.py": "e30622cb3258479669f0a32ab06924b1b37dfa7151cb293c749859f675711218",
-    "install_host.py": "bf1384aada08ec7e77d4e0c60484504045963ad345df07bedef4f2aabceb23fb",
-    "install_preflight.py": "892a7e8be23efdb1b179fae4557cd2f3be3bcdb23e623cc8887e434a1501ebfa",
+    "install_host.py": "367ac17b6fec5877f5b0212676786c4373d23e75538534b47866734dceded567",
+    "install_preflight.py": "919d4392d27b7b7a9641dece3ffc035ba0213d67cfbb8f59e63bc62cfae2dc50",
     "runtime-requirements.txt": "ca8eb8d430bd3d883523e592c99bec74c65c7537a765c52998001f0ae4c76d3a",
 }
 
@@ -261,7 +261,7 @@ class Installation:
             if self.host.classify(version, wheel, preflight) != "removed_preserved":
                 raise InstallError("removal_incomplete_manual_reconciliation_required")
             self.phase = "removed_preserved"
-        except self.host.InstallError as error:
+        except (self.host.InstallError, preflight.Rejected) as error:
             raise InstallError(str(error)) from None
 
     def recover(self):

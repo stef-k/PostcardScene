@@ -488,3 +488,14 @@ def test_process_quiescence_waits_boundedly_without_killing_foreign_processes(
     monkeypatch.setattr(host.time, "monotonic", lambda: next(times))
     with pytest.raises(host.InstallError, match="owned_processes_remain"):
         host.require_no_processes((11, 12, 13, 14))
+
+
+def test_process_inspection_checks_all_uid_authority_fields(tmp_path, monkeypatch):
+    process = tmp_path / "123"
+    process.mkdir()
+    status = process / "status"
+    monkeypatch.setattr(host, "Path", lambda _: tmp_path)
+    status.write_text("Name:\ttest\nUid:\t0\t11\t0\t0\n")
+    assert host.owned_processes((11, 12, 13, 14))
+    status.write_text("Name:\ttest\nUid:\t0\t0\t0\t0\n")
+    assert not host.owned_processes((11, 12, 13, 14))
