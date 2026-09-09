@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "markdownDocumentSize": {
+    "files": [
+      {
+        "path": "docs/operations.md",
+        "allowedLines": 971
+      }
+    ]
+  }
+}
