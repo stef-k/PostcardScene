@@ -10,7 +10,7 @@ import re
 import stat
 from pathlib import Path
 
-from . import Check
+from . import SERVICE_VALUES, Check
 
 CONFIG = Path("/etc/postcardscene/config.py")
 DATABASE = Path("/var/lib/postcardscene/postcardscene.sqlite3")
@@ -110,6 +110,7 @@ def assets():
         path = Path(
             f"/etc/systemd/system/postcardscene-{name}.service.d/permissions.conf"
         )
+        metadata(path.parent, 0, 0, 0o755, stat.S_ISDIR)
         metadata(path, 0, 0, 0o644)
         if read_regular(path) != b"[Service]\nUMask=0007\n":
             raise ValueError("Invalid umask authority.")
@@ -144,8 +145,7 @@ def conflicts():
         if (
             value["LoadState"] not in {"loaded", "not-found", "masked"}
             or value["ActiveState"] not in {"active", "inactive", "failed"}
-            or value["UnitFileState"]
-            not in {"enabled", "disabled", "static", "masked", "indirect", "alias", ""}
+            or value["UnitFileState"] not in SERVICE_VALUES["UnitFileState"]
             or (
                 value["local_symlink"] is not None
                 and (

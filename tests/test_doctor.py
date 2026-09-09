@@ -3,6 +3,7 @@
 import json
 import os
 import sqlite3
+import stat
 import time
 from pathlib import Path
 from types import SimpleNamespace
@@ -369,3 +370,101 @@ def test_redirected_managed_config_is_fatal(tmp_path, monkeypatch):
     assert data.web_config("web_config") == Check(
         "web_config", "fatal", "config_invalid"
     )
+
+
+@pytest.mark.parametrize(
+    "state",
+    [
+        "",
+        "enabled",
+        "disabled",
+        "static",
+        "masked",
+        "indirect",
+        "alias",
+        "enabled-runtime",
+        "linked",
+        "linked-runtime",
+        "masked-runtime",
+        "generated",
+        "transient",
+        "bad",
+        SECRET,
+    ],
+)
+def test_unit_file_states_share_closed_conflict_and_service_validation(
+    monkeypatch, state
+):
+    import io
+
+    fields = {"LoadState": "loaded", "ActiveState": "active", "UnitFileState": state}
+    record = {
+        unit: {**fields, "local_symlink": SECRET}
+        for unit in ("getty@tty1.service", "display-manager.service")
+    }
+    monkeypatch.setattr(metadata, "metadata", lambda *args: None)
+    monkeypatch.setattr(metadata, "read_regular", lambda *args: json.dumps(record))
+    process = SimpleNamespace(
+        stdout=io.BytesIO("".join(f"{k}={v}\n" for k, v in fields.items()).encode()),
+        wait=lambda **kwargs: 0,
+    )
+    from contextlib import nullcontext
+
+    monkeypatch.setattr(
+        bounded.subprocess, "Popen", lambda *a, **kw: nullcontext(process)
+    )
+    conflict = metadata.inspect("conflict_record")
+    service = bounded.inspect_bounded(live.service, "service_web")
+    if state == SECRET:
+        assert conflict == Check("conflict_record", "degraded", "authority_invalid")
+        assert service.reason == "query_failed"
+    else:
+        assert conflict.state == "ready"
+        assert dict(service.details)["UnitFileState"] == state
+    report = Report((conflict, service))
+    assert SECRET not in report.render() + report.render(structured=True)
+
+
+@pytest.mark.parametrize("service", ["runtime", "web"])
+@pytest.mark.parametrize("damage", [None, "owner", "group", "mode", "file", "symlink"])
+def test_installed_assets_validate_dropin_directory_authority(
+    monkeypatch, service, damage
+):
+    target = Path(f"/etc/systemd/system/postcardscene-{service}.service.d")
+
+    def lstat(path):
+        directory = path.suffix == ".d" or not path.suffix
+        mode = stat.S_IFDIR | 0o755 if directory else stat.S_IFREG | 0o644
+        uid = gid = 0
+        if path == target:
+            if damage == "owner":
+                uid = 2001
+            elif damage == "group":
+                gid = 2001
+            elif damage == "mode":
+                mode = stat.S_IFDIR | 0o777
+            elif damage == "file":
+                mode = stat.S_IFREG | 0o755
+            elif damage == "symlink":
+                mode = stat.S_IFLNK | 0o755
+        # The wheel-local autostart is an extensionless regular file.
+        if path.name == "autostart" or path.parent == Path("/etc/pam.d"):
+            mode = stat.S_IFREG | 0o644
+        return SimpleNamespace(st_mode=mode, st_uid=uid, st_gid=gid, st_nlink=1)
+
+    monkeypatch.setattr(Path, "lstat", lstat)
+    monkeypatch.setattr(
+        metadata,
+        "read_regular",
+        lambda path: (
+            b"[Service]\nUMask=0007\n"
+            if path.name == "permissions.conf"
+            else b"d /run/postcardscene 0750 postcardscene postcardscene -\n"
+        ),
+    )
+    expected = (
+        Check("installed_assets", "ready", "ready")
+        if damage is None
+        else Check("installed_assets", "degraded", "authority_invalid")
+    )
+    assert metadata.inspect("installed_assets") == expected

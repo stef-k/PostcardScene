@@ -78,6 +78,8 @@ SERVICE_VALUES = {
             "",
             "enabled-runtime",
             "linked",
+            "linked-runtime",
+            "masked-runtime",
             "indirect",
             "alias",
             "generated",
