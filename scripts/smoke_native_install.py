@@ -349,8 +349,11 @@ def main():
             }
         ).encode(),
     )
-    installer.command(
-        (PYTHON, "-I", "-B", "/opt/postcardscene/smoke.py", "worker", "doctor")
+    subprocess.run(
+        (PYTHON, "-I", "-B", "/opt/postcardscene/smoke.py", "worker", "doctor"),
+        check=True,
+        timeout=60,
+        env=installer.ENV,
     )
     service_smoke(installer, runtime, web)
     print(

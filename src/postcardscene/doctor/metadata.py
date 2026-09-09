@@ -1,5 +1,6 @@
 """Exact managed installation metadata; never opens private signing authority."""
 
+import email.parser
 import grp
 import importlib.metadata
 import json
@@ -83,11 +84,17 @@ def release():
         metadata(path, 0, 0, 0o755, stat.S_ISDIR)
     if Path(distribution.locate_file("postcardscene")).resolve() != PACKAGE:
         raise ValueError("Distribution identity mismatch.")
-    wheel = distribution.read_text("WHEEL")
+    info = f"postcardscene-{version}.dist-info"
+    headers = {}
+    for name in ("METADATA", "WHEEL"):
+        path = Path(distribution.locate_file(f"{info}/{name}"))
+        metadata(path, 0, 0, 0o644)
+        headers[name] = email.parser.BytesParser().parsebytes(read_regular(path))
     if (
-        wheel is None
-        or "Root-Is-Purelib: true" not in wheel
-        or "Tag: py3-none-any" not in wheel
+        headers["METADATA"].get_all("Name") != ["postcardscene"]
+        or headers["METADATA"].get_all("Version") != [version]
+        or headers["WHEEL"].get_all("Root-Is-Purelib") != ["true"]
+        or headers["WHEEL"].get_all("Tag") != ["py3-none-any"]
     ):
         raise ValueError("Invalid wheel metadata.")
     return (("version", version),)
