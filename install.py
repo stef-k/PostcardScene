@@ -102,6 +102,7 @@ def validate_wheel(data, filename):
         entries = configparser.ConfigParser()
         entries.read_string(wheel.read(f"{info}/entry_points.txt").decode())
         if dict(entries["console_scripts"]) != {
+            "postcardscene-doctor": "postcardscene.doctor.cli:main",
             "postcardscene-web": "postcardscene.web.server:main",
             "postcardscene-runtime": "postcardscene.runtime.cli:main",
             "postcardscene-input-emitter": "postcardscene.graphics.local_input:main",
