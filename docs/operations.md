@@ -148,7 +148,10 @@ The mutation sequence is:
    local unit symlink targets in root-controlled
    `/opt/postcardscene/service-conflicts.json`, disable/stop loaded conflicts and
    mask tty1 getty. No desktop profile is rewritten.
-5. Require inactive application services. As the web UID with umask `0007`, run
+5. Require inactive application services. Exclusively reserve the new empty
+   database as the runtime UID with mode `0660`: SQLite's default initial `0644`
+   cannot acquire group write through umask alone. Alembic owns all DB content.
+   As the web UID with umask `0007`, run
    packaged `auth init-secret`, `db upgrade`, `db check` and `auth create-admin`.
    Username/password prompts use the interactive CLI; passwords never enter argv,
    environment, config or an installer log. No default password is generated.
@@ -190,6 +193,9 @@ venv and `/etc/postcardscene/config.py`. A host administrator can open a shell a
 `python -m flask --app postcardscene.web:create_app` with `auth init-secret`,
 `db upgrade`, `db check` and, only if initial creation did not complete,
 `auth create-admin`. These existing commands validate/reuse key/schema authority;
+first verify the database is runtime-owned, group `postcardscene`, mode `0660`.
+If reservation itself failed, investigate the conflict before any migration;
+do not let recovery implicitly create a replacement database with SQLite defaults.
 never use password reset as an install retry. Have the host administrator verify
 all phases before creating the active symlink or enabling services. Earlier
 partial provisioning requires deliberate host reconciliation; this command has

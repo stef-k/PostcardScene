@@ -179,13 +179,15 @@ def test_bootstrap_uses_web_cli_without_password_arguments():
     installer.bootstrap(
         "/release/venv/bin/python", lambda args, **kw: calls.append((args, kw))
     )
-    assert [args[-2:] for args, _ in calls] == [
+    assert calls[0][1]["user"] == "postcardscene"
+    assert "O_EXCL" in calls[0][0][-1] and "0o660" in calls[0][0][-1]
+    assert [args[-2:] for args, _ in calls[1:]] == [
         ("auth", "init-secret"),
         ("db", "upgrade"),
         ("db", "check"),
         ("auth", "create-admin"),
     ]
-    assert all(options["user"] == "postcardscene-web" for _, options in calls)
+    assert all(options["user"] == "postcardscene-web" for _, options in calls[1:])
     assert calls[-1][1]["interactive"] is True
     assert all("password" not in arg for args, _ in calls for arg in args)
 

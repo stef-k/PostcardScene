@@ -406,6 +406,18 @@ def require_stopped(preflight):
 
 
 def bootstrap(python, run):
+    # SQLite's initial 0644 creation mode cannot gain group write from umask.
+    # Reserve only a new empty file as its runtime owner; Alembic owns all content.
+    run(
+        (
+            python,
+            "-I",
+            "-c",
+            "import os; fd=os.open('/var/lib/postcardscene/postcardscene.sqlite3', "
+            "os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o660); os.close(fd)",
+        ),
+        user="postcardscene",
+    )
     cli = (python, "-I", "-m", "flask", "--app", "postcardscene.web:create_app")
     run((*cli, "auth", "init-secret"), user="postcardscene-web")
     run((*cli, "db", "upgrade"), user="postcardscene-web")

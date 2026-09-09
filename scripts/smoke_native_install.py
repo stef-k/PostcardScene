@@ -34,11 +34,10 @@ def worker(action):
 
     from postcardscene.persistence import Database
     from postcardscene.runtime.panel_control import PanelControl
-    from postcardscene.schema import upgrade_database
     from postcardscene.session_secret import read_secret
     from postcardscene.settings import ApplicationSettings, set_timezone
 
-    database = STATE / "permissions.sqlite3"
+    database = STATE / "postcardscene.sqlite3"
     if action == "socket":
         server = PanelControl(None, Event())
         server.start()
@@ -66,8 +65,6 @@ def worker(action):
     elif action == "write":
         set_timezone(Database(database), "Europe/Athens")
     else:
-        if not database.exists():
-            upgrade_database(database)
         db = Database(database)
         set_timezone(db, "UTC")
         with db.transaction() as session:
@@ -127,13 +124,15 @@ def permissions(runtime, web, shared):
         holder = child("hold", owner, hold=True)
         try:
             for suffix in ("-wal", "-shm"):
-                info = (STATE / ("permissions.sqlite3" + suffix)).stat()
+                info = (STATE / ("postcardscene.sqlite3" + suffix)).stat()
                 assert info.st_uid == uid and info.st_gid == shared
-                assert stat.S_IMODE(info.st_mode) == 0o660
+                assert stat.S_IMODE(info.st_mode) == 0o660, oct(
+                    stat.S_IMODE(info.st_mode)
+                )
             child("write", peer)
         finally:
             release_child(holder)
-    assert (STATE / "permissions.sqlite3").stat().st_uid == runtime
+    assert (STATE / "postcardscene.sqlite3").stat().st_uid == runtime
     assert KEY.stat().st_uid == web and stat.S_IMODE(KEY.stat().st_mode) == 0o600
     assert os.getgrouplist("postcardscene-web", shared) == [shared]
     child("runtime-private", "postcardscene")
