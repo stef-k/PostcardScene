@@ -1,9 +1,9 @@
 [project]
 name = "postcardscene"
-version = "0.0.0"
+version = "0.1.0.dev0"
 description = "A self-hosted ambient media and information display appliance"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.11,<3.15"
 license = "MIT"
 license-files = ["LICENSE"]
 dependencies = [

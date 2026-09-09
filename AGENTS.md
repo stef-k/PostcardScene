@@ -372,6 +372,12 @@ uv run python -c "import postcardscene; import postcardscene.web; import postcar
 
 For #12 itself these commands define the bootstrap contract to make valid. After #12 lands, they are the canonical project-local commands unless a later issue deliberately changes the toolchain.
 
+#138 records the already-reviewed cohesive `docs/operations.md` at 971 clean-main
+physical lines in `.agent-tools/code-guard.markdown-baseline.json`. This is a
+one-time document allowance, not an exclusion: growth remains REVIEW and section
+checks remain active. Never recreate/increase it after edits; an explicitly
+requested `--update-markdown-baseline` may only lower/prune the allowance.
+
 Do not add repository-specific copies, wrappers, or configuration for capabilities already supplied by the global agent bootstrap unless PostcardScene develops a concrete project-specific need.
 
 ## Scope constraints

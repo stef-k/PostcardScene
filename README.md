@@ -124,10 +124,43 @@ External media libraries themselves are not copied into PostcardScene backups.
 
 ## Development
 
-Development requires Python >=3.11 and
+Development supports released CPython 3.11–3.14 (`>=3.11,<3.15`) and requires
 [uv](https://docs.astral.sh/uv/getting-started/installation/).
 See [AGENTS.md](AGENTS.md#project-local-development-tooling) for the canonical
 development commands and tooling workflow.
+
+### Release input development
+
+`pyproject.toml` is the sole application version authority, currently
+`0.1.0.dev0` (the first stable V0 line is `0.1.x`). Installed metadata and Overview
+read that distribution identity. Future release tags must equal `v<version>`;
+tag, wheel, installed/Overview version and release manifest must agree before
+publication. V0 publication belongs on GitHub Releases, with no PyPI publication
+required.
+
+After a deliberate dependency or version change, update `uv.lock` with `uv lock`
+and regenerate the third-party runtime input using pinned uv 0.12.10:
+
+```bash
+uv export --format requirements.txt --locked --no-dev --no-emit-project \
+  --no-sources --no-header --output-file runtime-requirements.txt
+uv build --wheel --no-sources
+uv run python scripts/check_release_inputs.py
+```
+
+uv 0.12.10 emits hashes by default; it has no `--generate-hashes` flag.
+`--no-header` removes the invocation-dependent comment so the output is byte
+reproducible. Never maintain `runtime-requirements.txt` by hand. The check rejects
+a stale export, checks the pure-Python wheel metadata and complete tracked package
+payload, then creates a disposable venv and uses pip with `--require-hashes
+--only-binary=:all:` for runtime requirements and `--no-deps` for the application
+wheel. It verifies installed imports, entry points, assets and Overview identity.
+It requires network access to the locked dependency wheels and runs once in
+Quality; all four supported Python series run locked sync, Ruff and the full
+application tests. This is generic Linux Python evidence, not ARM64/HDMI support.
+
+See [release inputs](docs/operations.md#release-inputs-138) for the future native
+bundle and lifecycle ownership.
 
 ### Control shell development
 

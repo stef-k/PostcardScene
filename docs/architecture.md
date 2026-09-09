@@ -196,7 +196,7 @@ The following are intentionally unresolved until the owning issue has enough evi
 7. **Frontend enhancement** — whether HTMX or another small enhancement is justified after the basic Flask/Jinja UI exists.
 9. **Graphics output and renderer integration** — Wayland/labwc session, output/hotplug policy and shared Chromium control and surface/overlay/input capability are frozen by #62–#65; physical validation remains with #66.
 10. **Kiosk authenticated-session persistence** — whether V0 persists third-party web-session cookies and how that state is isolated/recovered.
-11. **Release artifact format** — wheel/archive/other small managed-native distribution shape, owned by #26.
+11. **Release artifact format** — frozen by #138: one pure-Python wheel plus hash-locked runtime requirements, inside a future GitHub Release native archive. See the [release-input contract](architecture/installation-recovery-and-operations.md#deterministic-release-inputs-138); #140/#143 retain installer/manifest/publication ownership.
 12. **Production web serving/network boundary** — frozen by #131: Waitress, loopback direct HTTP or one same-host HTTPS proxy, mandatory trusted Hosts and separate web UID/private signing authority. See the [control-plane contract](architecture/control-plane-and-security.md#production-serving-131); #125 owns supervision and #26 provisioning.
 13. **Renderer live-update transport** — ordinary HTTP polling is preferred where adequate; SSE, WebSockets, or another server-push mechanism is selected only if a concrete V1/V2 requirement proves it useful.
 
