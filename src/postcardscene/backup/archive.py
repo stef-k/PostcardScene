@@ -130,6 +130,15 @@ def unique_object(pairs):
 
 
 def validate_manifest(data, name):
+    """Validate v1 ownership and require current-schema recovery compatibility."""
+    manifest = validate_v1_manifest(data, name)
+    if manifest["schema_revision"] != SCHEMA_REVISION:
+        raise BackupError("incompatible_manifest")
+    return manifest
+
+
+def validate_v1_manifest(data, name):
+    """Structural ownership only; a valid identity need not be restorable here."""
     manifest = json.loads(data, object_pairs_hook=unique_object)
     expected = {
         "archive_schema",
@@ -156,10 +165,14 @@ def validate_manifest(data, name):
         or manifest["application_version"] != match[2]
         or type(manifest["sqlite_application_id"]) is not int
         or manifest["sqlite_application_id"] != APPLICATION_ID
-        or manifest["schema_revision"] != SCHEMA_REVISION
         or manifest["catalog_classification"] != CATALOG
     ):
         raise BackupError("incompatible_manifest")
+    revision = manifest["schema_revision"]
+    if not isinstance(revision, str) or not re.fullmatch(
+        r"[A-Za-z0-9][A-Za-z0-9_]{0,31}", revision, re.ASCII
+    ):
+        raise BackupError("invalid_manifest")
     members = manifest["members"]
     if not isinstance(members, dict) or members.keys() != MEMBER_LIMITS.keys():
         raise BackupError("invalid_manifest")

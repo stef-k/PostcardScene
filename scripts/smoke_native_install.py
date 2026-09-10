@@ -617,7 +617,14 @@ def main():
     )
     service_smoke(installer, runtime, web)
     child("backup", "postcardscene-web")
-    lifecycle_smoke(entrypoint, installer, runtime, web, shared)
+    from smoke_scheduled_backup import scheduled_lifecycle
+
+    scheduled_lifecycle(
+        entrypoint,
+        installer,
+        preflight,
+        lambda: lifecycle_smoke(entrypoint, installer, runtime, web, shared),
+    )
     print(
         "Real two-UID SQLite/WAL/SHM, private key, panel socket and device/Wayland DAC passed."
     )

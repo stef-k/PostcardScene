@@ -73,7 +73,8 @@ sudo python3 -B install.py remove
 
 Substitute the chosen release version consistently. Keep the extracted directory
 private and unchanged, containing exactly the wheel, `runtime-requirements.txt`,
-`install.py`, `install_inputs.py`, `install_host.py`, `install_preflight.py` and
+`install.py`, `install_inputs.py`, `install_host.py`, `install_services.py`,
+`install_preflight.py` and
 `release-manifest.json`. Place downloads, checksum files and diagnostics outside
 it. The same bundle supports clean install, remove and compatible preserved-state
 reinstall through the lifecycle described below.
@@ -189,7 +190,8 @@ These are package/provisioning evidence, not hard-coded current version promises
 
 From one trusted, reviewed extracted input set, run `sudo python3 -B install.py
 install` in an interactive terminal. Keep exactly one application wheel beside
-`install.py`, `install_inputs.py`, `install_host.py`, `install_preflight.py` and
+`install.py`, `install_inputs.py`, `install_host.py`, `install_services.py`,
+`install_preflight.py` and
 `runtime-requirements.txt` and `release-manifest.json`; no checkout or
 preinstalled application is needed. The installer validates wheel identity,
 Python/pure-wheel metadata, entry points, required assets and wheel RECORD hashes.
@@ -198,7 +200,8 @@ by `install.py` **before executing any support code or mutating the host**.
 Support reads reject symlinks, multiple hard links, non-regular files and oversized
 inputs; the loader executes only the verified bytes, without sibling imports.
 `install.py` owns CLI/lifecycle ordering, `install_inputs.py` deterministic wheel/input
-validation, `install_host.py` fixed provisioning primitives, and
+validation, `install_host.py` fixed provisioning primitives,
+`install_services.py` exact systemd authority/retirement primitives, and
 `install_preflight.py` the existing read-only host gate. The installer itself is
 trusted executable bootstrap authority. These checks do not authenticate a
 published release alone: first verify the external archive checksum as described
@@ -372,7 +375,8 @@ The retained root-controlled conflict record is required ownership evidence.
 Do not delete, edit or replace it with a symlink to make a partial state appear
 managed.
 
-Removal stops/disables only the three PostcardScene units, verifies that no
+Removal first stops/disables the backup timer and stops its oneshot, then
+stops/disables the three always-on PostcardScene services and verifies that no
 service-UID process survives (with a bounded 15-second retirement grace), then restores recorded getty/display-manager state
 before deleting validated payload/assets and replaceable roots. Unexpected
 owners, symlinks, mounts, socket residue, changed assets or uncertain service
@@ -485,4 +489,56 @@ manifest/member hashes, then the snapshot's application ID, packaged Alembic hea
 WAL/quick/FK integrity. Repeated list/verify do not change destination contents.
 The immutable returned identity includes the exact final hash and filename for
 future recovery checks; it does not authorize restore, migration or rollback.
-Scheduling/retention/status (#159), restore (#160) and update (#144) are separate.
+Scheduled execution/retention is described below. UI/doctor backup status (#165),
+restore (#160) and update (#144) remain unavailable.
+
+
+## Scheduled backups and retention (#164)
+
+The managed installer always enables/starts `postcardscene-backup.timer`, including
+when the persisted backup policy is disabled (the default). Its hourly persistent
+wake invokes the existing CLI as `postcardscene-web`, group `postcardscene`, with
+umask 0077:
+
+```bash
+sudo -u postcardscene-web /opt/postcardscene/venv/bin/postcardscene-backup scheduled
+systemctl status postcardscene-backup.timer
+journalctl -u postcardscene-backup.service
+```
+
+The oneshot normally remains inactive between runs. Python uses the shared #163
+policy/timezone decision, owing at most today's local date after the configured
+hour. Disabled, before-hour and already-satisfied runs do no destination I/O.
+Unavailable policy/time fails safely. Destination/count/due date stay fixed for
+the run; policy changes take effect next invocation. The policy API exists, but
+#165's web configuration/status and doctor backup check are not implemented yet.
+
+Manual create and scheduled create+retention share one nonblocking local lock at
+`/var/lib/postcardscene-web/backup.lock`. `operation_busy` reports contention;
+there is no waiting queue or recursive acquisition. The private lock is operational
+state, never archived or removed while an operation may hold it. Workers retain
+it until exit if their controller dies; kernel-stuck cleanup requires operator
+attention and cannot trigger a second writer or fallback destination.
+
+After fully verified creation, retention keeps the newest configured number
+(1–30), always preserving the new verified backup. It enumerates at most 1000 direct
+entries and deletes only exact complete archive/sidecar pairs with valid checksums,
+structure and manifest/member hashes. Foreign files/directories, temp/orphan files,
+incomplete and malformed pairs remain untouched. Changed file authority or deletion
+failure stops cleanup and records `ready_retention_degraded`; the new backup remains
+successful. Listing/verifying or manual creation does not prune historical pairs.
+
+The same administrator-provided destination prerequisites described above apply:
+existing accessible directory, no symlink components, a correctly mounted remote
+filesystem when intended, private modes and required publication semantics. No
+NAS mount, credentials, alternate destination or encryption is provided. Archives
+remain sensitive and non-encrypted; protect their storage and transport.
+
+The backup units are auxiliary; graphics/runtime/web remain the three always-on
+services. Install/reinstall activates the timer only after schema/payload coherence.
+Remove stops/disables the timer and stops any executing oneshot before web-UID
+quiescence, then removes their assets while preserving archives, policy/history
+and private state. Compatible reinstall restores the timer without policy changes.
+If activation fails, recovery attempts to stop/disable auxiliary work before the
+other services; a reported stop/disable failure requires host reconciliation before
+recovery or reboot. Uncertain assets and durable authority remain preserved.

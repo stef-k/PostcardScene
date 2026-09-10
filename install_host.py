@@ -14,13 +14,27 @@ import time
 import zipfile
 from pathlib import Path
 
-SERVICES = tuple(
-    f"postcardscene-{name}.service" for name in ("graphics", "runtime", "web")
+from postcardscene_install_services import (
+    AUXILIARY_UNITS,
+    SERVICES,
+    InstallError,
+    require_auxiliary_installed,
+    require_auxiliary_stopped,
+    service_authority,
+    service_state,
+    stop_auxiliary,
 )
+
 ASSETS = {
     f"{name}/systemd/postcardscene-{name}.service": f"/etc/systemd/system/postcardscene-{name}.service"
     for name in ("graphics", "runtime", "web")
 }
+ASSETS.update(
+    {
+        f"backup/systemd/{unit}": f"/etc/systemd/system/{unit}"
+        for unit in AUXILIARY_UNITS
+    }
+)
 ASSETS["graphics/pam.d/postcardscene-graphics"] = "/etc/pam.d/postcardscene-graphics"
 CONFIG = b"""# Managed initial configuration; trusted host Python, never web input.
 DATABASE_PATH = "/var/lib/postcardscene/postcardscene.sqlite3"
@@ -34,10 +48,6 @@ ENV = {
     "LANG": "C",
     "HOME": "/root",
 }
-
-
-class InstallError(Exception):
-    """Only fixed safe reasons cross the installer output boundary."""
 
 
 def command(args, *, interactive=False, user=None, timeout=300):
@@ -228,13 +238,6 @@ def reserve_graphics(preflight, run, *, preserved=False):
         if state["LoadState"] == "loaded":
             run(("/usr/bin/systemctl", "disable", "--now", unit))
     run(("/usr/bin/systemctl", "mask", "getty@tty1.service"))
-
-
-def service_state(preflight, unit):
-    try:
-        return preflight.service_state(preflight.Host(), unit)
-    except preflight.Rejected:
-        raise InstallError("service_state_unavailable") from None
 
 
 def require_stopped(preflight):
@@ -544,28 +547,6 @@ def require_no_processes(identities):
         time.sleep(0.1)
 
 
-def service_authority(preflight):
-    observer = preflight.Host()
-    if preflight.unit_names(observer) - set(SERVICES):
-        raise InstallError("managed_service_authority_invalid")
-    for unit in SERVICES:
-        status, output = observer.command(
-            ("/usr/bin/systemctl", "show", unit, "--property=FragmentPath,DropInPaths")
-        )
-        values = dict(line.split("=", 1) for line in output.splitlines())
-        expected = (
-            []
-            if unit == SERVICES[0]
-            else [f"/etc/systemd/system/{unit}.d/permissions.conf"]
-        )
-        if (
-            status
-            or values.get("FragmentPath") != f"/etc/systemd/system/{unit}"
-            or values.get("DropInPaths", "").split() != expected
-        ):
-            raise InstallError("managed_service_authority_invalid")
-
-
 def classify(version, wheel, preflight):
     try:
         roots = tuple(Path(p) for p in preflight.ROOTS)
@@ -590,6 +571,7 @@ def classify(version, wheel, preflight):
             return "removed_preserved"
         installed_authority(version, wheel)
         service_authority(preflight)
+        require_auxiliary_installed(preflight)
         return "installed_managed"
     except (
         OSError,
@@ -653,6 +635,8 @@ def remove_managed(version, wheel, preflight, run):
     service_authority(preflight)
     record = conflict_record(preflight)
     identities = preserved_authority()
+    stop_auxiliary(run)
+    require_auxiliary_stopped(preflight)
     run(("/usr/bin/systemctl", "stop", *reversed(SERVICES)))
     run(("/usr/bin/systemctl", "disable", *SERVICES))
     require_stopped(preflight)

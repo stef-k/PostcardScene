@@ -43,6 +43,8 @@ UNITS = (
     "postcardscene-runtime.service",
     "postcardscene-web.service",
     "postcardscene-graphics.service",
+    "postcardscene-backup.service",
+    "postcardscene-backup.timer",
 )
 UNIT_FILE_STATES = {
     "enabled",
@@ -391,7 +393,10 @@ def service_state(host, unit):
     values = dict(line.split("=", 1) for line in output.splitlines() if "=" in line)
     if status or values.get("LoadState") not in ("loaded", "not-found", "masked"):
         raise Rejected("service_state_unavailable")
-    if values.get("ActiveState") not in ("active", "inactive", "failed"):
+    active_states = {"active", "inactive", "failed"}
+    if unit == "postcardscene-backup.service":
+        active_states.add("activating")  # A running Type=oneshot remains activating.
+    if values.get("ActiveState") not in active_states:
         raise Rejected("service_state_unavailable")
     if values.get("UnitFileState") not in UNIT_FILE_STATES:
         raise Rejected("service_state_unavailable")
@@ -433,7 +438,11 @@ def service_check(host, seat, installation="clean"):
         raise Rejected("existing_service_unrecognized")
     for unit in UNITS:
         state = service_state(host, unit)
-        if state["LoadState"] != "not-found" or state["ActiveState"] != "inactive":
+        if (
+            state["LoadState"] != "not-found"
+            or state["ActiveState"] != "inactive"
+            or state["UnitFileState"] != ""
+        ):
             raise Rejected("existing_service_unrecognized")
     actions = []
     for unit, action in (

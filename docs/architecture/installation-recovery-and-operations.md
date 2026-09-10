@@ -215,6 +215,7 @@ runtime-requirements.txt
 install.py                 # trusted CLI/lifecycle entry point #140/#153
 install_inputs.py          # deterministic input/wheel validation #153
 install_host.py            # fixed host provisioning primitives #153
+install_services.py        # exact managed systemd host support #164
 install_preflight.py       # standalone read-only install support #139
 release-manifest.json      # release child #143
 ```
@@ -290,7 +291,8 @@ existing lifecycle and support split; update and backup/restore remain separate.
 Standalone `install.py install` consumes the validated #138 wheel/requirements
 and pinned reviewed support before host mutation. #153 separates deterministic
 input/wheel validation into `install_inputs.py` and fixed host provisioning into
-`install_host.py`; `install_preflight.py` retains read-only host inspection.
+`install_host.py`; #164 factors exact systemd authority/retirement into authenticated
+`install_services.py`. `install_preflight.py` retains read-only host inspection.
 `install.py` retains CLI, phase ordering, recovery dispatch and the initial trust
 authority. It reads the entire fixed support/requirements set with bounded,
 no-follow, regular-file, one-link checks and authenticates all SHA-256 pins before
@@ -392,7 +394,7 @@ an attacker able to replace both files.
 
 The fixed packaged worker runs with Python isolated imports (`-I -B`) and cwd `/`,
 excluding caller CWD, `PYTHONPATH` and user-site packages from its import authority.
-All filesystem operations run in one disposable subprocess per API call, bounded
+Destination filesystem operations run in one disposable subprocess per worker call, bounded
 by 30 seconds without progress, 300 seconds overall and one second kill/reap.
 Capture also has a 120-second cooperative deadline. Private local `/tmp` scratch
 ignores `TMPDIR`; host-local storage there is an operator prerequisite. Sensitive
@@ -405,7 +407,7 @@ stages destination-local private files, fsyncs, and uses Linux atomic
 `RENAME_NOREPLACE` for each final filename. Unsupported filesystems and collisions
 fail closed. Pair publication is not a two-file transaction: only both final files
 with a matching sidecar and successful full verification constitute a backup.
-No retention deletion occurs. Verification first checks the external archive hash,
+Manual creation does not apply retention. Verification first checks the external archive hash,
 then bounded fixed structure before extraction to private scratch, exact manifest
 and member hashes, and DB integrity. Extra/duplicate/path/link/device/extension
 members fail closed. List scans at most 1000 direct entries, ignores foreign/temp
@@ -415,8 +417,8 @@ invalid. Exceeding the bound fails rather than presenting a partial inventory.
 `VerifiedBackup` is immutable: archive filename/hash, UTC creation time, application
 version, SQLite application ID, schema revision and catalog classification. It is
 verification evidence only; #144 must reverify at use and #160 owns same-version
-restore authority. Scheduled execution/retention (#164), UI/doctor (#165),
-restore (#160), closure drills (#161), and updates (#144) remain unimplemented.
+restore authority. UI/doctor (#165), restore (#160), closure drills (#161), and
+updates (#144) remain unimplemented.
 See [manual operations](../operations/installation.md#manual-sensitive-backups-158)
 for command usage, size limits and confidentiality responsibilities.
 
@@ -442,7 +444,7 @@ Downtime owes only today, without replay. Disable/re-enable and destination/hour
 retention edits preserve satisfaction. Invalid/unavailable timezone yields fixed
 `timezone_unavailable`, never UTC fallback. `get_backup_status` reads the existing
 application timezone and invokes this same evaluator; destination text is omitted
-unless authenticated UI code explicitly requests it. No UI or doctor is wired yet.
+unless its authenticated caller explicitly requests it. No UI or doctor is wired yet.
 
 `record_backup_attempt` records a nonnegative signed-64-bit UTC epoch-ns timestamp
 and conservatively marks `failed` until verified success, including on interruption.
@@ -456,6 +458,53 @@ the last denotes verified success with failed retention cleanup. Later attempts 
 failures preserve the last known-good success identity. Persisted history is
 advisory operator evidence, never a verified recovery point: restore/update must
 reverify the concrete archive and sidecar at use. #164 owns execution and retention.
+
+### Scheduled execution and auxiliary lifecycle (#164)
+
+`postcardscene-backup scheduled` holds one nonblocking `flock` on the local
+`/var/lib/postcardscene-web/backup.lock`: regular, no-follow, one link, web-owned,
+shared group, mode 0600 inside the protected private root. Manual create takes the
+same lock; scheduled calls the already-locked create primitive and retains the
+lock continuously through retention. Mutation workers inherit that same open
+lock so controller death or kernel-stuck cleanup cannot permit a competing writer.
+The lock is never unlinked or archived and may survive remove/reinstall.
+
+Each invocation reads one immutable #163 status snapshot with explicit UTC now.
+Disabled/before-hour/satisfied return success without destination I/O. Unavailable
+policy/time fails with a fixed safe category. A due invocation freezes destination,
+retention count and due local date; it records one attempt, creates outside every
+DB transaction, then records the already-verified identity for that captured date.
+Retention uses the same destination/count. Failure preserves success and records
+`ready_retention_degraded`; creation failure preserves the previous success identity.
+
+Retention stays inside the existing isolated, bounded worker. At most 1000 direct
+entries are enumerated; exact complete pairs require bounded checksum, flat archive,
+manifest and member-hash evidence, without historical SQLite integrity scans.
+V1 ownership accepts schema identifiers of 1–32 ASCII letters/digits/underscores
+(starting with a letter/digit), including older revisions. Normal verification
+keeps its separate current-schema equality check; retention ownership does not
+establish recovery compatibility.
+Deterministic oldest-first deletion retains the newest N owned pairs, reserving
+one slot for the new verified backup even after a clock reversal. Foreign, temporary,
+incomplete and malformed entries confer no deletion authority. Exact no-follow
+file identities are rechecked immediately before unlink; uncertainty stops deletion.
+
+The packaged backup oneshot/timer are auxiliary managed units. The three-service
+`install_host.SERVICES` contract stays graphics/runtime/web. The hourly persistent
+timer is enabled and started after coherent payload/schema activation on every
+install/reinstall, including disabled policy. The web-UID/shared-group oneshot has
+umask 0077, no capabilities/device access and a 660-second start timeout covering
+both bounded worker calls. Destination access uses ordinary DAC, without a
+policy-dependent unit path allowlist or mount/credential provisioning.
+
+Clean preflight requires both units absent; installed classification checks exact
+assets, effective unit authority and enabled/active timer without requiring the
+oneshot active. Unknown PostcardScene units remain rejected. Removal retires the
+timer and oneshot before service-UID quiescence, removes auxiliary assets and retains
+archives, policy/history and private state. Failure recovery attempts timer stop,
+disable and oneshot stop before always-on service recovery, preserving uncertain
+assets for diagnosis. Removed-preserved requires absent/inactive auxiliary authority;
+compatible reinstall restores the timer without changing policy/history.
 
 ## Documentation and release evidence
 

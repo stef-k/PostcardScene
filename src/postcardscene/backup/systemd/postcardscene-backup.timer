@@ -1,0 +1,10 @@
+[Unit]
+Description=PostcardScene hourly backup policy check
+
+[Timer]
+OnCalendar=hourly
+Persistent=true
+Unit=postcardscene-backup.service
+
+[Install]
+WantedBy=timers.target

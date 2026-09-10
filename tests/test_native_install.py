@@ -6,6 +6,7 @@ import hashlib
 import importlib.util
 import io
 import runpy
+import sys
 import tomllib
 import zipfile
 from pathlib import Path
@@ -17,6 +18,12 @@ ROOT = Path(__file__).resolve().parents[1]
 SPEC = importlib.util.spec_from_file_location("native_install", ROOT / "install.py")
 installer = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(installer)
+SERVICE_SPEC = importlib.util.spec_from_file_location(
+    "postcardscene_install_services", ROOT / "install_services.py"
+)
+services = importlib.util.module_from_spec(SERVICE_SPEC)
+sys.modules[SERVICE_SPEC.name] = services
+SERVICE_SPEC.loader.exec_module(services)
 HOST_SPEC = importlib.util.spec_from_file_location(
     "test_install_host", ROOT / "install_host.py"
 )
@@ -443,6 +450,7 @@ def test_remove_failure_preserves_payload_and_uncertain_targets(monkeypatch, fai
     monkeypatch.setattr(host, "conflict_record", lambda *a: {})
     monkeypatch.setattr(host, "preserved_authority", lambda: (11, 12, 13, 14))
     monkeypatch.setattr(host, "require_stopped", lambda *a: None)
+    monkeypatch.setattr(host, "require_auxiliary_stopped", lambda *a: None)
 
     def step(name):
         events.append(name)

@@ -1,4 +1,4 @@
-"""Manual backup API. All filesystem work runs in a bounded disposable process."""
+"""Backup API. Destination filesystem work runs in a bounded disposable process."""
 
 import json
 import os
@@ -10,6 +10,7 @@ import time
 from .archive import VerifiedBackup
 from .destination import BackupEntry
 from .files import BackupError
+from .operation import operation_lock
 
 __all__ = ["BackupError", "VerifiedBackup", "create", "verify", "list_backups"]
 
@@ -46,7 +47,16 @@ def _receive(process, cancelled, timeout, idle_timeout):
                 return message["result"]
 
 
-def _run(operation, path, *, cancelled=lambda: False, timeout=300.0, idle_timeout=30.0):
+def _run(
+    operation,
+    path,
+    *,
+    arguments=(),
+    lock_fd=None,
+    cancelled=lambda: False,
+    timeout=300.0,
+    idle_timeout=30.0,
+):
     if not 0 < timeout <= 300 or not 0 < idle_timeout <= 30:
         raise ValueError("Invalid backup operation bounds.")
     process = subprocess.Popen(
@@ -58,11 +68,13 @@ def _run(operation, path, *, cancelled=lambda: False, timeout=300.0, idle_timeou
             "postcardscene.backup.worker",
             operation,
             os.fspath(path),
+            *arguments,
         ],
         stdin=subprocess.DEVNULL,
         stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL,
         close_fds=True,
+        pass_fds=() if lock_fd is None else (lock_fd,),
         cwd="/",
     )
     try:
@@ -83,7 +95,14 @@ def _run(operation, path, *, cancelled=lambda: False, timeout=300.0, idle_timeou
 
 
 def create(destination, **bounds):
-    return VerifiedBackup(**_run("create", destination, **bounds))
+    with operation_lock() as lock_fd:
+        return _create_locked(destination, lock_fd=lock_fd, **bounds)
+
+
+def _create_locked(destination, *, lock_fd, **bounds):
+    # The child retains the same flock if its controller crashes or it remains
+    # kernel-stuck during cleanup. A subsequent mutation must still fail busy.
+    return VerifiedBackup(**_run("create", destination, lock_fd=lock_fd, **bounds))
 
 
 def verify(archive, **bounds):

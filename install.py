@@ -15,9 +15,10 @@ from pathlib import Path
 # Reviewed #138/#139 input pins, checked against source by release-input validation.
 # These are installer inputs, not a release manifest or published-bundle schema.
 INPUT_HASHES = {
-    "install_inputs.py": "e4b3b5b395b20ff2c570c827b12701afb9d2dd3864479fa1ea629e4699cc9092",
-    "install_host.py": "7278ea875ece7346959a9605c5a65c40888316641db53ea13c990c789f8084c1",
-    "install_preflight.py": "b01b5e1f71325b44e1b8812da4d6132eb6ef70e64f14869f83de872036aeb107",
+    "install_inputs.py": "86407cfd44bce39be351efcf9680901c49c6273a54d20703a1b4bba257d3085f",
+    "install_services.py": "0974c2f102098dfcb5a6ab1a71d18930bd1b28bb02f4eab8e62e7065a2245ee8",
+    "install_host.py": "474c0d30e5292af452f329244cff492565ff2fc8187b7eb00e9d6483f21507a2",
+    "install_preflight.py": "aa36e36509abe82584243c6e80b6dca44b67ef6035c2fa82123896063aa84390",
     "runtime-requirements.txt": "ca8eb8d430bd3d883523e592c99bec74c65c7537a765c52998001f0ae4c76d3a",
 }
 
@@ -47,14 +48,20 @@ def load_support(bundle):
             raise InstallError("install_support_mismatch")
     modules = []
     members = None
-    for name in ("install_inputs.py", "install_host.py", "install_preflight.py"):
+    for name in (
+        "install_inputs.py",
+        "install_services.py",
+        "install_host.py",
+        "install_preflight.py",
+    ):
         spec = importlib.util.spec_from_loader(
             "postcardscene_" + name[:-3], loader=None
         )
         module = importlib.util.module_from_spec(spec)
         sys.modules[spec.name] = module
         exec(compile(inputs[name], name, "exec"), module.__dict__)
-        modules.append(module)
+        if name != "install_services.py":
+            modules.append(module)
         if name == "install_inputs.py":
             try:
                 members = module.validate_manifest(bundle, inputs)
@@ -176,6 +183,10 @@ class Installation:
         self.run(("/usr/bin/systemctl", "enable", *self.host.SERVICES))
         for unit in host.SERVICES:
             self.run(("/usr/bin/systemctl", "start", unit))
+        timer = host.AUXILIARY_UNITS[1]
+        self.run(("/usr/bin/systemctl", "enable", timer))
+        self.run(("/usr/bin/systemctl", "start", timer))
+        self.run(("/usr/bin/systemctl", "is-active", "--quiet", timer))
         self.run(("/usr/bin/systemctl", "is-active", "--quiet", *self.host.SERVICES))
         self.phase = "complete"
 
@@ -217,6 +228,10 @@ class Installation:
         self.run(("/usr/bin/systemctl", "enable", *host.SERVICES))
         for unit in host.SERVICES:
             self.run(("/usr/bin/systemctl", "start", unit))
+        timer = host.AUXILIARY_UNITS[1]
+        self.run(("/usr/bin/systemctl", "enable", timer))
+        self.run(("/usr/bin/systemctl", "start", timer))
+        self.run(("/usr/bin/systemctl", "is-active", "--quiet", timer))
         self.run(("/usr/bin/systemctl", "is-active", "--quiet", *host.SERVICES))
         if host.classify(version, wheel, preflight) != "installed_managed":
             raise InstallError("reinstalled_authority_incoherent")
@@ -248,6 +263,19 @@ class Installation:
 
     def recover(self):
         if self.durable:
+            if self.activation:
+                try:
+                    self.host.stop_auxiliary(self.run)
+                except (
+                    OSError,
+                    InstallError,
+                    self.host.InstallError,
+                    subprocess.SubprocessError,
+                ):
+                    print(
+                        "Auxiliary stop/disable failed; prevent scheduled execution before recovery.",
+                        file=sys.stderr,
+                    )
             if self.activation:
                 try:
                     self.run(("/usr/bin/systemctl", "disable", *self.host.SERVICES))

@@ -10,10 +10,13 @@ from datetime import datetime, timezone
 from importlib.metadata import version
 from pathlib import Path
 
-from . import archive, capture, destination
+from . import archive, capture, destination, retention
 
 
-def execute(operation, path, progress):
+def execute(operation, path, progress, arguments=()):
+    if operation == "retain":
+        count, name, value = arguments
+        return retention.retain(path, int(count), name, value, progress)
     if operation == "verify":
         return asdict(destination.verify(path, progress))
     if operation == "list":
@@ -43,7 +46,7 @@ def main():
             last = now
 
     try:
-        result = execute(sys.argv[1], Path(sys.argv[2]), progress)
+        result = execute(sys.argv[1], Path(sys.argv[2]), progress, sys.argv[3:])
         print(json.dumps({"result": result}, separators=(",", ":")), flush=True)
         return 0
     except Exception:
