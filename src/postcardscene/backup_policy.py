@@ -167,7 +167,7 @@ def evaluate_backup_due(
         if type(timezone) is not str or not 1 <= len(timezone) <= 255:
             raise ValueError
         local = now_utc.astimezone(ZoneInfo(timezone))
-    except (ValueError, ZoneInfoNotFoundError):
+    except (ValueError, ZoneInfoNotFoundError, OSError):
         return BackupDue(False, None, "timezone_unavailable")
     today = local.date().isoformat()
     if not policy.enabled:

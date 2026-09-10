@@ -299,3 +299,23 @@ def test_missing_singleton_and_invalid_success(database):
         connection.exec_driver_sql("DELETE FROM backup_policy")
     with pytest.raises(DatabaseError, match="missing"):
         get_backup_policy(database)
+
+
+def test_unreadable_timezone_and_non_utc_input_fail_closed(monkeypatch):
+    def unavailable(key):
+        raise PermissionError("timezone data inaccessible")
+
+    monkeypatch.setattr("postcardscene.backup_policy.ZoneInfo", unavailable)
+    decision = evaluate_backup_due(
+        instant("2026-09-10T12:00:00"),
+        "Europe/Athens",
+        BackupPolicy(True, "/backups"),
+        BackupHistory(),
+    )
+    assert not decision.due and decision.reason == "timezone_unavailable"
+    for now in (
+        datetime(2026, 9, 10),
+        datetime.fromisoformat("2026-09-10T12:00:00+03:00"),
+    ):
+        with pytest.raises(ValueError, match="aware UTC"):
+            evaluate_backup_due(now, "UTC", BackupPolicy(), BackupHistory())
