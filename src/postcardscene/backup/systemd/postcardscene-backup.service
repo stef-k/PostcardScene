@@ -1,0 +1,20 @@
+[Unit]
+Description=PostcardScene scheduled sensitive backup
+
+[Service]
+Type=oneshot
+User=postcardscene-web
+Group=postcardscene
+UMask=0077
+ExecStart=/opt/postcardscene/venv/bin/postcardscene-backup scheduled
+TimeoutStartSec=660
+TimeoutStopSec=10
+KillMode=control-group
+SendSIGKILL=yes
+StandardOutput=journal
+StandardError=journal
+NoNewPrivileges=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+PrivateDevices=yes
+DevicePolicy=closed

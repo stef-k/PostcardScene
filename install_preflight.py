@@ -43,6 +43,8 @@ UNITS = (
     "postcardscene-runtime.service",
     "postcardscene-web.service",
     "postcardscene-graphics.service",
+    "postcardscene-backup.service",
+    "postcardscene-backup.timer",
 )
 UNIT_FILE_STATES = {
     "enabled",
@@ -433,7 +435,11 @@ def service_check(host, seat, installation="clean"):
         raise Rejected("existing_service_unrecognized")
     for unit in UNITS:
         state = service_state(host, unit)
-        if state["LoadState"] != "not-found" or state["ActiveState"] != "inactive":
+        if (
+            state["LoadState"] != "not-found"
+            or state["ActiveState"] != "inactive"
+            or state["UnitFileState"] != ""
+        ):
             raise Rejected("existing_service_unrecognized")
     actions = []
     for unit, action in (

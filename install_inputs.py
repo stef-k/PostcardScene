@@ -122,6 +122,7 @@ SUPPORT_NAMES = (
     "install.py",
     "install_inputs.py",
     "install_host.py",
+    "install_services.py",
     "install_preflight.py",
     "runtime-requirements.txt",
 )

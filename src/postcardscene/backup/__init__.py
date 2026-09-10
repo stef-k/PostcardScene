@@ -1,4 +1,4 @@
-"""Manual backup API. All filesystem work runs in a bounded disposable process."""
+"""Backup API. Destination filesystem work runs in a bounded disposable process."""
 
 import json
 import os
@@ -10,6 +10,7 @@ import time
 from .archive import VerifiedBackup
 from .destination import BackupEntry
 from .files import BackupError
+from .operation import operation_lock
 
 __all__ = ["BackupError", "VerifiedBackup", "create", "verify", "list_backups"]
 
@@ -46,7 +47,15 @@ def _receive(process, cancelled, timeout, idle_timeout):
                 return message["result"]
 
 
-def _run(operation, path, *, cancelled=lambda: False, timeout=300.0, idle_timeout=30.0):
+def _run(
+    operation,
+    path,
+    *,
+    arguments=(),
+    cancelled=lambda: False,
+    timeout=300.0,
+    idle_timeout=30.0,
+):
     if not 0 < timeout <= 300 or not 0 < idle_timeout <= 30:
         raise ValueError("Invalid backup operation bounds.")
     process = subprocess.Popen(
@@ -58,6 +67,7 @@ def _run(operation, path, *, cancelled=lambda: False, timeout=300.0, idle_timeou
             "postcardscene.backup.worker",
             operation,
             os.fspath(path),
+            *arguments,
         ],
         stdin=subprocess.DEVNULL,
         stdout=subprocess.PIPE,
@@ -83,6 +93,11 @@ def _run(operation, path, *, cancelled=lambda: False, timeout=300.0, idle_timeou
 
 
 def create(destination, **bounds):
+    with operation_lock():
+        return _create_locked(destination, **bounds)
+
+
+def _create_locked(destination, **bounds):
     return VerifiedBackup(**_run("create", destination, **bounds))
 
 
