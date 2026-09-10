@@ -15,7 +15,7 @@ from pathlib import Path
 # Reviewed #138/#139 input pins, checked against source by release-input validation.
 # These are installer inputs, not a release manifest or published-bundle schema.
 INPUT_HASHES = {
-    "install_inputs.py": "a67c748475f682f98cf2693520bd01169df845e64d491a0ff481ed8738a0216d",
+    "install_inputs.py": "e4b3b5b395b20ff2c570c827b12701afb9d2dd3864479fa1ea629e4699cc9092",
     "install_host.py": "7278ea875ece7346959a9605c5a65c40888316641db53ea13c990c789f8084c1",
     "install_preflight.py": "b01b5e1f71325b44e1b8812da4d6132eb6ef70e64f14869f83de872036aeb107",
     "runtime-requirements.txt": "ca8eb8d430bd3d883523e592c99bec74c65c7537a765c52998001f0ae4c76d3a",

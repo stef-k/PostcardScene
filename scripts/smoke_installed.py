@@ -62,7 +62,11 @@ def main():
                     capture_output=True,
                     timeout=10,
                 )
-                expected_exit = 2 if entry.name == "postcardscene-doctor" else 1
+                expected_exit = (
+                    2
+                    if entry.name in {"postcardscene-doctor", "postcardscene-backup"}
+                    else 1
+                )
                 assert result.returncode == expected_exit, (entry.name, result.stderr)
         assert not (root / "absent.sqlite3").exists()
     print(f"Installed package and Overview agree: {expected}")

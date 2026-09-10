@@ -18,6 +18,7 @@ dependencies = [
 ]
 
 [project.scripts]
+postcardscene-backup = "postcardscene.backup.cli:main"
 postcardscene-doctor = "postcardscene.doctor.cli:main"
 postcardscene-web = "postcardscene.web.server:main"
 postcardscene-input-emitter = "postcardscene.graphics.local_input:main"

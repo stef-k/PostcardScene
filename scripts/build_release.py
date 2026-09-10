@@ -167,7 +167,7 @@ def build(output, require_tag=True):
         "database/admin state, signing key and service identities.\n\n"
         f"Packaged schema: `{manifest['schema']['alembic_head']}`. "
         "Clean installation explicitly initializes the schema; reinstall does not migrate. "
-        "Forward update and backup/restore remain unavailable.\n\n"
+        "Manual backup is available; forward update and restore remain unavailable.\n\n"
         "Managed targets remain ARM64 Ubuntu Server 24.04/26.04 and Raspberry Pi OS "
         "64-bit / Debian 13 Trixie, with CPython 3.11–3.14. Generic artifact smoke "
         "does not prove physical Pi/HDMI support or complete V0 security/recovery gates.\n\n"
