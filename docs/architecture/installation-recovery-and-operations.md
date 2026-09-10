@@ -415,10 +415,47 @@ invalid. Exceeding the bound fails rather than presenting a partial inventory.
 `VerifiedBackup` is immutable: archive filename/hash, UTC creation time, application
 version, SQLite application ID, schema revision and catalog classification. It is
 verification evidence only; #144 must reverify at use and #160 owns same-version
-restore authority. Scheduling/retention/status (#159), both in-place and replacement
+restore authority. Scheduled execution/retention (#164), UI/doctor (#165),
 restore (#160), closure drills (#161), and updates (#144) remain unimplemented.
 See [manual operations](../operations/installation.md#manual-sensitive-backups-158)
 for command usage, size limits and confidentiality responsibilities.
+
+
+### Persisted backup policy and daily due state (#163)
+
+Explicit migration `0012_backup_policy` follows `0011_display_power_settings` and
+adds one `backup_policy` row (`id = 1`), preserving existing appliance state.
+`postcardscene.backup_policy` owns frozen policy/history/status values and short
+DB-only transactions. Defaults are disabled, no destination, local hour 3 and
+retention count 7. Replacement requires a real bool, an absolute nonempty path
+of at most 4096 characters (nullable only while disabled; no NUL), integer hour
+0–23 and retention 1–30. Validation never probes or resolves the destination;
+#158's worker remains accessibility and filesystem authority. Malformed stored
+policy/history fails closed with `DatabaseError`, rather than being defaulted.
+
+`evaluate_backup_due` consumes an explicit aware UTC datetime, the existing
+application IANA timezone, policy and history. It owes only the current local
+date after its configured hour. A skipped DST hour is caught on a later invocation
+that date; a repeated hour cannot duplicate a satisfied date. A satisfied ISO date
+greater than or equal to today suppresses work after backward clock/date movement.
+Downtime owes only today, without replay. Disable/re-enable and destination/hour/
+retention edits preserve satisfaction. Invalid/unavailable timezone yields fixed
+`timezone_unavailable`, never UTC fallback. `get_backup_status` reads the existing
+application timezone and invokes this same evaluator; destination text is omitted
+unless authenticated UI code explicitly requests it. No UI or doctor is wired yet.
+
+`record_backup_attempt` records a nonnegative signed-64-bit UTC epoch-ns timestamp
+and conservatively marks `failed` until verified success, including on interruption.
+`record_backup_success` consumes an already obtained `VerifiedBackup`, explicit
+success-completion epoch-ns and the scheduled obligation's ISO local date. It stores
+only that date/time and the bounded exact #158 archive basename, refusing backward
+satisfaction movement. The execution owner must record the attempt first and owns
+serialization; no create/verify/list operation occurs in these transactions.
+The closed results are `never`, `failed`, `ready` and `ready_retention_degraded`;
+the last denotes verified success with failed retention cleanup. Later attempts or
+failures preserve the last known-good success identity. Persisted history is
+advisory operator evidence, never a verified recovery point: restore/update must
+reverify the concrete archive and sidecar at use. #164 owns execution and retention.
 
 ## Documentation and release evidence
 
