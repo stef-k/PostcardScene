@@ -445,7 +445,8 @@ Downtime owes only today, without replay. Disable/re-enable and destination/hour
 retention edits preserve satisfaction. Invalid/unavailable timezone yields fixed
 `timezone_unavailable`, never UTC fallback. `get_backup_status` reads the existing
 application timezone and invokes this same evaluator; destination text is omitted
-unless its authenticated caller explicitly requests it. No UI or doctor is wired yet.
+unless its authenticated caller explicitly requests it. #165 consumes this seam
+from `/backup` and doctor's private snapshot; neither performs destination I/O.
 
 `record_backup_attempt` records a nonnegative signed-64-bit UTC epoch-ns timestamp
 and conservatively marks `failed` until verified success, including on interruption.
