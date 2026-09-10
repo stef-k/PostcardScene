@@ -490,7 +490,15 @@ WAL/quick/FK integrity. Repeated list/verify do not change destination contents.
 The immutable returned identity includes the exact final hash and filename for
 future recovery checks; it does not authorize restore, migration or rollback.
 Scheduled execution/retention and advisory UI/doctor status are described below.
-Restore (#160) and update (#144) remain unavailable.
+The final restore command (#170) and update (#144) remain unavailable. #169 provides
+only an internal root-only preparation API: a fresh root-private local `/tmp`
+candidate is fully checked before any host mutation. It requires the exact installed
+application version/current schema, a valid DB with an Administrator, canonical
+literal-only config and a 32-byte signing key. Older-schema retention ownership is
+insufficient. Local candidate revalidation needs no further destination reads.
+The caller owns successful sensitive scratch cleanup; failures attempt local cleanup
+and report a fixed category if cleanup is uncertain. No services are stopped and no
+current config, DB, key or catalog state is replaced by preparation.
 
 
 ## Scheduled backups and retention (#164)
