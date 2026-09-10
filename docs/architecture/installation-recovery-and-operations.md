@@ -360,28 +360,63 @@ for limits, result/exit categories and repair/evidence ownership.
 
 ## Backup and restore boundary
 
-PostcardScene backup owns PostcardScene durable state, not the user's original media libraries.
+#158 implements one packaged `postcardscene-backup` CLI and ordinary-Python
+`postcardscene.backup.create`, `verify`, and `list_backups` APIs. Manual commands
+run as the existing `postcardscene-web` UID, outside Flask/runtime. They neither
+gain privileges nor broaden the private signing key's permissions.
 
-The V0 recovery contract must classify:
+The flat gzip/ustar v1 recovery set is exactly `postcardscene.sqlite3`, `config.py`,
+`session.key`, and `backup-manifest.json`. Capture validates the managed canonical
+config, runtime-owned DB, web-owned key and their parent metadata without following
+symlinks. Config uses the installer's literal-assignment convention and must retain
+canonical DB/key paths. Existing config/key bytes are copied exactly; neither is
+executed or printed. SQLite's read-only online backup API captures the whole DB in
+bounded page batches without a checkpoint, migration, vacuum or application-held
+SQL transaction. `Database.check()` checks the private snapshot's packaged identity,
+WAL mode, quick integrity and foreign keys before publication.
 
-- SQLite database
-- installation-owned secret/key material required for protected state, or credentials explicitly requiring re-entry
-- any application-owned durable assets
-- media catalog as regenerable derived state; restore requires fresh Source reconciliation
-- manifest with application/schema/archive identity
-- checksums
+The DB can physically contain `MediaItem`/`MediaCatalogState`; the fixed manifest
+classifies these as `regenerable_reconcile_required`. #160 owns invalidating those
+observations and requiring fresh Source reconciliation. External media/provider
+assets, cache/runtime/browser state, logs, release payload, systemd/PAM/tmpfiles,
+and host-specific `service-conflicts.json` are excluded.
 
-It excludes external media libraries, replaceable caches and the isolated
-untrusted-web Chromium profile (including ordinary site state) by default.
+Schema-1 manifest fields are closed: archive schema/kind, UTC creation time,
+application version, SQLite application ID/schema revision, catalog classification,
+and exact DB/config/key names with byte sizes and SHA-256. No manifest self-hash,
+host identity, paths, environment or secret values are added. Normalized archive
+members have mode 0600, UID/GID 0 and empty owner names. The fixed filename includes
+UTC microseconds and application version. A sibling SHA-256 sidecar checks the
+final archive bytes; checksums provide integrity, not encryption or proof against
+an attacker able to replace both files.
 
-Backup creation must use a SQLite-consistent method, publish atomically, verify integrity, and support bounded retention.
+All filesystem operations run in one disposable subprocess per API call, bounded
+by 30 seconds without progress, 300 seconds overall and one second kill/reap.
+Capture also has a 120-second cooperative deadline. Private local `/tmp` scratch
+ignores `TMPDIR`; host-local storage there is an operator prerequisite. Sensitive
+files use 0600, directories 0700. A killed worker may leave private scratch or
+incomplete destination files; kernel-stalled cleanup is explicitly uncertain and
+never waits indefinitely. No other destination or storage root is selected.
 
-Restore must be tested both:
+Publication pins the exact existing absolute destination without symlink traversal,
+stages destination-local private files, fsyncs, and uses Linux atomic
+`RENAME_NOREPLACE` for each final filename. Unsupported filesystems and collisions
+fail closed. Pair publication is not a two-file transaction: only both final files
+with a matching sidecar and successful full verification constitute a backup.
+No retention deletion occurs. Verification first checks the external archive hash,
+then bounded fixed structure before extraction to private scratch, exact manifest
+and member hashes, and DB integrity. Extra/duplicate/path/link/device/extension
+members fail closed. List scans at most 1000 direct entries, ignores foreign/temp
+names without opening them, and reports owned pairs as verified, incomplete or
+invalid. Exceeding the bound fails rather than presenting a partial inventory.
 
-1. in place; and
-2. onto a clean supported replacement host.
-
-An older backup is not automatically a safe application rollback. Unknown application/schema compatibility must fail closed with actionable recovery guidance.
+`VerifiedBackup` is immutable: archive filename/hash, UTC creation time, application
+version, SQLite application ID, schema revision and catalog classification. It is
+verification evidence only; #144 must reverify at use and #160 owns same-version
+restore authority. Scheduling/retention/status (#159), both in-place and replacement
+restore (#160), closure drills (#161), and updates (#144) remain unimplemented.
+See [manual operations](../operations/installation.md#manual-sensitive-backups-158)
+for command usage, size limits and confidentiality responsibilities.
 
 ## Documentation and release evidence
 

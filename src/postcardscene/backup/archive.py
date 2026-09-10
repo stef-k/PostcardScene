@@ -65,6 +65,19 @@ def check_database(path):
         database.engine.dispose()
 
 
+class ProgressReader:
+    """Keep compression progress visible while tarfile copies a large DB."""
+
+    def __init__(self, source, progress):
+        self.source = source
+        self.progress = progress
+
+    def read(self, size):
+        value = self.source.read(size)
+        self.progress()
+        return value
+
+
 def build(scratch, created, version, progress):
     members = {}
     for name in MEMBER_LIMITS:
@@ -102,7 +115,7 @@ def build(scratch, created, version, progress):
                 archive.addfile(info, io.BytesIO(data))
             else:
                 with (scratch / name).open("rb") as source:
-                    archive.addfile(info, source)
+                    archive.addfile(info, ProgressReader(source, progress))
             progress()
     return path
 

@@ -155,7 +155,10 @@ def test_unsafe_members_reject_before_extraction(built, tmp_path, kind):
             "traversal": "../outside",
             "absolute": "/outside",
             "duplicate": DB_NAME,
-        }.get(kind, "extra")
+        }.get(
+            kind,
+            DB_NAME if kind in {"symlink", "hardlink", "device", "pax"} else "extra",
+        )
         info = tarfile.TarInfo(name)
         info.mode = 0o600
         info.type = {
@@ -166,7 +169,9 @@ def test_unsafe_members_reject_before_extraction(built, tmp_path, kind):
         }.get(kind, tarfile.REGTYPE)
         if kind in {"symlink", "hardlink"}:
             info.linkname = DB_NAME
-        return members + [(info, b"x")]
+        return (members if kind in {"extra", "duplicate"} else members[1:]) + [
+            (info, b"x")
+        ]
 
     rewrite(path, change)
     scratch = tmp_path / "unpack"
@@ -351,3 +356,49 @@ def test_managed_config_and_key_metadata_fail_closed(tmp_path, damage):
         capture.read_managed(
             path, (uid, os.getgid(), 0o600), (os.getuid(), os.getgid(), 0o700), 32
         )
+
+
+@pytest.mark.parametrize(
+    "config,key",
+    [
+        (b"import os", b"x" * 32),
+        (b"DATABASE_PATH = '/elsewhere'", b"x" * 32),
+        (b"TRUSTED_HOSTS = ['example']", b"short"),
+    ],
+)
+def test_damaged_config_or_key_cannot_be_captured(tmp_path, monkeypatch, config, key):
+    monkeypatch.setattr(
+        capture,
+        "identities",
+        lambda: (os.getuid(), os.getuid(), os.getgid(), os.getgid()),
+    )
+    monkeypatch.setattr(
+        capture,
+        "read_managed",
+        lambda path, *args: config if path == capture.CONFIG else key,
+    )
+    with pytest.raises(BackupError):
+        capture.capture(tmp_path, progress)
+    assert not (tmp_path / DB_NAME).exists()
+
+
+def test_publication_does_not_create_or_fall_back_from_missing_destination(
+    built, tmp_path
+):
+    scratch, path, _ = built
+    missing = tmp_path / "absent" / "backup"
+    before = set(tmp_path.iterdir())
+    with pytest.raises(OSError):
+        destination.publish(scratch / path.name, missing, progress)
+    assert set(tmp_path.iterdir()) == before
+
+
+def test_forged_checksum_does_not_hide_trailing_archive_content(built):
+    import gzip
+
+    _, path, _ = built
+    with path.open("ab") as target:
+        target.write(gzip.compress(b"hidden payload"))
+    sidecar(path)
+    with pytest.raises(BackupError):
+        backup.verify(path)

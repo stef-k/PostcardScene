@@ -104,7 +104,8 @@ wheel in a fresh supported Python venv. Installed metadata, entry points and
 assets are checked outside the checkout. This is generic Linux artifact evidence;
 the existing privileged lane owns real two-UID remove/reinstall evidence. Neither
 proves ARM64 provisioning, physical Pi/HDMI behavior or final security closure.
-Forward update (#144) and backup/restore (#27) remain unavailable.
+Manual backup is available through #158 below. Forward update (#144) and restore
+(#160) remain unavailable.
 
 ## Read-only managed-host preflight (#139)
 
@@ -305,7 +306,8 @@ check results in JSON. No configuration-path, command, impersonation or repair
 options are accepted. Exit **0** means all applicable checks are ready; **1** means
 degraded/unavailable checks need attention; **2** means an installation identity or
 configuration inconsistency (or invalid invocation); **3** is an internal command
-error. `backup: not_applicable (not_implemented)` is expected until #27 lands.
+error. `backup: not_applicable (not_implemented)` remains expected until #159 adds
+persisted backup status; doctor does not probe destinations.
 
 Fixed check identifiers cover release/wheel identity, exact #140 assets and
 conflict-record structure, config/two-UID/key/DB/sidecar/IPC permissions, independent
@@ -407,3 +409,79 @@ The privileged Linux smoke exercises remove/reinstall with real distinct UIDs,
 SQLite/admin/config/key preservation, fresh conflict capture and doctor checks.
 Its x86 package/platform and graphics-start substitutions provide software/DAC
 evidence only, with no physical Raspberry Pi, seat, HDMI or 4K claim.
+
+
+## Manual sensitive backups (#158)
+
+Run the one backup CLI as the managed web identity, which can already read the
+shared DB, managed configuration and private signing key:
+
+```bash
+sudo -u postcardscene-web /opt/postcardscene/venv/bin/postcardscene-backup create --destination /absolute/backup-directory
+sudo -u postcardscene-web /opt/postcardscene/venv/bin/postcardscene-backup list --destination /absolute/backup-directory
+sudo -u postcardscene-web /opt/postcardscene/venv/bin/postcardscene-backup verify /absolute/backup-directory/postcardscene-backup-20260910T120000000000Z-v0.1.0.dev0.tar.gz
+```
+
+Use the actual filename returned by `create`/`list` for verification. Commands emit
+sanitized JSON and return zero on success, one on operation failure, or two for
+CLI usage errors. List reports `verified`, `incomplete`, or `invalid` for recognized
+backup names. An invalid/incomplete row is not a recovery point, even if listing
+itself exits zero. Verification does not restore or change installed state.
+
+The destination must already exist, be accessible to `postcardscene-web`, and be an
+absolute local or already-mounted directory with no symlink components. Provision
+its permissions and any mount/transport outside PostcardScene. Ensure an intended
+remote destination is actually mounted before invoking the CLI; a path alone is
+not evidence of a particular remote mount. There is no mount command, credential
+management, cloud provider or fallback path. The destination filesystem must
+support fsync and Linux atomic no-replace renames; unsupported operations fail.
+
+Each `postcardscene-backup-YYYYMMDDTHHMMSSffffffZ-v<version>.tar.gz` contains exactly:
+
+| Member | Recovery role |
+| --- | --- |
+| `postcardscene.sqlite3` | Online SQLite-consistent snapshot, including account and application state. |
+| `config.py` | Exact managed `/etc/postcardscene/config.py` bytes. |
+| `session.key` | Exact existing `/var/lib/postcardscene-web/session.key` bytes. |
+| `backup-manifest.json` | Fixed v1 identity and DB/config/key sizes and SHA-256 hashes. |
+
+The database may contain media catalog rows, classified in the manifest as
+`regenerable_reconcile_required`. Restore-time invalidation/reconciliation belongs
+to #160. Original media, provider assets, browser profiles, caches/runtime files,
+logs, releases/venv, systemd/PAM assets and `service-conflicts.json` are excluded.
+Do not use this archive as a host image or a backup of external media libraries.
+
+**Archives contain sensitive account data, password hashes, private paths/config
+and a signing key. PostcardScene does not encrypt them.** Protect destination and
+transport confidentiality yourself, including any filesystem snapshots/copies.
+Created archive/sidecar/temp files are 0600 and scratch directories 0700. Checksums
+detect corruption; someone able to replace both archive and sidecar can forge a
+pair. Never dump archive/config/key contents into logs or support messages.
+
+Build happens in private host-local `/tmp` scratch, ignoring `TMPDIR`. Allow local
+space for capture, the compressed archive, and a second archive/snapshot during
+post-publication verification (up to about 18 GiB at the fixed maximum). Limits
+are 4 GiB for the DB, 64 KiB for config, exactly 32 bytes for the key, 8 KiB for the
+manifest and 5 GiB compressed archive. DB capture has a 120-second deadline;
+each create/verify/list call allows 300 seconds overall and 30 seconds without
+progress, plus bounded worker cleanup. Large or slow backups can therefore fail
+before reaching byte limits. SQLite services may remain online; no live-file
+copy, checkpoint, vacuum or migration is performed to create a backup.
+
+Publication first writes destination-local temp files and then atomically renames
+each final file without replacement. A complete backup requires **both** the final
+archive and matching sibling `<archive>.sha256`, with full verification passing.
+There is no atomic transaction spanning the pair. Interruption may leave private
+temp files or half a pair; these are never listed as verified. A kernel-stalled
+worker may remain kill-pending and leave private scratch. Treat a timed-out attempt
+as unconfirmed and explicitly verify any resulting final pair before relying on
+it. The command never cleans older archives or retries at another destination.
+
+List examines at most 1000 direct entries, including foreign entries in that bound;
+it never recurses or opens foreign filenames. An overfull directory fails visibly.
+Verification checks the external SHA-256 first, all fixed archive structure,
+manifest/member hashes, then the snapshot's application ID, packaged Alembic head,
+WAL/quick/FK integrity. Repeated list/verify do not change destination contents.
+The immutable returned identity includes the exact final hash and filename for
+future recovery checks; it does not authorize restore, migration or rollback.
+Scheduling/retention/status (#159), restore (#160) and update (#144) are separate.

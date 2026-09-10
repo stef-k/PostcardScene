@@ -7,7 +7,8 @@ software evidence is not a claim of a physically validated release.
 Choose the guide for the task at hand:
 
 - [Installation and diagnostics](operations/installation.md): release inputs, host
-  preflight, initial installation, failure recovery and read-only doctor checks.
+  preflight, initial installation, failure recovery, manual sensitive backups and
+  read-only doctor checks.
 - [Runtime and services](operations/runtime.md): runtime/web services, production
   serving, storage status, playback and weekly schedules or temporary overrides.
 - [Display, rendering and panel control](operations/display.md): graphical session,
