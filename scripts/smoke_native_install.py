@@ -21,8 +21,6 @@ from pathlib import Path
 from threading import Event
 from types import SimpleNamespace
 
-from release_bundle import write_manifest
-
 ROOT = Path(__file__).resolve().parents[1]
 PYTHON = "/opt/postcardscene/venv/bin/python"
 STATE = Path("/var/lib/postcardscene")
@@ -376,6 +374,9 @@ def failed_reinstalls(entrypoint, bundle, validated, before):
 
 
 def prepare_smoke_bundle(bundle, entrypoint):
+    # The copied two-UID worker remains standalone outside the source checkout.
+    from release_bundle import write_manifest
+
     shutil.copyfile(sys.argv[1], bundle / Path(sys.argv[1]).name)
     for name in ("install.py", *entrypoint.INPUT_HASHES):
         shutil.copyfile(ROOT / name, bundle / name)
