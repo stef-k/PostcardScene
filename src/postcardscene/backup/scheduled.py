@@ -16,15 +16,15 @@ from .operation import operation_lock
 
 
 def scheduled():
-    with operation_lock():
+    with operation_lock() as lock_fd:
         database = Database()
         try:
-            return _scheduled_locked(database)
+            return _scheduled_locked(database, lock_fd)
         finally:
             database.engine.dispose()
 
 
-def _scheduled_locked(database):
+def _scheduled_locked(database, lock_fd):
     try:
         status = get_backup_status(
             database, datetime.now(timezone.utc), include_destination=True
@@ -36,7 +36,7 @@ def _scheduled_locked(database):
     if not status.decision.due:
         return {"result": status.decision.reason}
     record_backup_attempt(database, time.time_ns())
-    verified = _create_locked(status.destination_path)
+    verified = _create_locked(status.destination_path, lock_fd=lock_fd)
     succeeded = time.time_ns()
     success = dict(
         succeeded_at_ns=succeeded, local_date=status.decision.current_local_date
@@ -46,6 +46,7 @@ def _scheduled_locked(database):
         _run(
             "retain",
             status.destination_path,
+            lock_fd=lock_fd,
             arguments=(
                 str(status.retention_count),
                 verified.archive_filename,

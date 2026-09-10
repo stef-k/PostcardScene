@@ -310,3 +310,56 @@ def test_retention_stops_uncertain_deletion_and_preserves_new(
         )
     assert path.exists()
     assert all((path.parent / item.archive_filename).exists() for item in pairs)
+
+
+def test_mutation_worker_retains_lock_after_controller_death(locked_host):
+    import time
+
+    code = """
+import os, sys
+from pathlib import Path
+from postcardscene import backup
+from postcardscene.backup import operation
+operation.KEY = Path(sys.argv[1]) / 'session.key'
+operation.identities = lambda: (os.getuid(), os.getuid(), os.getgid(), os.getgid())
+original = backup.subprocess.Popen
+
+def worker(*args, **kwargs):
+    child = original([sys.executable, '-c', 'import time; time.sleep(30)'], **kwargs)
+    print(child.pid, flush=True)
+    return child
+
+backup.subprocess.Popen = worker
+backup.create('/unused')
+"""
+    controller = subprocess.Popen(
+        [sys.executable, "-c", code, str(locked_host.parent)],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        text=True,
+    )
+    worker_pid = None
+    try:
+        worker_pid = int(controller.stdout.readline())
+        controller.kill()
+        controller.wait(timeout=5)
+        with pytest.raises(BackupError, match="operation_busy"):
+            backup.create("/unused")
+        os.kill(worker_pid, signal.SIGKILL)
+        deadline = time.monotonic() + 5
+        while True:
+            try:
+                with operation.operation_lock():
+                    break
+            except BackupError:
+                assert time.monotonic() < deadline
+                time.sleep(0.01)
+    finally:
+        controller.kill()
+        controller.wait(timeout=5)
+        controller.stdout.close()
+        if worker_pid is not None:
+            try:
+                os.kill(worker_pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass

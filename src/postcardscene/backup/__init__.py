@@ -52,6 +52,7 @@ def _run(
     path,
     *,
     arguments=(),
+    lock_fd=None,
     cancelled=lambda: False,
     timeout=300.0,
     idle_timeout=30.0,
@@ -73,6 +74,7 @@ def _run(
         stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL,
         close_fds=True,
+        pass_fds=() if lock_fd is None else (lock_fd,),
         cwd="/",
     )
     try:
@@ -93,12 +95,14 @@ def _run(
 
 
 def create(destination, **bounds):
-    with operation_lock():
-        return _create_locked(destination, **bounds)
+    with operation_lock() as lock_fd:
+        return _create_locked(destination, lock_fd=lock_fd, **bounds)
 
 
-def _create_locked(destination, **bounds):
-    return VerifiedBackup(**_run("create", destination, **bounds))
+def _create_locked(destination, *, lock_fd, **bounds):
+    # The child retains the same flock if its controller crashes or it remains
+    # kernel-stuck during cleanup. A subsequent mutation must still fail busy.
+    return VerifiedBackup(**_run("create", destination, lock_fd=lock_fd, **bounds))
 
 
 def verify(archive, **bounds):

@@ -36,6 +36,6 @@ def operation_lock():
             except BlockingIOError:
                 raise BackupError("operation_busy") from None
             # Never unlink this inode: all invocations must contend on one lock.
-            yield
+            yield fd
         finally:
             os.close(fd)

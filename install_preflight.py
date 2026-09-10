@@ -393,7 +393,10 @@ def service_state(host, unit):
     values = dict(line.split("=", 1) for line in output.splitlines() if "=" in line)
     if status or values.get("LoadState") not in ("loaded", "not-found", "masked"):
         raise Rejected("service_state_unavailable")
-    if values.get("ActiveState") not in ("active", "inactive", "failed"):
+    active_states = {"active", "inactive", "failed"}
+    if unit == "postcardscene-backup.service":
+        active_states.add("activating")  # A running Type=oneshot remains activating.
+    if values.get("ActiveState") not in active_states:
         raise Rejected("service_state_unavailable")
     if values.get("UnitFileState") not in UNIT_FILE_STATES:
         raise Rejected("service_state_unavailable")
