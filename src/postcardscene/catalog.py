@@ -10,6 +10,7 @@ from sqlalchemy import (
     delete,
     func,
     select,
+    update,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -166,3 +167,18 @@ def supersede_catalog(session, source_id, *, invalidate=False):
             state.last_attempt_ns = state.last_success_ns = None
     if invalidate:
         session.execute(delete(MediaItem).where(MediaItem.source_id == source_id))
+
+
+def invalidate_catalog(session):
+    """Supersede all derived inventory in the stopped restore transaction."""
+    session.execute(delete(MediaItem))
+    session.execute(
+        update(MediaCatalogState).values(
+            scan_generation=MediaCatalogState.scan_generation + 1,
+            completed_generation=MediaCatalogState.scan_generation + 1,
+            handled_request_generation=MediaCatalogState.requested_generation,
+            last_result="never_scanned",
+            last_attempt_ns=None,
+            last_success_ns=None,
+        )
+    )

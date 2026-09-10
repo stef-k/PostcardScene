@@ -14,11 +14,27 @@ def operation_lock():
     _, web, shared, private = identities()
     if os.geteuid() != web:
         raise BackupError("web_identity_required")
+    with _checked_lock(web, shared, private, create=True) as fd:
+        yield fd
+
+
+@contextmanager
+def restore_lock():
+    """Root may contend only on the existing web-owned operation inode."""
+    if os.geteuid() != 0:
+        raise BackupError("restore_root_required")
+    _, web, shared, private = identities()
+    with _checked_lock(web, shared, private, create=False) as fd:
+        yield fd
+
+
+@contextmanager
+def _checked_lock(web, shared, private, *, create):
     with directory(KEY.parent) as parent:
         require_directory(parent, web, private, 0o700)
         fd = os.open(
             "backup.lock",
-            os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK,
+            os.O_RDWR | os.O_NOFOLLOW | os.O_NONBLOCK | (os.O_CREAT if create else 0),
             0o600,
             dir_fd=parent,
         )
