@@ -617,6 +617,9 @@ def main():
     )
     service_smoke(installer, runtime, web)
     child("backup", "postcardscene-web")
+    from smoke_restore import restore_smoke
+
+    restore_smoke()
     from smoke_scheduled_backup import scheduled_lifecycle
 
     scheduled_lifecycle(

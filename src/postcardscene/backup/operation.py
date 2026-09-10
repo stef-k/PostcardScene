@@ -51,6 +51,9 @@ def _checked_lock(web, shared, private, *, create):
                 fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
             except BlockingIOError:
                 raise BackupError("operation_busy") from None
+            current = os.stat("backup.lock", dir_fd=parent, follow_symlinks=False)
+            if (current.st_dev, current.st_ino) != (info.st_dev, info.st_ino):
+                raise BackupError("operation_lock_invalid")
             # Never unlink this inode: all invocations must contend on one lock.
             yield fd
         finally:

@@ -1,11 +1,12 @@
 """Bounded raw rollback capture and per-filesystem atomic durable replacement."""
 
 import hashlib
+import json
 import os
 import stat
 import time
 import uuid
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 
 from . import capture
 from .files import (
@@ -104,7 +105,7 @@ def current(path, metadata, parent_metadata, limit, destination=None):
             return describe(source, destination, limit)
 
 
-def file_set(identities):
+def file_set(identities, *, generated=False):
     entries = list(targets(identities))
     runtime, web, shared, _ = identities
     for suffix in ("-wal", "-shm"):
@@ -113,7 +114,7 @@ def file_set(identities):
             info = path.lstat()
         except FileNotFoundError:
             continue
-        if info.st_uid not in (runtime, web):
+        if info.st_uid not in ((runtime, web, 0) if generated else (runtime, web)):
             raise BackupError("restore_host_invalid")
         entries.append(
             (
@@ -135,6 +136,17 @@ def capture_current(root, identities):
             output.flush()
             os.fsync(output.fileno())
         result.append((entry, identity))
+    manifest = []
+    for entry, identity in result:
+        record = asdict(identity)
+        record["attributes"] = [
+            (name, value.hex()) for name, value in identity.attributes
+        ]
+        manifest.append({"name": entry[0].name, **record})
+    with private_file(root / "rollback-metadata.json") as output:
+        output.write(json.dumps(manifest, sort_keys=True).encode())
+        output.flush()
+        os.fsync(output.fileno())
     with directory(root) as parent:
         os.fsync(parent)
     return tuple(result)
@@ -182,8 +194,8 @@ def replace(source_parent, source_name, entry, expected, *, rollback=None):
                 pass
 
 
-def remove_sidecars(identities, captured=None):
-    for entry in file_set(identities)[3:]:
+def remove_sidecars(identities, captured=None, *, generated=False):
+    for entry in file_set(identities, generated=generated)[3:]:
         observed = current(*entry)
         if captured is not None and (entry, observed) not in captured:
             raise BackupError("restore_current_changed")
@@ -194,7 +206,7 @@ def remove_sidecars(identities, captured=None):
 
 
 def rollback(root, identities, captured):
-    remove_sidecars(identities)
+    remove_sidecars(identities, generated=True)
     with directory(root) as source:
         for entry, identity in captured:
             replace(

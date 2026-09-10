@@ -1,4 +1,4 @@
-"""One packaged create/verify/list/scheduled CLI, with sanitized JSON output."""
+"""One packaged create/verify/list/scheduled/restore CLI, with sanitized JSON output."""
 
 import argparse
 import json

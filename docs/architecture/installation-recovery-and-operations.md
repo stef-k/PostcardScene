@@ -419,7 +419,8 @@ version, SQLite application ID, schema revision and catalog classification. It i
 verification evidence only; #144 must reverify at use and #160 owns same-version
 restore authority. #165 exposes DB-only authenticated policy/status and private-
 snapshot doctor diagnostics; both remain advisory and perform no destination I/O.
-Destructive restore (#170), closure drills (#161), and updates (#144) remain unimplemented.
+Managed destructive restore is implemented by #170 below; closure drills (#161)
+and updates (#144) remain separate work.
 See [manual operations](../operations/installation.md#manual-sensitive-backups-158)
 for command usage, size limits and confidentiality responsibilities.
 
@@ -427,7 +428,7 @@ for command usage, size limits and confidentiality responsibilities.
 ### Non-destructive restore intake (#169)
 
 `postcardscene.backup.restore.prepare_restore(archive, staging_root)` is a root-only
-ordinary-Python seam, without a restore CLI action. The caller supplies one fresh,
+ordinary-Python seam consumed by the restore CLI. The caller supplies one fresh,
 empty root-owned 0700 direct child of host-local `/tmp`; `TMPDIR` never selects it.
 The parent and isolated `restore-stage` worker validate no-follow directory
 ownership/mode and the same device/inode identity. Staging must share `/tmp`'s
@@ -446,15 +447,54 @@ root-owned regular one-link files; no services or current durable state are touc
 and its device/inode, plus fixed file sizes/hashes for the copied archive, manifest,
 DB, config and key. Paths and member identities are excluded from repr; contents
 are never returned. `revalidate_restore(candidate)` compares local authority and
-all fixed file hashes immediately before future target staging. It needs no backup
+all fixed file hashes immediately before target staging. It needs no backup
 destination access, including after that destination disappears. This is an
 in-process candidate, not a serialized token or permission to replace host state.
 
 Failure cleans only accepted local scratch best-effort and returns fixed safe
 categories. `restore_cleanup_uncertain` preserves confidentiality while reporting
 unproven local cleanup; `worker_cleanup_uncertain` leaves scratch to a potentially
-kill-pending worker. Successful scratch lifetime belongs to the caller. #170 owns
-quiescence, replacement/rollback, catalog invalidation and final CLI integration.
+kill-pending worker. Successful scratch lifetime belongs to the restore caller.
+
+
+### Destructive managed restore (#170)
+
+The existing CLI adds only root-only `restore <archive>`. `restore_execute` consumes
+#169's local candidate and uses a fixed packaged `restore_host` boundary, independent
+of extracted installer support. Read-only release/assets/conflict metadata checks
+are reused; current config/DB/key contents need not be healthy. Exact target and
+unit authority remains mandatory, including only three services and two backup
+auxiliary units. No destination I/O follows candidate preparation.
+
+Root takes the same existing #164 web-owned/shared-group/0600 one-link no-follow
+lock, without creating it or broadening the public web-only entrypoint. The lock
+precedes all systemd changes and covers stop/disable, quiescence, raw rollback
+capture, replacement, validation, catalog invalidation and service activation.
+Timer and services remain persistently disabled throughout the destructive window.
+Handled interruptions use the same bounded failure path; SIGKILL/power loss relies
+on persistent disabled units and requires operator recovery.
+
+`restore_files` captures bounded raw bytes and metadata to root-private local
+rollback scratch, including existing sidecars, without opening current SQLite.
+The candidate is revalidated immediately before per-target-filesystem staging;
+copy-time size/hash checks, final owners/modes, fsync and atomic replacement protect
+each incoming config/DB/key. No archived sidecar is restored. Pre-commit failure
+attempts exact byte/metadata rollback, retires every unit even after proven rollback,
+and preserves scratch when manual recovery is needed. Uncertain cleanup is visible.
+
+Commit follows canonical non-executing config validation, exact key authority,
+current DB identity/integrity/Administrator checks and committed catalog
+invalidation. The catalog-owned bulk helper is equivalent to superseding each
+state with invalidation: delete MediaItems, advance/completely supersede generation,
+handle current requests, reset result to `never_scanned` and clear attempt/success
+freshness. All non-catalog durable rows remain. No scan is performed.
+
+After commit, activation failure retains valid recovered data and attempts full
+fail-stopped retirement. Successful activation enables/starts graphics/runtime/web,
+enables the timer, releases the shared lock, then starts/requires the timer active
+regardless of backup policy. One engine covers in-place and exact-matching fresh
+replacement installation. Host-specific installation state remains untouched;
+#161 owns the later complete recovery drill, and #144 remains unimplemented.
 
 
 ### Persisted backup policy and daily due state (#163)

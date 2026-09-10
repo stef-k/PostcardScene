@@ -178,7 +178,7 @@ def prepare_restore(path, staging_root, **bounds):
         )
         revalidate_restore(candidate)
         return candidate
-    except Exception as error:
+    except (Exception, KeyboardInterrupt) as error:
         category = "restore_preparation_failed"
         if isinstance(error, BackupError) and str(error) in {
             "operation_timeout_or_cancelled",

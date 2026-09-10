@@ -3,10 +3,11 @@
 import os
 import signal
 import tempfile
+import time
 from contextlib import contextmanager
 from pathlib import Path
 
-from sqlalchemy import select
+from sqlalchemy import event, select
 
 from postcardscene.accounts import Administrator
 from postcardscene.catalog import invalidate_catalog
@@ -56,6 +57,14 @@ def validate_data(identities, immutable, *, invalidate):
     if restore_host.immutable_authority() != immutable:
         raise BackupError("restore_host_invalid")
     database = Database(capture.DATABASE)
+    deadline = time.monotonic() + 120
+    event.listen(
+        database.engine,
+        "connect",
+        lambda connection, record: connection.set_progress_handler(
+            lambda: int(time.monotonic() >= deadline), 10000
+        ),
+    )
     mask = os.umask(0o007)
     try:
         database.check()
@@ -87,6 +96,9 @@ class Transaction:
             self.rollback_root, self.identities
         )
         restore.revalidate_restore(self.candidate)
+        for entry, identity in self.captured:
+            if restore_files.current(*entry) != identity:
+                raise BackupError("restore_current_changed")
         with restore.staging_directory(
             self.candidate.staging_root, self.candidate.root_identity
         ) as (source, _):
@@ -131,6 +143,7 @@ class Transaction:
 
 
 def execute(candidate):
+    restore.require_root()
     identities, immutable = restore_host.validate()
     # Also prove bounded raw readability before touching systemd. No SQLite here.
     for entry in restore_files.file_set(identities):
@@ -138,6 +151,7 @@ def execute(candidate):
     transaction = None
     scratch = None
     identity = None
+    failure_handled = False
     try:
         with restore_lock():
             scratch = Path(
@@ -150,12 +164,14 @@ def execute(candidate):
                 transaction.replace()
                 restore_host.activate_services()
             except (Exception, KeyboardInterrupt):
+                failure_handled = True
                 raise BackupError(transaction.fail()) from None
         # Persistent timer wakes can now acquire the same backup inode.
-        try:
-            restore_host.activate_timer()
-        except (Exception, KeyboardInterrupt):
+        restore_host.activate_timer()
+    except (Exception, KeyboardInterrupt):
+        if transaction is not None and not failure_handled:
             raise BackupError(transaction.fail()) from None
+        raise
     finally:
         if (
             scratch is not None

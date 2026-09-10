@@ -361,3 +361,100 @@ def test_cleanup_rechecks_generation_each_batch(catalog, monkeypatch):
     assert removed == [2]
     assert len(snapshot(catalog)) == 3
     assert state(catalog)[:2] == (3, 1)
+
+
+def test_whole_catalog_invalidation_preserves_durable_tables(tmp_path):
+    from sqlalchemy import inspect, text
+
+    database = Database(tmp_path / "restore.sqlite3", create=True)
+    upgrade_database(tmp_path / "restore.sqlite3")
+    with database.transaction() as session:
+        session.execute(
+            text("INSERT INTO source VALUES (1, 'Photos', 'local_directory', '{}', 1)")
+        )
+        session.execute(
+            text("INSERT INTO administrator VALUES (1, 'admin', 'hash', 'identity')")
+        )
+        session.add(
+            c.MediaCatalogState(
+                source_id=1,
+                requested_generation=9,
+                handled_request_generation=3,
+                scan_generation=5,
+                completed_generation=4,
+                last_result="ready",
+                last_attempt_ns=10,
+                last_success_ns=8,
+            )
+        )
+        session.add(
+            c.MediaItem(
+                source_id=1,
+                relative_path="photo.jpg",
+                media_type="image",
+                size_bytes=10,
+                mtime_ns=1,
+                seen_generation=4,
+            )
+        )
+    with database.transaction() as session:
+        for statement in (
+            "INSERT INTO source VALUES (2, 'Other', 'local_directory', '{}', 1)",
+            "INSERT INTO widget VALUES (1, 'Image', 'image', '{}', 0, 1)",
+            "INSERT INTO scene VALUES (1, 'Scene', 'single', 30, 0)",
+            "INSERT INTO scene_placement VALUES (1, 1, 1, 0, 'main')",
+            "INSERT INTO sequence VALUES (1, 'Sequence', 'ordered', 1)",
+            "INSERT INTO sequence_membership VALUES (1, 1, 1, 0, NULL)",
+            "INSERT INTO operating_window VALUES (1, 2, 300, 600)",
+            "UPDATE application_settings SET timezone = 'Europe/Athens'",
+            "UPDATE backup_policy SET destination_path = '/unavailable/backup'",
+        ):
+            session.execute(text(statement))
+        session.add(
+            c.MediaCatalogState(
+                source_id=2,
+                requested_generation=2,
+                handled_request_generation=0,
+                scan_generation=8,
+                completed_generation=8,
+                last_result="ready",
+                last_attempt_ns=20,
+                last_success_ns=20,
+            )
+        )
+    tables = set(inspect(database.engine).get_table_names()) - {
+        "media_item",
+        "media_catalog_state",
+    }
+
+    def durable():
+        with database.engine.connect() as connection:
+            return {
+                table: connection.exec_driver_sql(f'SELECT * FROM "{table}"').fetchall()
+                for table in tables
+            }
+
+    original = durable()
+    with database.transaction() as session:
+        c.invalidate_catalog(session)
+    assert durable() == original
+    with database.transaction() as session:
+        assert c.count_media_items(session, 1) == 0
+        state = session.get(c.MediaCatalogState, 1)
+        assert (
+            state.scan_generation,
+            state.completed_generation,
+            state.handled_request_generation,
+        ) == (6, 6, 9)
+        assert state.last_result == "never_scanned"
+        assert state.last_attempt_ns is state.last_success_ns is None
+        other = session.get(c.MediaCatalogState, 2)
+        assert (
+            other.scan_generation,
+            other.completed_generation,
+            other.handled_request_generation,
+        ) == (9, 9, 2)
+        assert other.last_result == "never_scanned"
+        assert other.last_attempt_ns is other.last_success_ns is None
+    database.check()
+    database.engine.dispose()
