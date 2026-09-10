@@ -20,15 +20,88 @@ a missing compatible dependency wheel fails rather than compiling on the target.
 No configuration, signing key, database, cache/profile or backup belongs in these
 release inputs.
 
-The future GitHub Release `postcardscene-<version>-linux-native.tar.gz` will carry
-those inputs, `install.py`, `install_inputs.py`, `install_host.py` (#153),
-`install_preflight.py` (#139),
-and `release-manifest.json` (#143), plus explicitly reviewed metadata/checksums.
-Version comes only from
-`pyproject.toml`; tag, wheel, installed/Overview and manifest identity must agree.
-Publication and updates remain later work. See
-[development checks](../../README.md#release-input-development) and the
+The GitHub Release artifact set is one native archive, the same application wheel
+for audit/development, and external `SHA256SUMS`. No optional SBOM is adopted in
+this change; dependency/security assessment remains with #135.
+See [development checks](../../README.md#release-input-development) and the
 [release contract](../architecture/installation-recovery-and-operations.md#deterministic-release-inputs-138).
+
+## Verified GitHub Release bundles (#143)
+
+A candidate tag must be exactly `v<pyproject project.version>` (currently
+`v0.1.0.dev0`). Push that already-reviewed tag, or deliberately run the Native
+release workflow **on that tag**. There is no version override or tag creation.
+The workflow validates a clean exact checkout with pinned uv 0.12.10, builds and
+smokes final archive bytes, and publishes a GitHub prerelease through a draft.
+Tag, source commit, wheel, installed version and manifest must agree. An existing
+release is never overwritten. Failed upload/publication is a failed candidate;
+inspect any incomplete draft before recovery. Release creation is separate from
+V0 readiness, security, recovery and physical validation closure.
+
+Download from the intended repository release into a new private directory:
+
+```bash
+mkdir -m 700 postcardscene-download
+cd postcardscene-download
+gh release download v0.1.0.dev0 --repo stef-k/PostcardScene \
+  --pattern postcardscene-0.1.0.dev0-linux-native.tar.gz \
+  --pattern postcardscene-0.1.0.dev0-py3-none-any.whl --pattern SHA256SUMS
+sha256sum --check --strict SHA256SUMS
+```
+
+**Stop if checksum verification fails. Verify before executing any extracted
+installer or support code.** Obtain `SHA256SUMS` through the trusted GitHub Release
+channel alongside the archive; the internal manifest cannot authenticate its own
+containing archive. Checksums establish correspondence to that release authority,
+not an independent publisher signature.
+
+After successful verification, extract into a separate empty directory as an
+unprivileged user, then invoke the installer in an interactive terminal:
+
+```bash
+mkdir -m 700 bundle
+tar --extract --gzip --file postcardscene-0.1.0.dev0-linux-native.tar.gz \
+  --directory bundle --no-same-owner --no-same-permissions
+cd bundle
+sudo python3 -B install.py install
+# To remove a recognized managed installation while preserving durable authority:
+sudo python3 -B install.py remove
+```
+
+Substitute the chosen release version consistently. Keep the extracted directory
+private and unchanged, containing exactly the wheel, `runtime-requirements.txt`,
+`install.py`, `install_inputs.py`, `install_host.py`, `install_preflight.py` and
+`release-manifest.json`. Place downloads, checksum files and diagnostics outside
+it. The same bundle supports clean install, remove and compatible preserved-state
+reinstall through the lifecycle described below.
+
+The fixed schema-1 manifest records version/tag/source SHA, package Python range,
+managed target classes, packaged SQLite application/Alembic identity, and exact
+size/SHA-256 for each of the other six members. It does not hash itself.
+`install_inputs.py` checks this closed schema and extracted member set before
+host/preflight helper execution or any install/remove/reinstall host mutation.
+The input validator itself first passes the code-owned pin in `install.py`;
+all existing helper/requirements pins remain mandatory. `install.py` is the
+initial bootstrap authority authenticated by the external archive checksum;
+it does not pin the manifest, avoiding circular trust.
+
+Archive construction uses sorted regular flat members, mode 0644, zero UID/GID,
+empty owner names, USTAR metadata and the source commit timestamp for tar/gzip
+and `SOURCE_DATE_EPOCH` for wheel building. The build rejects unsafe or unexpected
+archive members before extracting. Reproducibility is scoped to identical source,
+pinned tools and compression/build environment; different upstream tool/platform
+bytes are not assumed identical. Every rebuild/repack with different bytes is a
+new candidate requiring fresh external checksums and smoke evidence. Never reuse
+an earlier archive checksum or readiness result.
+
+Quality and release smoke consume the just-built archive, verify external sums,
+safely extract its exact fixed members, validate installer pins/manifest and the
+`install`/`remove` surface, then install its binary hash-locked dependencies and
+wheel in a fresh supported Python venv. Installed metadata, entry points and
+assets are checked outside the checkout. This is generic Linux artifact evidence;
+the existing privileged lane owns real two-UID remove/reinstall evidence. Neither
+proves ARM64 provisioning, physical Pi/HDMI behavior or final security closure.
+Forward update (#144) and backup/restore (#27) remain unavailable.
 
 ## Read-only managed-host preflight (#139)
 
@@ -113,7 +186,7 @@ These are package/provisioning evidence, not hard-coded current version promises
 From one trusted, reviewed extracted input set, run `sudo python3 -B install.py
 install` in an interactive terminal. Keep exactly one application wheel beside
 `install.py`, `install_inputs.py`, `install_host.py`, `install_preflight.py` and
-`runtime-requirements.txt`; no checkout or
+`runtime-requirements.txt` and `release-manifest.json`; no checkout or
 preinstalled application is needed. The installer validates wheel identity,
 Python/pure-wheel metadata, entry points, required assets and wheel RECORD hashes.
 It checks all three support modules and requirements against SHA-256 pins owned
@@ -124,8 +197,8 @@ inputs; the loader executes only the verified bytes, without sibling imports.
 validation, `install_host.py` fixed provisioning primitives, and
 `install_preflight.py` the existing read-only host gate. The installer itself is
 trusted executable bootstrap authority. These checks do not authenticate a
-published release: #143 owns its final manifest schema, member hashes, extraction
-and publication checks. No final release-manifest format is defined here.
+published release alone: first verify the external archive checksum as described
+above. The manifest then verifies the extracted member set before host mutation.
 
 The only initial path uses #139's default logind/PAM plan. Standalone preflight's
 explicit seatd inspection remains available; this initial command does not select

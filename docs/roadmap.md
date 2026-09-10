@@ -255,9 +255,8 @@ This work owns the behavior of an already-installed runtime. Physical panel stan
 #138 freezes static `pyproject.toml` version authority (`0.1.0.dev0`), exact
 `v<version>` release-tag agreement, and released CPython 3.11–3.14 CI coverage.
 The canonical pure-Python wheel and reproducible hash-locked runtime requirements
-are validated by a clean binary-only install. The future GitHub Release native
-archive adds #140's standalone installer and #143's manifest/checksums; those
-children retain all host mutation and publication. See the
+are validated by a clean binary-only install. The GitHub Release native archive contains #140/#142/#153's installer lifecycle
+and #143's manifest/checksums; extracted final-byte smoke precedes publication. See the
 [release-input architecture](architecture/installation-recovery-and-operations.md#deterministic-release-inputs-138).
 Generic Linux CI does not establish ARM64 or display support. V0 does not require
 PyPI publication, a `.deb`, APT repository, Docker image, target source builds,
@@ -266,8 +265,8 @@ auto-update daemon, or transactional rollback engine.
 #140 implements clean native installation from those inputs after #139 preflight,
 with separate runtime/web UIDs, shared SQLite sidecars, private signing authority,
 explicit bootstrap and versioned service activation. Real two-UID Linux CI proves
-software/DAC behavior; #143 final publication verification and physical Pi gates
-remain open. See [managed operations](operations/installation.md#managed-initial-installation-140).
+software/DAC behavior; #143 adds final artifact verification while physical Pi
+gates remain open. See [managed operations](operations/installation.md#managed-initial-installation-140).
 
 ### Backup and restore
 

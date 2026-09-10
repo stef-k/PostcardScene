@@ -54,7 +54,7 @@ def prepare_bundle(directory, wheel, version, sha):
     return write_manifest(directory, version, sha)
 
 
-def smoke_archive(output, project, scratch):
+def smoke_archive(output, project, scratch, sha):
     version = project["version"]
     archive_name = f"postcardscene-{version}-linux-native.tar.gz"
     wheel_name = f"postcardscene-{version}-py3-none-any.whl"
@@ -62,26 +62,22 @@ def smoke_archive(output, project, scratch):
     extracted = scratch / "extracted"
     extract_archive(output / archive_name, extracted, version)
     # Run outside the source tree; no extracted code runs before external checksum.
-    validation = (
-        "import pathlib, runpy; p=pathlib.Path.cwd(); "
-        "installer=runpy.run_path(str(p/'install.py')); "
-        f"assert installer['validate_inputs'](p)[0] == {version!r}"
-    )
+    installer_smoke = scratch / "smoke_release_installer.py"
+    shutil.copyfile(ROOT / "scripts/smoke_release_installer.py", installer_smoke)
     subprocess.run(
-        [sys.executable, "-I", "-B", "-c", validation],
-        cwd=extracted,
+        [
+            sys.executable,
+            "-I",
+            "-B",
+            str(installer_smoke),
+            str(extracted),
+            version,
+            sha,
+        ],
+        cwd=scratch,
         check=True,
         timeout=60,
     )
-    help_result = subprocess.run(
-        [sys.executable, "-I", "-B", str(extracted / "install.py"), "--help"],
-        cwd=scratch,
-        check=True,
-        capture_output=True,
-        text=True,
-        timeout=30,
-    )
-    assert "{install,remove}" in help_result.stdout
     venv = scratch / "venv"
     run(sys.executable, "-m", "venv", str(venv))
     python = str(venv / "bin/python")
@@ -125,10 +121,10 @@ def smoke_archive(output, project, scratch):
 def build(output, require_tag=True):
     project = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]
     sha, timestamp = source_identity(project, require_tag)
-    if (
-        run("uv", "--version", capture_output=True, text=True).stdout.strip()
-        != "uv 0.12.10"
-    ):
+    if run("uv", "--version", capture_output=True, text=True).stdout.split()[:2] != [
+        "uv",
+        "0.12.10",
+    ]:
         raise ValueError("Release build requires uv 0.12.10")
     exported = run(
         "uv",
@@ -157,7 +153,7 @@ def build(output, require_tag=True):
         archive = output / f"postcardscene-{version}-linux-native.tar.gz"
         write_archive(bundle, archive, timestamp)
         write_checksums(output, (archive.name, wheel.name))
-        smoke_archive(output, project, scratch)
+        smoke_archive(output, project, scratch, sha)
     (output / "release-notes.md").write_text(
         f"# PostcardScene {version}\n\nSource: `{sha}`; tag: `v{version}`.\n\n"
         "This candidate supplies the native install/remove bundle, external checksums "

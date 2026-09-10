@@ -142,22 +142,30 @@ def unique_object(pairs):
     return result
 
 
+def literal_assignments(data, names):
+    """Read only named top-level literal assignments; never import packaged code."""
+    values = {}
+    for node in ast.parse(data).body:
+        if not isinstance(node, ast.Assign) or len(node.targets) != 1:
+            continue
+        target = node.targets[0]
+        if isinstance(target, ast.Name) and target.id in names:
+            values[target.id] = ast.literal_eval(node.value)
+    return values
+
+
 def wheel_identity(data, version):
     """Read packaged metadata/constants without executing application code."""
     with zipfile.ZipFile(io.BytesIO(data)) as wheel:
+        if sum(entry.file_size for entry in wheel.infolist()) > 64 * 1024 * 1024:
+            raise InstallError("invalid_wheel_members")
         metadata = email.parser.BytesParser().parsebytes(
             wheel.read(f"postcardscene-{version}.dist-info/METADATA")
         )
-        constants = {}
-        tree = ast.parse(wheel.read("postcardscene/persistence.py"))
-        for node in tree.body:
-            if isinstance(node, ast.Assign) and len(node.targets) == 1:
-                target = node.targets[0]
-                if isinstance(target, ast.Name) and target.id in (
-                    "APPLICATION_ID",
-                    "SCHEMA_REVISION",
-                ):
-                    constants[target.id] = ast.literal_eval(node.value)
+        constants = literal_assignments(
+            wheel.read("postcardscene/persistence.py"),
+            ("APPLICATION_ID", "SCHEMA_REVISION"),
+        )
         schema = {
             "application_id": constants["APPLICATION_ID"],
             "alembic_head": constants["SCHEMA_REVISION"],
@@ -167,15 +175,9 @@ def wheel_identity(data, version):
             if name.startswith("postcardscene/migrations/versions/") and name.endswith(
                 ".py"
             ):
-                values = {}
-                for node in ast.parse(wheel.read(name)).body:
-                    if isinstance(node, ast.Assign) and len(node.targets) == 1:
-                        target = node.targets[0]
-                        if isinstance(target, ast.Name) and target.id in (
-                            "revision",
-                            "down_revision",
-                        ):
-                            values[target.id] = ast.literal_eval(node.value)
+                values = literal_assignments(
+                    wheel.read(name), ("revision", "down_revision")
+                )
                 if "revision" in values:
                     revisions[values["revision"]] = values["down_revision"]
         if set(revisions) - set(revisions.values()) != {schema["alembic_head"]}:
