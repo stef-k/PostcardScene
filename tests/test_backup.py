@@ -423,3 +423,27 @@ def test_destination_ignoring_private_modes_gets_no_sensitive_bytes(
         destination.publish(scratch / path.name, output, progress)
     assert all(entry.stat().st_size == 0 for entry in output.iterdir())
     assert destination.list_backups(output, progress) == ()
+
+
+def test_worker_ignores_hostile_cwd_and_pythonpath(built, tmp_path, monkeypatch):
+    _, path, expected = built
+    hostile = tmp_path / "hostile"
+    package = hostile / "postcardscene" / "backup"
+    package.mkdir(parents=True)
+    (package.parent / "__init__.py").write_text("")
+    (package / "__init__.py").write_text("")
+    marker = hostile / "shadow-executed"
+    (package / "worker.py").write_text(
+        "from pathlib import Path\n"
+        f"Path({str(marker)!r}).write_text('executed')\n"
+        "raise SystemExit(1)\n"
+    )
+    monkeypatch.chdir(hostile)
+    monkeypatch.setenv("PYTHONPATH", str(hostile))
+    try:
+        assert backup.verify(path) == expected
+        assert backup.list_backups(path.parent) == (
+            destination.BackupEntry(path.name, "verified"),
+        )
+    finally:
+        assert not marker.exists()

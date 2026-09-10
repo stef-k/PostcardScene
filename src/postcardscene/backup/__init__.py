@@ -52,6 +52,8 @@ def _run(operation, path, *, cancelled=lambda: False, timeout=300.0, idle_timeou
     process = subprocess.Popen(
         [
             sys.executable,
+            "-I",
+            "-B",
             "-m",
             "postcardscene.backup.worker",
             operation,
@@ -61,6 +63,7 @@ def _run(operation, path, *, cancelled=lambda: False, timeout=300.0, idle_timeou
         stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL,
         close_fds=True,
+        cwd="/",
     )
     try:
         result = _receive(process, cancelled, timeout, idle_timeout)

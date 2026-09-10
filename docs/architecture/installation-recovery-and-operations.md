@@ -390,6 +390,8 @@ UTC microseconds and application version. A sibling SHA-256 sidecar checks the
 final archive bytes; checksums provide integrity, not encryption or proof against
 an attacker able to replace both files.
 
+The fixed packaged worker runs with Python isolated imports (`-I -B`) and cwd `/`,
+excluding caller CWD, `PYTHONPATH` and user-site packages from its import authority.
 All filesystem operations run in one disposable subprocess per API call, bounded
 by 30 seconds without progress, 300 seconds overall and one second kill/reap.
 Capture also has a 120-second cooperative deadline. Private local `/tmp` scratch
