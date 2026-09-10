@@ -176,7 +176,7 @@ def test_corruption_rejects_and_cleans_local_candidate(restorable, staging, dama
 
 
 @pytest.mark.parametrize("other_version", ["0.0.1", "9.0.0"])
-def test_other_application_versions_reject(staging, built, other_version):
+def test_other_application_versions_reject(restorable, staging, built, other_version):
     scratch, path, _ = built
     source = archive.build(
         scratch, datetime(2026, 9, 11, tzinfo=timezone.utc), other_version, progress
@@ -206,14 +206,19 @@ def test_retention_owned_old_schema_is_not_restore_authority(
     [
         b"DATABASE_PATH = '/redirected'",
         b"SESSION_SECRET_PATH = '/redirected'",
-        b"open('/tmp/postcardscene-must-not-execute', 'w').write('secret')",
+        b"execute",
     ],
 )
-def test_archived_config_is_canonical_and_never_executed(restorable, staging, config):
+def test_archived_config_is_canonical_and_never_executed(
+    restorable, staging, tmp_path, config
+):
+    marker = tmp_path / "must-not-execute"
+    if config == b"execute":
+        config = f"open({str(marker)!r}, 'w').write('secret')".encode()
     replace_member(restorable, "config.py", config)
     with pytest.raises(BackupError, match="^restore_preparation_failed$"):
         restore.prepare_restore(restorable, staging)
-    assert not Path("/tmp/postcardscene-must-not-execute").exists()
+    assert not marker.exists()
 
 
 def test_missing_administrator_rejects(staging, built):
