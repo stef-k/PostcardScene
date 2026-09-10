@@ -130,7 +130,7 @@ packaged services. Repeat invocations fail closed without resetting credentials.
 [managed remove/reinstall](docs/operations/installation.md#managed-remove-and-reinstall-142),
 preserving configuration, durable DB/admin state, private signing key and identities.
 Use the installed [read-only doctor](docs/operations/installation.md#installed-read-only-diagnostics-141)
-for bounded host diagnostics. Published-bundle manifest/member verification remains #143; updates remain #144.
+for bounded host diagnostics. Published bundles require [external checksum and manifest verification](docs/operations/installation.md#verified-github-release-bundles-143); updates remain #144.
 Privileged Linux CI proves two-UID software permissions, not physical Pi support.
 
 ## Development
@@ -161,8 +161,8 @@ uv run python scripts/check_release_inputs.py
 
 When generated requirements or any installer support module (`install_inputs.py`,
 `install_host.py`, `install_preflight.py`) changes, review and refresh its corresponding `INPUT_HASHES` pin in `install.py` using `sha256sum`.
-The release-input check validates these exact inputs from an isolated extracted
-directory without requiring a final #143 manifest.
+The release-input check requires a clean checkout, builds the final native archive
+with its manifest/external checksums, and validates the exact extracted bytes.
 
 uv 0.12.10 emits hashes by default; it has no `--generate-hashes` flag.
 `--no-header` removes the invocation-dependent comment so the output is byte
@@ -175,8 +175,8 @@ It requires network access to the locked dependency wheels and runs once in
 Quality; all four supported Python series run locked sync, Ruff and the full
 application tests. This is generic Linux Python evidence, not ARM64/HDMI support.
 
-See [release inputs](docs/operations/installation.md#release-inputs-138) for the future native
-bundle and lifecycle ownership.
+See [verified release bundles](docs/operations/installation.md#verified-github-release-bundles-143)
+for publication, download verification and lifecycle ownership.
 
 ### Managed-host prerequisite inspection
 

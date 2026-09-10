@@ -206,7 +206,7 @@ Future release tags must be exactly `v<project.version>`, such as `v0.1.0rc1` or
 Overview and release manifest must agree exactly before publication; #143 owns
 that publication gate and final manifest/checksums.
 
-The future GitHub Release archive is
+The GitHub Release archive is
 `postcardscene-<version>-linux-native.tar.gz`, containing:
 
 ```text
@@ -258,6 +258,33 @@ filesystem/service authority: the installer must revalidate before mutation.
 See [operations](../operations/installation.md#read-only-managed-host-preflight-139) for fixed
 packages/paths, command bounds, package evidence and diagnostic interpretation.
 
+### Immutable release bundles (#143)
+
+The release workflow accepts only the exact package-version tag at its recorded
+commit, with clean locked validation and pinned uv. It builds the final archive,
+external `SHA256SUMS` and minimum candidate notes; publication uses native `gh`
+through a draft with write permission confined to the publish job. Existing
+releases are never overwritten. The validated package/tag version determines
+GitHub prerelease status: pre/dev versions are prereleases and final stable
+versions are normal releases, with no manual override. Publication does not close
+V0 readiness or the physical/security/recovery gates.
+
+External checksums authenticate downloaded archive bytes before extracted code
+execution. The fixed schema-1 manifest records source/tag/version, wheel Python
+range, managed target classes, packaged application ID/Alembic head and size/hash
+for every other member. `install_inputs.py` validates the exact extracted set and
+returns authenticated bytes before host/preflight helpers execute. The validator
+itself runs only after all code-owned support/requirements pins pass. Those pins
+remain defense in depth; `install.py` never pins the manifest that hashes it.
+
+Archive metadata/order/timestamps are normalized and final bytes are smoked in an
+isolated extraction/venv. No optional inventory format is adopted. Repacking
+changes candidate authority and requires fresh sums/evidence; reproducibility is
+scoped to identical source/tool/compression inputs. See
+[release operations](../operations/installation.md#verified-github-release-bundles-143)
+for the exact trust and operator sequence. Install/remove/reinstall retain their
+existing lifecycle and support split; update and backup/restore remain separate.
+
 ### Managed initial installation (#140)
 
 Standalone `install.py install` consumes the validated #138 wheel/requirements
@@ -268,11 +295,11 @@ input/wheel validation into `install_inputs.py` and fixed host provisioning into
 authority. It reads the entire fixed support/requirements set with bounded,
 no-follow, regular-file, one-link checks and authenticates all SHA-256 pins before
 executing any helper. Only verified bytes are loaded; no ordinary sibling imports
-or preinstalled application are needed. #143 must include both new modules in
-its later fixed manifest/member hashes and clean archive smoke. It invokes clean-host
+or preinstalled application are needed. #143 includes these modules in the fixed
+manifest/member hashes and clean archive smoke described below. It invokes clean-host
 preflight both before fixed package installation and before application-state
 provisioning. These installer input pins are not #143's final release manifest;
-published-bundle schema/member authentication remains with #143.
+published-bundle integrity additionally requires the #143 gate above.
 
 The initial path selects logind/PAM, stages a root-controlled versioned venv,
 provisions distinct locked runtime/web UIDs with shared primary group and setgid

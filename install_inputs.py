@@ -1,11 +1,13 @@
 """Deterministic extracted release-input validation; no host mutation or imports."""
 
+import ast
 import base64
 import configparser
 import csv
 import email.parser
 import hashlib
 import io
+import json
 import os
 import re
 import stat
@@ -108,10 +110,135 @@ def validate_record(wheel, info):
             raise InstallError("invalid_wheel_record")
 
 
-def validate_inputs(bundle, requirements, assets):
-    wheels = list(bundle.glob("*.whl"))
-    if len(wheels) != 1:
-        raise InstallError("expected_one_application_wheel")
-    data = read_input(wheels[0])
-    version = validate_wheel(data, wheels[0].name, assets)
-    return version, wheels[0].name, data, requirements
+def validate_inputs(bundle, members, assets):
+    wheel_name = next(name for name in members if name.endswith(".whl"))
+    data = members[wheel_name]
+    version = validate_wheel(data, wheel_name, assets)
+    return version, wheel_name, data, members["runtime-requirements.txt"]
+
+
+SUPPORT_NAMES = (
+    "install.py",
+    "install_inputs.py",
+    "install_host.py",
+    "install_preflight.py",
+    "runtime-requirements.txt",
+)
+MANIFEST_NAME = "release-manifest.json"
+MANAGED_TARGETS = {
+    "architecture": "arm64",
+    "host": "native-linux-systemd",
+    "distros": ["ubuntu-24.04", "ubuntu-26.04", "debian-13-trixie"],
+    "hardware_evidence": "not-established-by-artifact-smoke",
+}
+
+
+def unique_object(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise InstallError("invalid_release_manifest")
+        result[key] = value
+    return result
+
+
+def literal_assignments(data, names):
+    """Read only named top-level literal assignments; never import packaged code."""
+    values = {}
+    for node in ast.parse(data).body:
+        if not isinstance(node, ast.Assign) or len(node.targets) != 1:
+            continue
+        target = node.targets[0]
+        if isinstance(target, ast.Name) and target.id in names:
+            values[target.id] = ast.literal_eval(node.value)
+    return values
+
+
+def wheel_identity(data, version):
+    """Read packaged metadata/constants without executing application code."""
+    with zipfile.ZipFile(io.BytesIO(data)) as wheel:
+        if sum(entry.file_size for entry in wheel.infolist()) > 64 * 1024 * 1024:
+            raise InstallError("invalid_wheel_members")
+        metadata = email.parser.BytesParser().parsebytes(
+            wheel.read(f"postcardscene-{version}.dist-info/METADATA")
+        )
+        constants = literal_assignments(
+            wheel.read("postcardscene/persistence.py"),
+            ("APPLICATION_ID", "SCHEMA_REVISION"),
+        )
+        schema = {
+            "application_id": constants["APPLICATION_ID"],
+            "alembic_head": constants["SCHEMA_REVISION"],
+        }
+        revisions = {}
+        for name in wheel.namelist():
+            if name.startswith("postcardscene/migrations/versions/") and name.endswith(
+                ".py"
+            ):
+                values = literal_assignments(
+                    wheel.read(name), ("revision", "down_revision")
+                )
+                if "revision" in values:
+                    revisions[values["revision"]] = values["down_revision"]
+        if set(revisions) - set(revisions.values()) != {schema["alembic_head"]}:
+            raise InstallError("invalid_release_schema")
+        if metadata["Version"] != version:
+            raise InstallError("invalid_release_identity")
+        return metadata["Requires-Python"], schema
+
+
+def validate_manifest(bundle, pinned):
+    """Gate the fixed extracted set; return the same bytes used after validation."""
+    manifest = json.loads(
+        read_input(bundle / MANIFEST_NAME, 64 * 1024), object_pairs_hook=unique_object
+    )
+    fields = {
+        "manifest_schema",
+        "version",
+        "source_commit",
+        "tag",
+        "requires_python",
+        "managed_targets",
+        "schema",
+        "members",
+    }
+    if not isinstance(manifest, dict) or set(manifest) != fields:
+        raise InstallError("invalid_release_manifest")
+    version = manifest["version"]
+    if (
+        type(manifest["manifest_schema"]) is not int
+        or manifest["manifest_schema"] != 1
+        or not isinstance(version, str)
+        or not re.fullmatch(r"[0-9][a-z0-9.]*", version)
+        or manifest["tag"] != "v" + version
+        or not isinstance(manifest["source_commit"], str)
+        or not re.fullmatch(r"[0-9a-f]{40}", manifest["source_commit"])
+        or manifest["managed_targets"] != MANAGED_TARGETS
+    ):
+        raise InstallError("invalid_release_identity")
+    wheel_name = f"postcardscene-{version}-py3-none-any.whl"
+    names = {*SUPPORT_NAMES, wheel_name}
+    if (
+        not isinstance(manifest["members"], dict)
+        or set(manifest["members"]) != names
+        or {path.name for path in bundle.iterdir()} != names | {MANIFEST_NAME}
+    ):
+        raise InstallError("invalid_release_members")
+    members = {}
+    for name in sorted(names):
+        data = read_input(bundle / name)
+        entry = manifest["members"][name]
+        if (
+            not isinstance(entry, dict)
+            or set(entry) != {"size", "sha256"}
+            or type(entry["size"]) is not int
+            or entry["size"] != len(data)
+            or entry["sha256"] != hashlib.sha256(data).hexdigest()
+            or (name in pinned and data != pinned[name])
+        ):
+            raise InstallError("release_member_mismatch")
+        members[name] = data
+    python, schema = wheel_identity(members[wheel_name], version)
+    if manifest["requires_python"] != python or manifest["schema"] != schema:
+        raise InstallError("invalid_release_identity")
+    return members

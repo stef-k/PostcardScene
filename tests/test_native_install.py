@@ -5,6 +5,7 @@ import csv
 import hashlib
 import importlib.util
 import io
+import runpy
 import tomllib
 import zipfile
 from pathlib import Path
@@ -16,11 +17,18 @@ ROOT = Path(__file__).resolve().parents[1]
 SPEC = importlib.util.spec_from_file_location("native_install", ROOT / "install.py")
 installer = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(installer)
-_, host, _, _ = installer.load_support(ROOT)
+HOST_SPEC = importlib.util.spec_from_file_location(
+    "test_install_host", ROOT / "install_host.py"
+)
+host = importlib.util.module_from_spec(HOST_SPEC)
+HOST_SPEC.loader.exec_module(host)
+release = SimpleNamespace(**runpy.run_path(str(ROOT / "scripts/release_bundle.py")))
 
 
 @pytest.fixture
 def bundle(tmp_path):
+    tmp_path = tmp_path / "bundle"
+    tmp_path.mkdir()
     project = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]
     version = project["version"]
     info = f"postcardscene-{version}.dist-info"
@@ -31,6 +39,11 @@ def bundle(tmp_path):
             "graphics/labwc/rc.xml",
             "graphics/labwc/autostart",
             "migrations/env.py",
+            "persistence.py",
+            *(
+                str(p.relative_to(ROOT / "src/postcardscene"))
+                for p in (ROOT / "src/postcardscene/migrations/versions").glob("*.py")
+            ),
         )
     }
     payload.update(
@@ -60,10 +73,12 @@ def bundle(tmp_path):
             wheel.writestr(name, data)
     for name in installer.INPUT_HASHES:
         (tmp_path / name).write_bytes((ROOT / name).read_bytes())
+    (tmp_path / "install.py").write_bytes((ROOT / "install.py").read_bytes())
+    release.write_manifest(tmp_path, version, "a" * 40)
     return tmp_path
 
 
-def test_reviewed_inputs_accept_without_final_manifest(bundle):
+def test_reviewed_inputs_accept_with_final_manifest(bundle):
     version, name, wheel, requirements, preflight, loaded_host = (
         installer.validate_inputs(bundle)
     )
@@ -71,7 +86,7 @@ def test_reviewed_inputs_accept_without_final_manifest(bundle):
     assert wheel and requirements
     assert callable(preflight.preflight)
     assert callable(loaded_host.stage_payload)
-    assert not (bundle / "release-manifest.json").exists()
+    assert (bundle / "release-manifest.json").exists()
 
 
 @pytest.mark.parametrize("name", tuple(installer.INPUT_HASHES))
@@ -96,6 +111,7 @@ def test_corrupt_wheel_record_rejected(bundle):
     with zipfile.ZipFile(wheel, "w") as archive:
         for name, content in members.items():
             archive.writestr(name, content)
+    release.write_manifest(bundle, "0.1.0.dev0", "a" * 40)
     with pytest.raises(installer.InstallError, match="invalid_wheel_record"):
         installer.validate_inputs(bundle)
 
@@ -287,6 +303,7 @@ def test_blank_wheel_record_row_rejected_safely(bundle):
     with zipfile.ZipFile(path, "w") as wheel:
         for name, content in members.items():
             wheel.writestr(name, content)
+    release.write_manifest(bundle, "0.1.0.dev0", "a" * 40)
     with pytest.raises(installer.InstallError, match="invalid_wheel_record"):
         installer.validate_inputs(bundle)
 
@@ -303,6 +320,7 @@ def test_doctor_does_not_open_wheel_entry_point_allowlist(bundle):
     with zipfile.ZipFile(wheel, "w") as archive:
         for name, content in members.items():
             archive.writestr(name, content)
+    release.write_manifest(bundle, "0.1.0.dev0", "a" * 40)
     with pytest.raises(installer.InstallError, match="invalid_wheel_entry_points"):
         installer.validate_inputs(bundle)
 
