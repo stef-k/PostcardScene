@@ -2,12 +2,8 @@
 
 import configparser
 import email.parser
-import os
-import shutil
 import subprocess
-import sys
 import tempfile
-import tomllib
 import zipfile
 from pathlib import Path
 
@@ -61,71 +57,10 @@ def check_wheel(path, project):
 
 
 def main():
-    project = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]
+    from build_release import build
+
     with tempfile.TemporaryDirectory(prefix="postcardscene-release-") as directory:
-        scratch = Path(directory)
-        exported = run(
-            "uv",
-            "export",
-            "--format",
-            "requirements.txt",
-            "--locked",
-            "--no-dev",
-            "--no-emit-project",
-            "--no-sources",
-            "--no-header",
-            capture_output=True,
-        )
-        assert exported.stdout == (ROOT / "runtime-requirements.txt").read_bytes(), (
-            "runtime-requirements.txt is stale; regenerate using the documented uv export"
-        )
-        run("uv", "build", "--wheel", "--no-sources", "--out-dir", str(scratch))
-        wheels = list(scratch.glob("*.whl"))
-        assert len(wheels) == 1, "Expected exactly one application wheel"
-        check_wheel(wheels[0], project)
-        for name in (
-            "install.py",
-            "install_inputs.py",
-            "install_host.py",
-            "install_preflight.py",
-            "runtime-requirements.txt",
-        ):
-            shutil.copyfile(ROOT / name, scratch / name)
-        run(
-            sys.executable,
-            "-I",
-            "-B",
-            "-c",
-            "import pathlib, runpy; "
-            f"p=pathlib.Path({str(scratch)!r}); "
-            "installer=runpy.run_path(str(p / 'install.py')); "
-            "installer['validate_inputs'](p)",
-        )
-        venv = scratch / "venv"
-        run(sys.executable, "-m", "venv", str(venv))
-        python = str(venv / "bin/python")
-        run(
-            python,
-            "-m",
-            "pip",
-            "install",
-            "--require-hashes",
-            "--only-binary=:all:",
-            "-r",
-            str(ROOT / "runtime-requirements.txt"),
-        )
-        run(python, "-m", "pip", "install", "--no-deps", str(wheels[0]))
-        run(python, "-m", "pip", "check")
-        env = dict(os.environ)
-        env.pop("POSTCARDSCENE_CONFIG", None)
-        run(
-            python,
-            "-I",
-            str(ROOT / "scripts/smoke_installed.py"),
-            project["version"],
-            env=env,
-        )
-    print("Release inputs and isolated installed wheel smoke passed.")
+        build(Path(directory) / "artifacts", require_tag=False)
 
 
 if __name__ == "__main__":

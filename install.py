@@ -1,4 +1,4 @@
-"""Managed native install/remove; final published-bundle verification is #143."""
+"""Managed native install/remove from an externally checksum-verified release."""
 
 import argparse
 import configparser
@@ -15,7 +15,7 @@ from pathlib import Path
 # Reviewed #138/#139 input pins, checked against source by release-input validation.
 # These are installer inputs, not a release manifest or published-bundle schema.
 INPUT_HASHES = {
-    "install_inputs.py": "e30622cb3258479669f0a32ab06924b1b37dfa7151cb293c749859f675711218",
+    "install_inputs.py": "dece01832a09d19f5ae6fbd71f0b992aebf848ba27608ab79b6fb53e913e8cfd",
     "install_host.py": "7278ea875ece7346959a9605c5a65c40888316641db53ea13c990c789f8084c1",
     "install_preflight.py": "b01b5e1f71325b44e1b8812da4d6132eb6ef70e64f14869f83de872036aeb107",
     "runtime-requirements.txt": "ca8eb8d430bd3d883523e592c99bec74c65c7537a765c52998001f0ae4c76d3a",
@@ -46,6 +46,7 @@ def load_support(bundle):
         if hashlib.sha256(inputs[name]).hexdigest() != digest:
             raise InstallError("install_support_mismatch")
     modules = []
+    members = None
     for name in ("install_inputs.py", "install_host.py", "install_preflight.py"):
         spec = importlib.util.spec_from_loader(
             "postcardscene_" + name[:-3], loader=None
@@ -54,13 +55,18 @@ def load_support(bundle):
         sys.modules[spec.name] = module
         exec(compile(inputs[name], name, "exec"), module.__dict__)
         modules.append(module)
-    return *modules, inputs["runtime-requirements.txt"]
+        if name == "install_inputs.py":
+            try:
+                members = module.validate_manifest(bundle, inputs)
+            except module.InstallError as error:
+                raise InstallError(str(error)) from None
+    return *modules, members
 
 
 def validate_inputs(bundle):
-    inputs, host, preflight, requirements = load_support(bundle)
+    inputs, host, preflight, members = load_support(bundle)
     try:
-        validated = inputs.validate_inputs(bundle, requirements, host.ASSETS)
+        validated = inputs.validate_inputs(bundle, members, host.ASSETS)
     except inputs.InstallError as error:
         raise InstallError(str(error)) from None
     return *validated, preflight, host
