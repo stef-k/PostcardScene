@@ -419,9 +419,42 @@ version, SQLite application ID, schema revision and catalog classification. It i
 verification evidence only; #144 must reverify at use and #160 owns same-version
 restore authority. #165 exposes DB-only authenticated policy/status and private-
 snapshot doctor diagnostics; both remain advisory and perform no destination I/O.
-Restore (#160), closure drills (#161), and updates (#144) remain unimplemented.
+Destructive restore (#170), closure drills (#161), and updates (#144) remain unimplemented.
 See [manual operations](../operations/installation.md#manual-sensitive-backups-158)
 for command usage, size limits and confidentiality responsibilities.
+
+
+### Non-destructive restore intake (#169)
+
+`postcardscene.backup.restore.prepare_restore(archive, staging_root)` is a root-only
+ordinary-Python seam, without a restore CLI action. The caller supplies one fresh,
+empty root-owned 0700 direct child of host-local `/tmp`; `TMPDIR` never selects it.
+The parent and isolated `restore-stage` worker validate no-follow directory
+ownership/mode and the same device/inode identity. Staging must share `/tmp`'s
+filesystem; `/tmp` itself must be root-owned 1777. Extraction uses the pinned local
+directory descriptor and exclusive private 0600 files.
+
+The existing bounded worker copies the archive and consumes its external checksum
+through the destination authority, then uses normal strict current-schema archive
+verification. Retention's older-schema ownership seam is never restore authority.
+Acceptance additionally requires the installed application version exactly,
+`Database.check()`, at least one Administrator, literal-only canonical DB/key config
+and a 32-byte signing key. No archived Python executes. Staged files must be private,
+root-owned regular one-link files; no services or current durable state are touched.
+
+`PreparedRestore` holds immutable verified backup identity, the exact private root
+and its device/inode, plus fixed file sizes/hashes for the copied archive, manifest,
+DB, config and key. Paths and member identities are excluded from repr; contents
+are never returned. `revalidate_restore(candidate)` compares local authority and
+all fixed file hashes immediately before future target staging. It needs no backup
+destination access, including after that destination disappears. This is an
+in-process candidate, not a serialized token or permission to replace host state.
+
+Failure cleans only accepted local scratch best-effort and returns fixed safe
+categories. `restore_cleanup_uncertain` preserves confidentiality while reporting
+unproven local cleanup; `worker_cleanup_uncertain` leaves scratch to a potentially
+kill-pending worker. Successful scratch lifetime belongs to the caller. #170 owns
+quiescence, replacement/rollback, catalog invalidation and final CLI integration.
 
 
 ### Persisted backup policy and daily due state (#163)

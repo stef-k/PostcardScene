@@ -10,10 +10,13 @@ from datetime import datetime, timezone
 from importlib.metadata import version
 from pathlib import Path
 
-from . import archive, capture, destination, retention
+from . import archive, capture, destination, restore, retention
 
 
 def execute(operation, path, progress, arguments=()):
+    if operation == "restore-stage":
+        root, device, inode = arguments
+        return restore.stage_restore(path, root, (int(device), int(inode)), progress)
     if operation == "retain":
         count, name, value = arguments
         return retention.retain(path, int(count), name, value, progress)
