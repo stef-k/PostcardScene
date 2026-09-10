@@ -480,6 +480,10 @@ Retention uses the same destination/count. Failure preserves success and records
 Retention stays inside the existing isolated, bounded worker. At most 1000 direct
 entries are enumerated; exact complete pairs require bounded checksum, flat archive,
 manifest and member-hash evidence, without historical SQLite integrity scans.
+V1 ownership accepts schema identifiers of 1–32 ASCII letters/digits/underscores
+(starting with a letter/digit), including older revisions. Normal verification
+keeps its separate current-schema equality check; retention ownership does not
+establish recovery compatibility.
 Deterministic oldest-first deletion retains the newest N owned pairs, reserving
 one slot for the new verified backup even after a clock reversal. Foreign, temporary,
 incomplete and malformed entries confer no deletion authority. Exact no-follow

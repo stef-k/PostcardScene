@@ -4,7 +4,7 @@ import gzip
 import hashlib
 import os
 
-from .archive import NAME, archive_members, member_bytes, validate_manifest
+from .archive import NAME, archive_members, member_bytes, validate_v1_manifest
 from .destination import ENTRY_LIMIT, checksum
 from .files import ARCHIVE_LIMIT, MANIFEST_NAME, BackupError, directory, regular
 
@@ -53,7 +53,7 @@ def owned_pair(parent, name, progress):
                     "size": member.size,
                     "sha256": value.hexdigest(),
                 }
-        manifest = validate_manifest(manifest_data, name)
+        manifest = validate_v1_manifest(manifest_data, name)
         del members[MANIFEST_NAME]
         if members != manifest["members"]:
             raise BackupError("member_mismatch")
