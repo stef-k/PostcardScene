@@ -5,11 +5,13 @@ import ipaddress
 import os
 import sqlite3
 import stat
+from datetime import UTC, datetime
 from pathlib import Path
 
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 
+from postcardscene.backup_policy import get_backup_status
 from postcardscene.catalog import MediaCatalogState, catalog_health_counts
 from postcardscene.domain import Source
 from postcardscene.persistence import Database, DatabaseError
@@ -133,16 +135,39 @@ def catalog(database):
         )
 
 
+def backup_status(database):
+    status = get_backup_status(database, datetime.now(UTC))
+    if not status.enabled:
+        return Check("backup", "not_applicable", "backup_disabled")
+    if status.timezone is None or status.decision.reason == "timezone_unavailable":
+        return Check("backup", "unavailable", "backup_status_unavailable")
+    if status.history.last_result == "failed":
+        reason = "backup_failed"
+    elif status.history.last_success_ns is None:
+        reason = "backup_never"
+    elif status.decision.due:
+        reason = "backup_due"
+    elif status.history.last_result == "ready_retention_degraded":
+        reason = "backup_retention_degraded"
+    else:
+        return Check("backup", "ready", "ready")
+    return Check("backup", "degraded", reason)
+
+
 def database_check(identifier, directory):
     database = None
     try:
         configuration()
         database = Database(snapshot(directory), timeout=0.5)
         database.check()
+        if identifier == "backup":
+            return backup_status(database)
         if identifier == "catalog":
             return catalog(database)
         return Check(identifier, "ready", "ready")
     except DatabaseError as error:
+        if identifier == "backup":
+            return Check(identifier, "unavailable", "backup_status_unavailable")
         # Translate the persistence owner's closed exceptions, never serialize it.
         reason = (
             "schema_incompatible"
@@ -152,6 +177,8 @@ def database_check(identifier, directory):
         )
         return Check(identifier, "degraded", reason)
     except SQLAlchemyError as error:
+        if identifier == "backup":
+            return Check(identifier, "unavailable", "backup_status_unavailable")
         code = getattr(getattr(error, "orig", None), "sqlite_errorcode", 0)
         corrupt = code & 0xFF in {sqlite3.SQLITE_CORRUPT, sqlite3.SQLITE_NOTADB}
         return Check(
@@ -160,7 +187,13 @@ def database_check(identifier, directory):
             "integrity_failed" if corrupt else "database_unavailable",
         )
     except (OSError, ValueError, SyntaxError):
-        return Check(identifier, "unavailable", "database_unavailable")
+        return Check(
+            identifier,
+            "unavailable",
+            "backup_status_unavailable"
+            if identifier == "backup"
+            else "database_unavailable",
+        )
     finally:
         if database is not None:
             database.engine.dispose()

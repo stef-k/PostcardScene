@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% from "composition_fields.html" import field, checkbox %}
+{% block title %}Backup{% endblock %}
+{% block content %}
+<div class="row justify-content-center"><div class="col-lg-10 col-xl-9">
+  <h1>Backup</h1>
+  {% for category, message in get_flashed_messages(with_categories=true) %}<div class="alert alert-{{ category }}" role="status">{{ message }}</div>{% endfor %}
+  <section class="card mb-4"><div class="card-body p-4">
+    <h2 class="h4">Saved policy and scheduled status</h2>
+    <p><strong>{{ 'Enabled' if status.enabled else 'Disabled' }}</strong>. The installed timer still runs hourly while disabled; the scheduled command is a no-op.</p>
+    <dl>
+      <dt>Configured destination</dt><dd class="text-break">{{ status.destination_path or 'Not configured' }}</dd>
+      <dt>Application timezone</dt><dd>{{ status.timezone or 'Status unavailable' }}</dd>
+      <dt>Local scheduled hour</dt><dd>{{ '%02d:00'|format(status.local_hour) }}</dd>
+      <dt>Retention count</dt><dd>{{ status.retention_count }}</dd>
+      <dt>Today's due state</dt><dd>{{ {'disabled': 'Disabled', 'before_hour': 'Not yet due — today’s local hour has not been reached', 'due': 'Due/overdue — today’s obligation is owed', 'satisfied': 'Satisfied today — persisted verified scheduled success satisfied today’s local date', 'timezone_unavailable': 'Status unavailable — application timezone unavailable'}[status.decision.reason] }}</dd>
+      <dt>Last attempt</dt><dd>{{ timestamp(status.history.last_attempt_ns) }}</dd>
+      <dt>Last attempt result</dt><dd>{{ {'never': 'No attempt recorded', 'failed': 'Last attempt failed', 'ready': 'Backup succeeded', 'ready_retention_degraded': 'Backup succeeded, retention degraded'}[status.history.last_result] }}</dd>
+      <dt>Last successful verified scheduled backup</dt><dd>{{ timestamp(status.history.last_success_ns) }}</dd>
+      {% if status.history.last_archive_filename %}<dt>Recorded archive basename</dt><dd class="text-break">{{ status.history.last_archive_filename }}</dd>{% else %}<dd>No successful scheduled backup recorded yet.</dd>{% endif %}
+    </dl>
+    <p>Persisted history is advisory: the recorded basename and time are not proof the archive still exists. Use concrete <code>postcardscene-backup verify</code> for recovery evidence.</p>
+    <p>Archives are sensitive and are not encrypted by PostcardScene.</p>
+  </div></section>
+  <form method="post" class="card" aria-describedby="backup-rules">
+    {{ form.hidden_tag() }}
+    <div class="card-body p-4">
+      <h2 class="h4">Backup policy</h2>
+      <p id="backup-rules">Save validates syntax and stores policy only. It does not test the destination, its mount or writability. Supply an existing absolute local or already-mounted destination accessible to the backup service. Disabling may retain the configured path.</p>
+      {{ checkbox(form.enabled) }}
+      {{ field(form.destination_path) }}
+      {{ field(form.local_hour) }}
+      {{ field(form.retention_count) }}
+      <button class="btn btn-primary" type="submit">Save backup policy</button>
+    </div>
+  </form>
+</div></div>
+{% endblock %}

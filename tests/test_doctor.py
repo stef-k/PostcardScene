@@ -32,9 +32,9 @@ def test_stable_human_json_and_exit_categories(monkeypatch):
     assert tuple(c.identifier for c in report.checks) == CHECKS
     assert report == cli.collect()
     assert report.exit_code == 0
-    assert report.checks[-1] == Check("backup", "not_applicable", "not_implemented")
+    assert report.checks[-1] == Check("backup", "ready", "ready")
     assert json.loads(report.render(structured=True))["exit_code"] == 0
-    assert "backup: not_applicable (not_implemented)" in report.render()
+    assert "backup: ready (ready)" in report.render()
     assert Report((Check("graphics", "degraded", "no_display"),)).exit_code == 1
     assert Report((Check("release", "fatal", "identity_mismatch"),)).exit_code == 2
 
@@ -468,3 +468,122 @@ def test_installed_assets_validate_dropin_directory_authority(
         else Check("installed_assets", "degraded", "authority_invalid")
     )
     assert metadata.inspect("installed_assets") == expected
+
+
+@pytest.mark.parametrize(
+    "enabled,zone,result,day,hour,state,reason",
+    [
+        (False, "Missing/Zone", "failed", None, 3, "not_applicable", "backup_disabled"),
+        (
+            True,
+            "Missing/Zone",
+            "failed",
+            None,
+            3,
+            "unavailable",
+            "backup_status_unavailable",
+        ),
+        (True, "UTC", "failed", None, 3, "degraded", "backup_failed"),
+        (True, "UTC", "never", None, 3, "degraded", "backup_never"),
+        (
+            True,
+            "UTC",
+            "ready_retention_degraded",
+            "2000-01-01",
+            3,
+            "degraded",
+            "backup_due",
+        ),
+        (
+            True,
+            "UTC",
+            "ready_retention_degraded",
+            "9999-12-31",
+            3,
+            "degraded",
+            "backup_retention_degraded",
+        ),
+        (True, "UTC", "ready", "9999-12-31", 3, "ready", "ready"),
+        (True, "UTC", "ready", "2000-01-01", 23, "ready", "ready"),
+    ],
+)
+def test_backup_private_snapshot_mapping(
+    diagnostic_db,
+    tmp_path,
+    monkeypatch,
+    enabled,
+    zone,
+    result,
+    day,
+    hour,
+    state,
+    reason,
+):
+    from datetime import UTC, datetime
+
+    name = "postcardscene-backup-20260910T030000000000Z-v0.1.0.dev0.tar.gz"
+    connection = sqlite3.connect(diagnostic_db)
+    try:
+        connection.execute("UPDATE application_settings SET timezone=?", (zone,))
+        connection.execute(
+            "UPDATE backup_policy SET enabled=?, destination_path=?, local_hour=?, last_result=?, last_attempt_ns=?, last_success_ns=?, last_success_local_date=?, last_archive_filename=?",
+            (
+                enabled,
+                "/private-backup-destination",
+                hour,
+                result,
+                1 if result != "never" else None,
+                1 if day else None,
+                day,
+                name if day else None,
+            ),
+        )
+        connection.commit()
+        before = installed_bytes(diagnostic_db)
+        scratch = tmp_path / "private-snapshot"
+        scratch.mkdir()
+        original = data.get_backup_status
+        calls = []
+
+        def status(database, now):
+            assert database.path == scratch / diagnostic_db.name
+            assert now.utcoffset().total_seconds() == 0
+            calls.append(database.path)
+            return original(database, datetime(2026, 9, 10, 12, tzinfo=UTC))
+
+        monkeypatch.setattr(data, "get_backup_status", status)
+
+        def forbidden(*args, **kwargs):
+            pytest.fail("Doctor backup performed external work")
+
+        monkeypatch.setattr("subprocess.Popen", forbidden)
+        for operation in ("create", "verify", "list_backups"):
+            monkeypatch.setattr("postcardscene.backup." + operation, forbidden)
+        original_stat = os.stat
+
+        def guarded_stat(path, *args, **kwargs):
+            assert "private-backup-destination" not in str(path)
+            return original_stat(path, *args, **kwargs)
+
+        monkeypatch.setattr(os, "stat", guarded_stat)
+        check = data.database_check("backup", scratch)
+        assert check == Check("backup", state, reason)
+        assert len(calls) == 1
+        assert installed_bytes(diagnostic_db) == before
+        rendered = Report((check,)).render(structured=True)
+        assert all(
+            value not in rendered
+            for value in (name, SECRET, "/private-backup-destination")
+        )
+    finally:
+        connection.close()
+
+
+def test_backup_snapshot_failure_is_closed(diagnostic_db, tmp_path, monkeypatch):
+    monkeypatch.setattr(data, "SNAPSHOT_LIMIT", 1)
+    assert data.database_check("backup", tmp_path) == Check(
+        "backup", "unavailable", "backup_status_unavailable"
+    )
+    assert bounded.unavailable("backup", "deadline") == Check(
+        "backup", "unavailable", "backup_status_unavailable"
+    )

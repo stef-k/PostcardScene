@@ -11,6 +11,7 @@ from postcardscene.configuration import load_operator_config
 from postcardscene.persistence import DEFAULT_DATABASE_PATH
 from postcardscene.session_secret import DEFAULT_SECRET_PATH
 from postcardscene.web.auth import init_auth
+from postcardscene.web.backup import backup
 from postcardscene.web.control import control
 from postcardscene.web.database import init_database
 from postcardscene.web.display import display
@@ -60,6 +61,7 @@ def create_app(
     app.register_blueprint(sequences)
     app.register_blueprint(schedule)
     app.register_blueprint(display)
+    app.register_blueprint(backup)
     app.register_error_handler(HTTPException, render_http_error)
     return app
 

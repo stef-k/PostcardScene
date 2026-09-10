@@ -6,17 +6,14 @@ import tempfile
 from functools import partial
 from pathlib import Path
 
-from . import CHECKS, Check, Report, data, live, metadata
+from . import CHECKS, Report, data, live, metadata
 from .bounded import inspect_bounded
 
 
 def collect():
     results = []
     for identifier in CHECKS:
-        if identifier == "backup":
-            results.append(Check(identifier, "not_applicable", "not_implemented"))
-            continue
-        if identifier in {"database", "catalog"}:
+        if identifier in {"database", "catalog", "backup"}:
             # Only disposable private copies are writable, never installed state.
             with tempfile.TemporaryDirectory(
                 prefix="postcardscene-doctor-", dir="/tmp"
