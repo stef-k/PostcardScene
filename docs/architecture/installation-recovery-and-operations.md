@@ -297,7 +297,7 @@ or preinstalled application are needed. #143 includes these modules in the fixed
 manifest/member hashes and clean archive smoke described below. It invokes clean-host
 preflight both before fixed package installation and before application-state
 provisioning. These installer input pins are not #143's final release manifest;
-published-bundle integrity additionally requires the #143 gate below.
+published-bundle integrity additionally requires the #143 gate above.
 
 The initial path selects logind/PAM, stages a root-controlled versioned venv,
 provisions distinct locked runtime/web UIDs with shared primary group and setgid

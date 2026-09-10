@@ -375,6 +375,19 @@ def failed_reinstalls(entrypoint, bundle, validated, before):
         entrypoint.validate_preserved_application = compatibility
 
 
+def prepare_smoke_bundle(bundle, entrypoint):
+    shutil.copyfile(sys.argv[1], bundle / Path(sys.argv[1]).name)
+    for name in ("install.py", *entrypoint.INPUT_HASHES):
+        shutil.copyfile(ROOT / name, bundle / name)
+    # Root in the disposable CI VM reads this explicitly selected runner checkout.
+    sha = subprocess.check_output(
+        ["git", "-c", f"safe.directory={ROOT}", "rev-parse", "HEAD"],
+        cwd=ROOT,
+        text=True,
+    ).strip()
+    write_manifest(bundle, Path(sys.argv[1]).name.split("-")[1], sha)
+
+
 def lifecycle_smoke(entrypoint, installer, runtime, web, shared):
     # Runtime/web are real systemd services; graphics start alone is substituted
     # because this x86 VM has no supported seat/display. No ownership gate is bypassed.
@@ -388,17 +401,7 @@ def lifecycle_smoke(entrypoint, installer, runtime, web, shared):
     }
     with tempfile.TemporaryDirectory() as scratch:
         bundle = Path(scratch)
-        shutil.copyfile(sys.argv[1], bundle / Path(sys.argv[1]).name)
-        for name in entrypoint.INPUT_HASHES:
-            shutil.copyfile(ROOT / name, bundle / name)
-        shutil.copyfile(ROOT / "install.py", bundle / "install.py")
-        write_manifest(
-            bundle,
-            Path(sys.argv[1]).name.split("-")[1],
-            subprocess.check_output(
-                ["git", "rev-parse", "HEAD"], cwd=ROOT, text=True
-            ).strip(),
-        )
+        prepare_smoke_bundle(bundle, entrypoint)
         rejected_layouts(entrypoint, bundle)
         operation = entrypoint.Installation(bundle)
         try:
@@ -514,17 +517,12 @@ def main():
     spec = importlib.util.spec_from_file_location("native_install", ROOT / "install.py")
     entrypoint = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(entrypoint)
-    # Developer smoke imports source helpers explicitly; production uses verified bytes.
-    modules = []
-    for name in ("install_host", "install_preflight"):
-        support_spec = importlib.util.spec_from_file_location(
-            "smoke_" + name, ROOT / (name + ".py")
+    with tempfile.TemporaryDirectory() as scratch:
+        bundle = Path(scratch)
+        prepare_smoke_bundle(bundle, entrypoint)
+        version, wheel_name, wheel, requirements, preflight, installer = (
+            entrypoint.validate_inputs(bundle)
         )
-        module = importlib.util.module_from_spec(support_spec)
-        sys.modules[support_spec.name] = module
-        support_spec.loader.exec_module(module)
-        modules.append(module)
-    installer, preflight = modules
     # Refuse any existing installation; this smoke has no adoption or cleanup path.
     for path in (
         *installer.ASSETS.values(),
@@ -538,22 +536,6 @@ def main():
         str(DEVICE),
     ):
         assert not os.path.lexists(path), "Disposable clean VM required"
-    with tempfile.TemporaryDirectory() as scratch:
-        bundle = Path(scratch)
-        shutil.copyfile(sys.argv[1], bundle / Path(sys.argv[1]).name)
-        for name in entrypoint.INPUT_HASHES:
-            shutil.copyfile(ROOT / name, bundle / name)
-        shutil.copyfile(ROOT / "install.py", bundle / "install.py")
-        write_manifest(
-            bundle,
-            Path(sys.argv[1]).name.split("-")[1],
-            subprocess.check_output(
-                ["git", "rev-parse", "HEAD"], cwd=ROOT, text=True
-            ).strip(),
-        )
-        version, wheel_name, wheel, requirements, _, installer = (
-            entrypoint.validate_inputs(bundle)
-        )
     installer.directory(Path("/opt/postcardscene"))
     installer.directory(Path("/opt/postcardscene/releases"))
     release = Path("/opt/postcardscene/releases") / version

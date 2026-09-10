@@ -73,6 +73,7 @@ jobs:
           gh release download "$RELEASE_TAG" --dir "$RUNNER_TEMP/published"
           cmp SHA256SUMS "$RUNNER_TEMP/published/SHA256SUMS"
           (cd "$RUNNER_TEMP/published" && sha256sum --check --strict SHA256SUMS)
+          test "$(gh api "repos/$GH_REPO/commits/$RELEASE_TAG" --jq .sha)" = "$GITHUB_SHA"
           gh release edit "$RELEASE_TAG" --draft=false
       - name: Report incomplete publication
         if: failure()
