@@ -65,6 +65,7 @@ def test_cli_initialization_identity_and_idempotent_upgrade(tmp_path):
             ("alembic_version",),
             ("administrator",),
             ("application_settings",),
+            ("backup_policy",),
             ("operating_window",),
             ("source",),
             ("widget",),
