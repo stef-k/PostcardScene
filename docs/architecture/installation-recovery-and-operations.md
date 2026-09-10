@@ -264,8 +264,10 @@ The release workflow accepts only the exact package-version tag at its recorded
 commit, with clean locked validation and pinned uv. It builds the final archive,
 external `SHA256SUMS` and minimum candidate notes; publication uses native `gh`
 through a draft with write permission confined to the publish job. Existing
-releases are never overwritten. All candidates are prereleases; publication does
-not close V0 readiness or the physical/security/recovery gates.
+releases are never overwritten. The validated package/tag version determines
+GitHub prerelease status: pre/dev versions are prereleases and final stable
+versions are normal releases, with no manual override. Publication does not close
+V0 readiness or the physical/security/recovery gates.
 
 External checksums authenticate downloaded archive bytes before extracted code
 execution. The fixed schema-1 manifest records source/tag/version, wheel Python

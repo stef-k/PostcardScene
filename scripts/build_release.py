@@ -2,6 +2,7 @@
 
 import argparse
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -19,6 +20,11 @@ from release_bundle import (
     write_checksums,
     write_manifest,
 )
+
+
+def github_prerelease(version):
+    """Classify the validated, normalized package version's pre/dev segments."""
+    return "true" if re.search(r"(?:a|b|rc|\.dev)[0-9]+", version) else "false"
 
 
 def source_identity(project, require_tag):
@@ -169,6 +175,9 @@ def build(output, require_tag=True):
         "See docs/operations/installation.md at the exact tag for install/remove instructions. "
         "Different repacked bytes require new checksums and candidate evidence.\n"
     )
+    if "GITHUB_OUTPUT" in os.environ:
+        with Path(os.environ["GITHUB_OUTPUT"]).open("a") as output_file:
+            output_file.write(f"prerelease={github_prerelease(version)}\n")
     print(f"Final native archive smoke passed: {archive.name}; source {sha}")
 
 

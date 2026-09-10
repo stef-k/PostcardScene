@@ -199,3 +199,20 @@ def test_publication_requires_clean_exact_tag_identity(monkeypatch, damage):
             sha,
             1700000000,
         )
+
+
+@pytest.mark.parametrize(
+    ("version", "expected"),
+    [
+        ("0.1.0.dev0", "true"),
+        ("0.1.0rc1", "true"),
+        ("0.1.0", "false"),
+        ("0.1.0.post1", "false"),
+    ],
+)
+def test_github_prerelease_follows_package_version(monkeypatch, version, expected):
+    import importlib
+
+    monkeypatch.syspath_prepend(str(release.ROOT / "scripts"))
+    builder = importlib.import_module("build_release")
+    assert builder.github_prerelease(version) == expected

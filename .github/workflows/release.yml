@@ -14,6 +14,8 @@ concurrency:
 
 jobs:
   build:
+    outputs:
+      prerelease: ${{ steps.bundle.outputs.prerelease }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -38,6 +40,7 @@ jobs:
       - run: uv run ruff check .
       - run: uv run pytest
       - name: Build and smoke final archive bytes
+        id: bundle
         run: uv run python scripts/build_release.py --output "$RUNNER_TEMP/native-release"
       - uses: actions/upload-artifact@v4
         with:
@@ -61,12 +64,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_PRERELEASE: ${{ needs.build.outputs.prerelease }}
         working-directory: native-release
         run: |
           set -euo pipefail
           test "$(gh api "repos/$GH_REPO/commits/$RELEASE_TAG" --jq .sha)" = "$GITHUB_SHA"
           sha256sum --check --strict SHA256SUMS
-          gh release create "$RELEASE_TAG" --verify-tag --draft --prerelease \
+          gh release create "$RELEASE_TAG" --verify-tag --draft --prerelease="$RELEASE_PRERELEASE" \
             --title "PostcardScene $RELEASE_TAG" --notes-file release-notes.md
           gh release upload "$RELEASE_TAG" postcardscene-*-linux-native.tar.gz \
             postcardscene-*-py3-none-any.whl SHA256SUMS

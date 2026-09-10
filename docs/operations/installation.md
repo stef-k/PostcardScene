@@ -32,7 +32,10 @@ A candidate tag must be exactly `v<pyproject project.version>` (currently
 `v0.1.0.dev0`). Push that already-reviewed tag, or deliberately run the Native
 release workflow **on that tag**. There is no version override or tag creation.
 The workflow validates a clean exact checkout with pinned uv 0.12.10, builds and
-smokes final archive bytes, and publishes a GitHub prerelease through a draft.
+smokes final archive bytes, and publishes through a draft. GitHub prerelease
+status follows the validated package/tag version: development and prerelease
+versions (such as `0.1.0.dev0` or `0.1.0rc1`) become prereleases; final stable
+versions (such as `0.1.0`) become normal releases. There is no classification override.
 Tag, source commit, wheel, installed version and manifest must agree. An existing
 release is never overwritten. Failed upload/publication is a failed candidate;
 inspect any incomplete draft before recovery. Release creation is separate from
