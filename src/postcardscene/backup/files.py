@@ -54,10 +54,24 @@ def regular(parent, name, limit, *, metadata=None, allow_empty=False):
         yield stream
 
 
+@contextmanager
+def private_output(fd):
+    """Fail before writing secrets when a filesystem cannot honor private modes."""
+    with os.fdopen(fd, "wb") as stream:
+        info = os.fstat(fd)
+        if (
+            not stat.S_ISREG(info.st_mode)
+            or info.st_nlink != 1
+            or info.st_uid != os.geteuid()
+            or stat.S_IMODE(info.st_mode) != 0o600
+        ):
+            raise BackupError("private_output_unavailable")
+        yield stream
+
+
 def private_file(path):
-    return os.fdopen(
-        os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600),
-        "wb",
+    return private_output(
+        os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
     )
 
 

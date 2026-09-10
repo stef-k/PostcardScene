@@ -434,7 +434,8 @@ its permissions and any mount/transport outside PostcardScene. Ensure an intende
 remote destination is actually mounted before invoking the CLI; a path alone is
 not evidence of a particular remote mount. There is no mount command, credential
 management, cloud provider or fallback path. The destination filesystem must
-support fsync and Linux atomic no-replace renames; unsupported operations fail.
+honor private file modes and support fsync and Linux atomic no-replace renames;
+unsupported operations fail before being considered a complete backup.
 
 Each `postcardscene-backup-YYYYMMDDTHHMMSSffffffZ-v<version>.tar.gz` contains exactly:
 

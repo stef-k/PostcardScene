@@ -15,6 +15,7 @@ from .files import (
     copy_bytes,
     directory,
     private_file,
+    private_output,
     regular,
 )
 
@@ -104,7 +105,7 @@ def publish(archive, destination, progress):
                 0o600,
                 dir_fd=parent,
             )
-            with os.fdopen(fd, "wb") as target:
+            with private_output(fd) as target:
                 if suffix:
                     target.write(f"{value}  {name}\n".encode("ascii"))
                 else:

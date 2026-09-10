@@ -402,3 +402,24 @@ def test_forged_checksum_does_not_hide_trailing_archive_content(built):
     sidecar(path)
     with pytest.raises(BackupError):
         backup.verify(path)
+
+
+def test_destination_ignoring_private_modes_gets_no_sensitive_bytes(
+    built, tmp_path, monkeypatch
+):
+    scratch, path, _ = built
+    output = tmp_path / "public-mode-mount"
+    output.mkdir()
+    original = os.open
+
+    def ignores_mode(path, flags, mode=0o777, **options):
+        fd = original(path, flags, mode, **options)
+        if mode == 0o600 and "dir_fd" in options:
+            os.fchmod(fd, 0o644)
+        return fd
+
+    monkeypatch.setattr(os, "open", ignores_mode)
+    with pytest.raises(BackupError, match="private_output_unavailable"):
+        destination.publish(scratch / path.name, output, progress)
+    assert all(entry.stat().st_size == 0 for entry in output.iterdir())
+    assert destination.list_backups(output, progress) == ()
