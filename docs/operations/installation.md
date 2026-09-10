@@ -309,8 +309,8 @@ check results in JSON. No configuration-path, command, impersonation or repair
 options are accepted. Exit **0** means all applicable checks are ready; **1** means
 degraded/unavailable checks need attention; **2** means an installation identity or
 configuration inconsistency (or invalid invocation); **3** is an internal command
-error. `backup: not_applicable (not_implemented)` remains expected until #159 adds
-persisted backup status; doctor does not probe destinations.
+error. Backup diagnostics read persisted policy/history through the same bounded
+private DB snapshot; doctor never probes the backup destination.
 
 Fixed check identifiers cover release/wheel identity, exact #140 assets and
 conflict-record structure, config/two-UID/key/DB/sidecar/IPC permissions, independent
@@ -489,8 +489,8 @@ manifest/member hashes, then the snapshot's application ID, packaged Alembic hea
 WAL/quick/FK integrity. Repeated list/verify do not change destination contents.
 The immutable returned identity includes the exact final hash and filename for
 future recovery checks; it does not authorize restore, migration or rollback.
-Scheduled execution/retention is described below. UI/doctor backup status (#165),
-restore (#160) and update (#144) remain unavailable.
+Scheduled execution/retention and advisory UI/doctor status are described below.
+Restore (#160) and update (#144) remain unavailable.
 
 
 ## Scheduled backups and retention (#164)
@@ -510,8 +510,8 @@ The oneshot normally remains inactive between runs. Python uses the shared #163
 policy/timezone decision, owing at most today's local date after the configured
 hour. Disabled, before-hour and already-satisfied runs do no destination I/O.
 Unavailable policy/time fails safely. Destination/count/due date stay fixed for
-the run; policy changes take effect next invocation. The policy API exists, but
-#165's web configuration/status and doctor backup check are not implemented yet.
+the run; policy changes take effect next invocation. Configure policy through
+the authenticated Backup page described below.
 
 Manual create and scheduled create+retention share one nonblocking local lock at
 `/var/lib/postcardscene-web/backup.lock`. `operation_busy` reports contention;
@@ -542,3 +542,31 @@ and private state. Compatible reinstall restores the timer without policy change
 If activation fails, recovery attempts to stop/disable auxiliary work before the
 other services; a reported stop/disable failure requires host reconciliation before
 recovery or reboot. Uncertain assets and durable authority remain preserved.
+
+
+## Backup policy and advisory status (#165)
+
+The authenticated `/backup` page edits enabled, literal absolute destination path,
+local hour (0–23 in the application timezone), and retention count (1–30).
+Saving checks syntax and writes SQLite only: it does not test destination existence,
+mount state or writability. Disabling can retain the path. The installed timer
+remains enabled and wakes hourly; disabled policy makes scheduled execution a no-op.
+
+The shared daily decision shows not yet due before the local hour, due/overdue
+when today's obligation is owed, or satisfied today after persisted verified
+scheduled success. Failed attempts and successful backups with degraded retention
+are shown separately; no successful history means no scheduled success is recorded.
+Unavailable timezone produces unavailable status without a UTC scheduling fallback.
+History timestamps are labeled UTC; configured scheduling remains local time.
+
+Doctor uses the same status logic on its bounded private main/WAL snapshot, never
+opening the installed live DB through SQLite for this check. Its single row ranks:
+disabled, unavailable status/snapshot/timezone, failed attempt, never succeeded,
+currently due, retention degraded, then ready. Details remain empty. Neither doctor
+nor the page probes destinations, runs backup workers or queries/starts systemd
+for backup status. There is no web backup-now, archive browser or download action.
+
+Persisted basename/time and doctor-ready are advisory history, not proof an archive
+still exists or recovery authority. Use concrete `postcardscene-backup verify`
+against the archive and sidecar for recovery evidence. Archives remain sensitive
+and unencrypted by PostcardScene; restore and update remain separate work.

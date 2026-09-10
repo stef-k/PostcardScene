@@ -13,6 +13,8 @@ OUTPUT_LIMIT = 16384
 
 
 def unavailable(identifier, reason):
+    if identifier == "backup":
+        return Check(identifier, "unavailable", "backup_status_unavailable")
     state = (
         "fatal"
         if identifier in {"release", "config_authority", "identities"}

@@ -417,8 +417,9 @@ invalid. Exceeding the bound fails rather than presenting a partial inventory.
 `VerifiedBackup` is immutable: archive filename/hash, UTC creation time, application
 version, SQLite application ID, schema revision and catalog classification. It is
 verification evidence only; #144 must reverify at use and #160 owns same-version
-restore authority. UI/doctor (#165), restore (#160), closure drills (#161), and
-updates (#144) remain unimplemented.
+restore authority. #165 exposes DB-only authenticated policy/status and private-
+snapshot doctor diagnostics; both remain advisory and perform no destination I/O.
+Restore (#160), closure drills (#161), and updates (#144) remain unimplemented.
 See [manual operations](../operations/installation.md#manual-sensitive-backups-158)
 for command usage, size limits and confidentiality responsibilities.
 
