@@ -74,6 +74,8 @@ def validate_data(identities, immutable, *, invalidate):
             if invalidate:
                 invalidate_catalog(session)
         database.check()
+        for entry in restore_files.file_set(identities):
+            restore_files.current(*entry, probe=True)
     finally:
         database.engine.dispose()
         os.umask(mask)
@@ -145,9 +147,10 @@ class Transaction:
 def execute(candidate):
     restore.require_root()
     identities, immutable = restore_host.validate()
-    # Also prove bounded raw readability before touching systemd. No SQLite here.
+    # Bound sizes and probe readability before systemd. Running SQLite may still
+    # change current bytes; only quiescent capture requires a stable raw identity.
     for entry in restore_files.file_set(identities):
-        restore_files.current(*entry)
+        restore_files.current(*entry, probe=True)
     transaction = None
     scratch = None
     identity = None

@@ -63,7 +63,12 @@ def transfer(source, target=None, limit=MEMBER_LIMITS[DB_NAME]):
 def describe(source, target, limit):
     fd = source.fileno()
     before = os.fstat(fd)
-    attrs = tuple((name, os.getxattr(fd, name)) for name in sorted(os.listxattr(fd)))
+    names = sorted(os.listxattr(fd))
+    if len(names) > 64:
+        raise BackupError("restore_host_invalid")
+    attrs = tuple((name, os.getxattr(fd, name)) for name in names)
+    if sum(len(value) for _, value in attrs) > 65536:
+        raise BackupError("restore_host_invalid")
     size, digest = transfer(source, target, limit)
     after = os.fstat(fd)
     if (before.st_size, before.st_mtime_ns, before.st_ctime_ns) != (
@@ -84,7 +89,7 @@ def describe(source, target, limit):
     )
 
 
-def current(path, metadata, parent_metadata, limit, destination=None):
+def current(path, metadata, parent_metadata, limit, destination=None, *, probe=False):
     with directory(path.parent) as parent:
         capture.require_directory(parent, *parent_metadata)
         # O_NOATIME preserves the rollback timestamp even during proof reads.
@@ -102,6 +107,9 @@ def current(path, metadata, parent_metadata, limit, destination=None):
                 or (info.st_uid, info.st_gid, stat.S_IMODE(info.st_mode)) != metadata
             ):
                 raise BackupError("restore_host_invalid")
+            if probe:
+                source.read(1)
+                return None
             return describe(source, destination, limit)
 
 
@@ -162,9 +170,11 @@ def replace(source_parent, source_name, entry, expected, *, rollback=None):
                 source_parent,
                 source_name,
                 limit,
-                metadata=(0, 0, 0o600),
                 allow_empty=True,
             ) as source:
+                info = os.fstat(source.fileno())
+                if info.st_uid != 0 or stat.S_IMODE(info.st_mode) != 0o600:
+                    raise BackupError("restore_candidate_invalid")
                 fd = os.open(
                     temporary,
                     os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
