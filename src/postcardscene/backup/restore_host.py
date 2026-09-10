@@ -145,9 +145,10 @@ def stop(identities):
     for unit in (*SERVICES, *AUXILIARY_UNITS):
         current = state(unit)
         expected = "static" if unit == AUXILIARY_UNITS[0] else "disabled"
-        if current.get("ActiveState") not in {"inactive", "failed"} or current.get(
-            "UnitFileState"
-        ) != expected:
+        if (
+            current.get("ActiveState") not in {"inactive", "failed"}
+            or current.get("UnitFileState") != expected
+        ):
             failed = True
     require_quiescent(identities)
     if failed:
