@@ -7,6 +7,13 @@ Return to [Appliance operations](../operations.md). For installed service operat
 see [Runtime and services](runtime.md); for graphics and panel operation, see
 [Display, rendering and panel control](display.md).
 
+Forward update is not yet an available installer command. #175 supplies internal
+recognition/staging and phase-file primitives only; recovery-backed migration and
+activation remain #176–#178. An interrupted staging attempt may leave an inactive
+target release or the reserved `update-state.json.postcardscene-update.new`
+scratch. Preserve uncertain content for inspection: ordinary install/remove do
+not adopt extra releases, and scratch is never proof of a committed update phase.
+
 ## Release inputs (#138)
 
 Released CPython 3.11–3.14 is the application compatibility boundary. Generic

@@ -217,6 +217,8 @@ install_inputs.py          # deterministic input/wheel validation #153
 install_host.py            # fixed host provisioning primitives #153
 install_services.py        # exact managed systemd host support #164
 install_preflight.py       # standalone read-only install support #139
+install_update.py          # internal pre-mutation update primitives #175
+install_update_state.py    # exact durable phase-file primitives #175
 release-manifest.json      # release child #143
 ```
 
@@ -340,6 +342,48 @@ atomically recaptured before reserving graphics. Partial layouts fail closed.
 See [remove/reinstall operations](../operations/installation.md#managed-remove-and-reinstall-142).
 The full fixed support set remains authenticated before any helper execution;
 #143 publication and #144 recovery-backed updates remain separate.
+
+### Forward-update preparation (#175)
+
+The externally verified executing target bundle remains the only target-code
+entry. Authenticated `install_update.py` supplies internal recognition/staging;
+`install_update_state.py` owns bounded exact phase-file operations. There is no
+public update command yet. #176 owns recovery locking, quiescence and migration;
+#177 owns committed activation and the public CLI; #178 owns lifecycle evidence.
+
+Recognition reads the current root-controlled release wheel without executing
+it or opening SQLite. Its version, wheel hash, Python boundary, application ID
+and linear migration graph establish source identity independently of the target.
+The active symlink, installed distribution location/METADATA/WHEEL, stored inputs,
+current wheel-derived host assets, durable/config/key metadata, identities and
+service-conflict record must agree. Internal managed preflight rechecks host,
+package/tool and service prerequisites without installing/upgrading anything.
+
+Only an exact fresh target release is staged, in wheel -> requirements -> venv
+order. The staged target's explicit `packaging` dependency supplies real PEP 440
+ordering; normalized equality and downgrades fail. The current wheel head must
+lie on the target's single ancestor chain, with shared revision ancestry unchanged.
+Same-schema forward application versions are valid. Concrete live DB identity is
+not inferred from this check: #176 must prove it through old-version strict backup
+verification and target migration/check before mutation/commit.
+
+Before phase persistence, the same authenticated target may discard/re-stage
+only one inactive extra release whose top-level shape follows the staging order,
+whose present wheel/requirements match exactly and whose tree passes existing
+bounded payload cleanup checks. Foreign or unsafe residue is preserved for manual
+reconciliation. Handled staging failure removes only the attempt-owned target.
+Ordinary install/remove classification remains strict and accepts no extra roots.
+
+The sole authority file is `/opt/postcardscene/update-state.json`, root:root 0600,
+regular/no-follow/one-link, containing only `phase` (`prepared`, `migrating`,
+`committed`), source version/wheel SHA/schema and target version/wheel SHA/manifest
+SHA/schema. The fixed `.postcardscene-update.new` sibling is non-authoritative;
+only exact safe metadata permits its removal. Writes fsync complete JSON before
+atomic replacement, then fsync the parent; removal also fsyncs the parent.
+Scratch alone never establishes a phase. Exact persisted identities permit intact
+old+target recognition; mixed activation/partial old cleanup is reserved for #177.
+No archive path, recovery token, backup result or fourth staging phase is persisted.
+
 
 ## Installed doctor (#141)
 

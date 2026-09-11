@@ -178,8 +178,12 @@ def install_packages(plan, run):
         )
 
 
-def stage_payload(release, wheel_name, wheel, requirements, plan, run):
-    directory(release)
+def stage_payload(
+    release, wheel_name, wheel, requirements, plan, run, *, on_created=None
+):
+    created = directory(release)
+    if on_created is not None:
+        on_created(created)
     write_new(release / wheel_name, wheel)
     write_new(release / "runtime-requirements.txt", requirements)
     venv = release / "venv"
@@ -492,10 +496,10 @@ def validate_asset(path, content):
         raise InstallError("managed_authority_invalid")
 
 
-def installed_authority(version, wheel):
+def installed_authority(version, wheel, *, extra_releases=(), extra_roots=()):
     runtime, _, shared, _ = preserved_authority()
     release = RELEASES / version
-    if set(RELEASES.iterdir()) != {release}:
+    if set(RELEASES.iterdir()) != {release, *extra_releases}:
         raise InstallError("managed_authority_invalid")
     for path in (RELEASES, release, release / "venv"):
         metadata(path, mode=0o755, kind=stat.S_ISDIR)
@@ -519,7 +523,7 @@ def installed_authority(version, wheel):
         # systemd removes RuntimeDirectory when graphics is stopped.
         if os.path.lexists(path):
             metadata(path, runtime, shared, mode, stat.S_ISDIR)
-    if set(ROOT.iterdir()) != {MARKER, RELEASES, active}:
+    if set(ROOT.iterdir()) != {MARKER, RELEASES, active, *extra_roots}:
         raise InstallError("managed_authority_invalid")
 
 

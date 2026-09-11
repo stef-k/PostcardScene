@@ -15,11 +15,13 @@ from pathlib import Path
 # Reviewed #138/#139 input pins, checked against source by release-input validation.
 # These are installer inputs, not a release manifest or published-bundle schema.
 INPUT_HASHES = {
-    "install_inputs.py": "86407cfd44bce39be351efcf9680901c49c6273a54d20703a1b4bba257d3085f",
+    "install_inputs.py": "a1b8917c0d4c2cd10d998379355e3bde3ff39264e5dccb2f8e6db9865e797957",
     "install_services.py": "0974c2f102098dfcb5a6ab1a71d18930bd1b28bb02f4eab8e62e7065a2245ee8",
-    "install_host.py": "474c0d30e5292af452f329244cff492565ff2fc8187b7eb00e9d6483f21507a2",
-    "install_preflight.py": "aa36e36509abe82584243c6e80b6dca44b67ef6035c2fa82123896063aa84390",
-    "runtime-requirements.txt": "ca8eb8d430bd3d883523e592c99bec74c65c7537a765c52998001f0ae4c76d3a",
+    "install_host.py": "557689661b510ed02caf83dc7b9967a28d030e37c4d1f979e4174270e2bffa73",
+    "install_preflight.py": "634d686f7267e56a297b129a92acbcc7a28ca4b6ebf6532ef85de5334aa63b2f",
+    "install_update_state.py": "5979eea7b598c27b157e5f8f91230453d8d2430c1e2c613ea2f8ef3b53ece5d9",
+    "install_update.py": "d943a1d5c2fc4febcf11d5317e420f4ec78bbf985dd9269be8c778f693756b58",
+    "runtime-requirements.txt": "ad6fd58dc71d7fe2b6da10432cf8bd4ed3f485231f1ed72392aad9624de78deb",
 }
 
 
@@ -53,6 +55,8 @@ def load_support(bundle):
         "install_services.py",
         "install_host.py",
         "install_preflight.py",
+        "install_update_state.py",
+        "install_update.py",
     ):
         spec = importlib.util.spec_from_loader(
             "postcardscene_" + name[:-3], loader=None
@@ -60,7 +64,7 @@ def load_support(bundle):
         module = importlib.util.module_from_spec(spec)
         sys.modules[spec.name] = module
         exec(compile(inputs[name], name, "exec"), module.__dict__)
-        if name != "install_services.py":
+        if name in ("install_inputs.py", "install_host.py", "install_preflight.py"):
             modules.append(module)
         if name == "install_inputs.py":
             try:
@@ -77,6 +81,13 @@ def validate_inputs(bundle):
     except inputs.InstallError as error:
         raise InstallError(str(error)) from None
     return *validated, preflight, host
+
+
+def prepare_update(bundle, run=None):
+    """Internal #175 staging seam; no CLI action or recovery authorization."""
+    _, _, preflight, members = load_support(bundle)
+    update = sys.modules["postcardscene_install_update"]
+    return update.prepare_target(update.target_inputs(bundle, members), preflight, run)
 
 
 def validate_preserved_application(python, run):

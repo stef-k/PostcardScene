@@ -194,7 +194,8 @@ evidence. #143 retains final published-bundle manifest/member authentication.
 #161 freezes the [concrete update recovery gate](architecture/installation-recovery-and-operations.md#concrete-update-recovery-evidence-161):
 `verify(selected_archive) -> immutable VerifiedBackup`, carried with the selected
 path in memory and required to compare equal on later verification. Persisted
-backup status is advisory; #144 forward update remains unimplemented.
+backup status is advisory. #175 adds internal [pre-mutation update primitives](architecture/installation-recovery-and-operations.md#forward-update-preparation-175);
+public forward update remains unavailable until #176–#178 complete.
 
 ## Open architectural decisions
 
