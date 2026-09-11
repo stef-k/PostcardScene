@@ -38,9 +38,7 @@ def worker(action):
     from postcardscene.settings import ApplicationSettings, set_timezone
 
     database = STATE / "postcardscene.sqlite3"
-    if action == "backup":
-        backup_smoke()
-    elif action == "doctor":
+    if action == "doctor":
         doctor_layout()
     elif action == "socket":
         server = PanelControl(None, Event())
@@ -76,44 +74,6 @@ def worker(action):
             print("ready", flush=True)
             input()
         db.engine.dispose()
-
-
-def backup_smoke():
-    """Exercise the shipped CLI under the actual managed web UID and DAC."""
-    import tarfile
-
-    with tempfile.TemporaryDirectory(
-        prefix="postcardscene-backup-smoke-", dir="/tmp"
-    ) as temp:
-        command = ["/opt/postcardscene/venv/bin/postcardscene-backup"]
-
-        def invoke(*args):
-            result = subprocess.run(
-                command + list(args), capture_output=True, check=True, timeout=15
-            )
-            return json.loads(result.stdout)
-
-        identity = invoke("create", "--destination", temp)
-        archive = Path(temp) / identity["archive_filename"]
-        assert invoke("verify", str(archive)) == identity
-        assert invoke("list", "--destination", temp) == [
-            {"archive_filename": archive.name, "state": "verified"}
-        ]
-        with tarfile.open(archive) as content:
-            assert set(content.getnames()) == {
-                "postcardscene.sqlite3",
-                "config.py",
-                "session.key",
-                "backup-manifest.json",
-            }
-            assert content.extractfile("session.key").read() == KEY.read_bytes()
-            assert (
-                content.extractfile("config.py").read()
-                == Path("/etc/postcardscene/config.py").read_bytes()
-            )
-        for path in Path(temp).iterdir():
-            assert stat.S_IMODE(path.stat().st_mode) == 0o600
-    print("Managed web-UID manual backup create/verify/list passed.")
 
 
 def denied(operation):
@@ -429,7 +389,7 @@ def prepare_smoke_bundle(bundle, entrypoint):
     write_manifest(bundle, Path(sys.argv[1]).name.split("-")[1], sha)
 
 
-def lifecycle_smoke(entrypoint, installer, runtime, web, shared):
+def lifecycle_smoke(entrypoint, installer, runtime, web, shared, *, before_remove=None):
     # Runtime/web are real systemd services; graphics start alone is substituted
     # because this x86 VM has no supported seat/display. No ownership gate is bypassed.
     before = {
@@ -543,6 +503,8 @@ def lifecycle_smoke(entrypoint, installer, runtime, web, shared):
             env=host.ENV,
         )
         permissions(runtime, web, shared)
+        if before_remove is not None:
+            before_remove()
         entrypoint.Installation(bundle).remove()
         assert (
             host.service_state(preflight, "getty@tty1.service")["LoadState"] == "masked"
@@ -616,18 +578,9 @@ def main():
         env=installer.ENV,
     )
     service_smoke(installer, runtime, web)
-    from smoke_restore import restore_smoke
+    from smoke_recovery import recovery_smoke
 
-    restore_smoke()
-    child("backup", "postcardscene-web")
-    from smoke_scheduled_backup import scheduled_lifecycle
-
-    scheduled_lifecycle(
-        entrypoint,
-        installer,
-        preflight,
-        lambda: lifecycle_smoke(entrypoint, installer, runtime, web, shared),
-    )
+    recovery_smoke(entrypoint, installer, preflight)
     print(
         "Real two-UID SQLite/WAL/SHM, private key, panel socket and device/Wayland DAC passed."
     )

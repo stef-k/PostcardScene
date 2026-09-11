@@ -191,6 +191,11 @@ with closed distro package/seat authority. #140 implements the
 with explicit bootstrap, versioned activation and real two-UID Linux software
 evidence. #143 retains final published-bundle manifest/member authentication.
 
+#161 freezes the [concrete update recovery gate](architecture/installation-recovery-and-operations.md#concrete-update-recovery-evidence-161):
+`verify(selected_archive) -> immutable VerifiedBackup`, carried with the selected
+path in memory and required to compare equal on later verification. Persisted
+backup status is advisory; #144 forward update remains unimplemented.
+
 ## Open architectural decisions
 
 The following are intentionally unresolved until the owning issue has enough evidence:

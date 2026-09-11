@@ -419,11 +419,33 @@ version, SQLite application ID, schema revision and catalog classification. It i
 verification evidence only; #144 must reverify at use and #160 owns same-version
 restore authority. #165 exposes DB-only authenticated policy/status and private-
 snapshot doctor diagnostics; both remain advisory and perform no destination I/O.
-Managed destructive restore is implemented by #170 below; closure drills (#161)
-and updates (#144) remain separate work.
+Managed destructive restore is implemented by #170 below. #161 composes the
+installed recovery evidence; updates (#144) remain unimplemented.
 See [manual operations](../operations/installation.md#manual-sensitive-backups-158)
 for command usage, size limits and confidentiality responsibilities.
 
+
+### Concrete update recovery evidence (#161)
+
+The stable #144 gate is exactly `postcardscene.backup.verify(selected_archive)`
+returning the frozen `VerifiedBackup`. A recovery point is the **in-memory pair**
+`(selected archive path, freshly returned VerifiedBackup)`, with all seven identity
+fields listed above. There is no persisted recovery token or additional model.
+
+Immediately before a durable/schema-changing update gate, #144 must select a
+concrete path and invoke ordinary strict `verify()`. This reopens its sibling
+sidecar/archive through the bounded worker and checks final SHA, fixed structure,
+manifest/member hashes and DB identity/integrity. Even a newly created pre-update
+backup must pass this same seam; `create()`'s return is not a second update gate.
+Carry the path and immutable result through the attempt. Any later recheck must
+return the **same complete `VerifiedBackup`**; a valid replacement pair with a
+different identity cannot silently replace the selected recovery point.
+
+Persisted `last_success`, `/backup` and doctor state are advisory only and never
+select a recovery point or authorize mutation. #144 owns fresh creation versus an
+explicitly selected point with acceptable recency; no generic 24/48-hour threshold
+is frozen here. Verification does not authorize application/database downgrade;
+exact same-version/schema restore remains #160 authority. #161 adds no update code.
 
 ### Non-destructive restore intake (#169)
 
@@ -498,7 +520,11 @@ fail-stopped retirement. Successful activation enables/starts graphics/runtime/w
 enables the timer, releases the shared lock, then starts/requires the timer active
 regardless of backup policy. One engine covers in-place and exact-matching fresh
 replacement installation. Host-specific installation state remains untouched;
-#161 owns the later complete recovery drill, and #144 remains unimplemented.
+#161 exercises one canonical backup through in-place recovery and test-only host
+loss followed by a clean exact-release install and replacement-host recovery.
+The existing installed-Linux lane verifies original durable state and exact config/
+key bytes, catalog invalidation, scheduled retention and install/doctor authority.
+Only graphics activation is simulated; #144 remains unimplemented.
 
 
 ### Persisted backup policy and daily due state (#163)

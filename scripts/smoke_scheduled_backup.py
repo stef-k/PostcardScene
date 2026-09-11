@@ -14,16 +14,20 @@ TIMER = "postcardscene-backup.timer"
 
 def web_python(code, *args):
     web = pwd.getpwnam("postcardscene-web")
-    result = subprocess.run(
-        (PYTHON, "-I", "-B", "-c", code, *args),
-        user=web.pw_uid,
-        group=web.pw_gid,
-        extra_groups=[],
-        umask=0o077,
-        cwd="/",
-        capture_output=True,
-        timeout=30,
-    )
+    try:
+        result = subprocess.run(
+            (PYTHON, "-I", "-B", "-c", code, *args),
+            user=web.pw_uid,
+            group=web.pw_gid,
+            extra_groups=[],
+            umask=0o077,
+            cwd="/",
+            capture_output=True,
+            timeout=30,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        # Inline evidence code can contain private Source/configuration values.
+        raise AssertionError("Installed backup policy operation unavailable") from None
     assert result.returncode == 0, "Installed backup policy operation failed"
     return result.stdout
 
@@ -78,12 +82,31 @@ def scheduled_lifecycle(entrypoint, host, preflight, lifecycle):
         host.command(("/usr/bin/systemctl", "start", SERVICE))
         host.require_auxiliary_installed(preflight)
         assert not list(destination.iterdir())
+        # Exercise real retention with an older canonical pair and exact ignored
+        # incomplete/foreign names. The recovery drill's pair is elsewhere.
+        older = json.loads(
+            web_python(
+                "import json,sys; from dataclasses import asdict; "
+                "from postcardscene.backup import create; "
+                "print(json.dumps(asdict(create(sys.argv[1]))))",
+                temp,
+            )
+        )
+        ignored = {
+            "foreign": b"unowned",
+            "postcardscene-backup-20000101T000000000000Z-v0.1.0.dev0.tar.gz": b"incomplete",
+        }
+        for name, value in ignored.items():
+            (destination / name).write_bytes(value)
         policy(destination, True)
         host.command(("/usr/bin/systemctl", "start", SERVICE))
         captured = history()
         assert json.loads(captured)["last_result"] == "ready"
         before = {p.name: p.read_bytes() for p in destination.iterdir()}
-        assert len(before) == 2
+        assert len(before) == 4
+        assert not (destination / older["archive_filename"]).exists()
+        assert not (destination / (older["archive_filename"] + ".sha256")).exists()
+        assert all(before[name] == value for name, value in ignored.items())
         host.command(("/usr/bin/systemctl", "start", SERVICE))
         assert history() == captured
         assert before == {p.name: p.read_bytes() for p in destination.iterdir()}

@@ -439,7 +439,15 @@ remote destination is actually mounted before invoking the CLI; a path alone is
 not evidence of a particular remote mount. There is no mount command, credential
 management, cloud provider or fallback path. The destination filesystem must
 honor private file modes and support fsync and Linux atomic no-replace renames;
-unsupported operations fail before being considered a complete backup.
+unsupported operations fail before being considered a complete backup. For a new
+local destination, a host administrator can provision a private directory:
+
+```bash
+sudo install -d -o postcardscene-web -g postcardscene -m 0700 /srv/postcardscene-backups
+```
+
+For remote storage, establish and verify the mount first; do not run a directory-
+creation command on an absent mount and mistake local storage for remote backup.
 
 Each `postcardscene-backup-YYYYMMDDTHHMMSSffffffZ-v<version>.tar.gz` contains exactly:
 
@@ -451,8 +459,9 @@ Each `postcardscene-backup-YYYYMMDDTHHMMSSffffffZ-v<version>.tar.gz` contains ex
 | `backup-manifest.json` | Fixed v1 identity and DB/config/key sizes and SHA-256 hashes. |
 
 The database may contain media catalog rows, classified in the manifest as
-`regenerable_reconcile_required`. Restore-time invalidation/reconciliation belongs
-to #160. Original media, provider assets, browser profiles, caches/runtime files,
+`regenerable_reconcile_required`. Restore invalidates catalog rows/freshness and
+requires reconciliation. Original media, provider assets, browser profiles,
+caches/runtime files,
 logs, releases/venv, systemd/PAM assets and `service-conflicts.json` are excluded.
 Do not use this archive as a host image or a backup of external media libraries.
 
@@ -507,7 +516,7 @@ On an existing managed host, or after a clean installation of the **exact matchi
 release** on a replacement host, run:
 
 ```bash
-sudo /opt/postcardscene/venv/bin/postcardscene-backup restore /mounted/backups/postcardscene-YYYYMMDDTHHMMSSZ-IDENTITY.tar.gz
+sudo /opt/postcardscene/venv/bin/postcardscene-backup restore /mounted/backups/postcardscene-backup-20260910T120000000000Z-v0.1.0.dev0.tar.gz
 ```
 
 Use the actual archive filename and keep its sibling `.sha256` beside it. Root is
@@ -562,6 +571,39 @@ remain outside this command. Disposable Linux evidence simulates only graphics
 activation while exercising installed root/DAC, runtime/web and timer behavior.
 
 
+### Replacement-host recovery checklist (#161)
+
+1. Retain the selected archive **and its matching sibling `.sha256`** on protected
+   storage outside the lost host. Also retain the exact release bundle and its
+   external checksum authority. Neither backup nor restore supplies media or OS files.
+2. Provision a clean supported host and verify/install the **same exact release**
+   using the [normal installer](#managed-initial-installation-140). Bootstrap its
+   temporary administrator normally. Restore requires this fresh managed layout;
+   do not copy an old venv, users/groups, conflict record or unit files into it.
+3. Make the trusted pair accessible to root at an existing local/already-mounted
+   destination. Run `sudo /opt/postcardscene/venv/bin/postcardscene-backup verify`
+   followed by the actual archive path, then the root `restore` command above.
+   Restore performs its own strict intake; a prior doctor/status result is insufficient.
+4. After `restore_complete`, sign in with the **original backed-up administrator**.
+   Original settings, Sources, composition, schedule, backup policy, managed config
+   and signing key replace bootstrap state. Check trusted Hosts/network settings
+   because the original config returns too. Same-version/schema is mandatory;
+   installing older files is never a database downgrade procedure.
+5. Re-establish external media mounts and their host permissions separately. Catalog
+   rows and freshness are cleared deliberately: use Sources' **Refresh**
+   action once storage is available, and check reconciliation health before relying
+   on playback. Restore does not scan or assert that a NAS is reachable.
+6. Run `sudo /opt/postcardscene/venv/bin/postcardscene-doctor --json` and check
+   runtime/web/graphics services and `postcardscene-backup.timer`. Backup policy may
+   reference unavailable old storage; configure `/backup` for this host. A degraded
+   advisory row does not undo successful restore. For failed restore, follow the
+   fixed fail-stopped/manual-recovery outcomes above before restarting units.
+
+The installed-Linux drill preserves the same pair through both in-place recovery
+and a genuinely fresh installation of the same release. Its exact host-loss teardown
+is disposable test code only; there is no product purge/factory-reset command.
+This proves software/DAC recovery, not physical Pi/HDMI or NAS-server behavior.
+
 ## Scheduled backups and retention (#164)
 
 The managed installer always enables/starts `postcardscene-backup.timer`, including
@@ -578,7 +620,12 @@ journalctl -u postcardscene-backup.service
 The oneshot normally remains inactive between runs. Python uses the shared #163
 policy/timezone decision, owing at most today's local date after the configured
 hour. Disabled, before-hour and already-satisfied runs do no destination I/O.
-Unavailable policy/time fails safely. Destination/count/due date stay fixed for
+A skipped DST hour is caught by the next wake later that local day; a repeated
+hour does not create a second backup after that date succeeds. Downtime and forward
+clock jumps catch up only today's obligation, never every missed date. A backward
+jump does not repeat an already satisfied date; timezone changes use the current
+application timezone and retained local-date satisfaction. Unavailable policy/time
+fails safely. Destination/count/due date stay fixed for
 the run; policy changes take effect next invocation. Configure policy through
 the authenticated Backup page described below.
 
@@ -638,4 +685,14 @@ for backup status. There is no web backup-now, archive browser or download actio
 Persisted basename/time and doctor-ready are advisory history, not proof an archive
 still exists or recovery authority. Use concrete `postcardscene-backup verify`
 against the archive and sidecar for recovery evidence. Archives remain sensitive
-and unencrypted by PostcardScene; restore and update remain separate work.
+and unencrypted by PostcardScene.
+
+Future #144 forward updates must select a concrete archive and call ordinary strict
+`postcardscene.backup.verify(selected_archive)` immediately before durable/schema
+mutation, including when the update has just created a backup. The recovery point
+is the selected path plus the freshly returned immutable `VerifiedBackup` held in
+memory. Any later recheck must equal that complete identity (basename, final SHA-256,
+creation UTC, application version, SQLite application ID, schema revision and catalog
+classification). A different valid pair cannot be silently substituted. No persisted
+history/doctor result authorizes mutation, and no universal backup-age threshold is
+imposed here. Update implementation remains #144; restore is not downgrade.
