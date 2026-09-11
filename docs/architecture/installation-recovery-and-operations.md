@@ -5,7 +5,7 @@ Package bootstrap, shared persistence/migrations, reliability, release/install/u
 Read the [architecture entry point and map](../architecture.md) first. Together,
 the overview and linked subsystem documents form the architecture authority.
 
-Deployment instructions remain in [Installation and diagnostics](../operations/installation.md); product usage and setup remain in the [README](../../README.md).
+Deployment instructions remain in [Installation and diagnostics](../operations/installation.md); product usage and setup begin at the [documentation home](../index.md).
 
 ## Bootstrap package and tooling
 

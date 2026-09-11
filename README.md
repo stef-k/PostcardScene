@@ -6,6 +6,9 @@ The project grew from the idea of a sophisticated electronic photo frame, especi
 
 A useful mental model is a **living postcard**: a place, imagery, current context, and information presented together on a wall-mounted display.
 
+**[Read the documentation](https://stef-k.github.io/PostcardScene/)** for installation,
+configuration, everyday use and appliance operations.
+
 ## Goals
 
 - Run comfortably on a Raspberry Pi-class Linux device connected to a modern TV or monitor.

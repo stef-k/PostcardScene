@@ -1,0 +1,10 @@
+remote_theme: stef-k/.github@main
+
+plugins:
+  - jekyll-remote-theme
+
+title: PostcardScene
+description: Self-hosted ambient media and information display appliance.
+url: https://stef-k.github.io
+baseurl: /PostcardScene
+repository: stef-k/PostcardScene
