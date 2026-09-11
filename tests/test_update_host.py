@@ -19,7 +19,7 @@ pytestmark = pytest.mark.skipif(
 
 @pytest.fixture
 def managed(bundle, tmp_path, monkeypatch):
-    installer.load_support(bundle)
+    _, _, _, members = installer.load_support(bundle)
     update = sys.modules["postcardscene_install_update"]
     host = update.host
     root = tmp_path / "managed"
@@ -50,7 +50,6 @@ def managed(bundle, tmp_path, monkeypatch):
 
     monkeypatch.setattr(host, "trusted_parent", trusted_parent)
     monkeypatch.setattr(update.state_files, "trusted_parent", trusted_parent)
-    _, _, _, members = installer.load_support(bundle)
     target = update.target_inputs(bundle, members)
     current_version = target.version
     # A second release identity uses the same authentic source fixture wheel

@@ -8,8 +8,8 @@ see [Runtime and services](runtime.md); for graphics and panel operation, see
 [Display, rendering and panel control](display.md).
 
 Forward update is not yet an available installer command. #175 supplies internal
-recognition/staging and phase-file primitives only; recovery-backed migration and
-activation remain #176–#178. An interrupted staging attempt may leave an inactive
+recognition/staging and phase-file primitives; #176 adds the internal recovery-locked
+transaction through database commit. Public activation remains #177–#178. An interrupted staging attempt may leave an inactive
 target release or the reserved `update-state.json.postcardscene-update.new`
 scratch. Preserve uncertain content for inspection: ordinary install/remove do
 not adopt extra releases, and scratch is never proof of a committed update phase.
@@ -694,7 +694,7 @@ still exists or recovery authority. Use concrete `postcardscene-backup verify`
 against the archive and sidecar for recovery evidence. Archives remain sensitive
 and unencrypted by PostcardScene.
 
-Future #144 forward updates must select a concrete archive and call ordinary strict
+The internal #176 transaction selects a concrete archive and calls ordinary strict
 `postcardscene.backup.verify(selected_archive)` immediately before durable/schema
 mutation, including when the update has just created a backup. The recovery point
 is the selected path plus the freshly returned immutable `VerifiedBackup` held in
@@ -702,4 +702,32 @@ memory. Any later recheck must equal that complete identity (basename, final SHA
 creation UTC, application version, SQLite application ID, schema revision and catalog
 classification). A different valid pair cannot be silently substituted. No persisted
 history/doctor result authorizes mutation, and no universal backup-age threshold is
-imposed here. Update implementation remains #144; restore is not downgrade.
+imposed here. Public update completion remains #177–#178; restore is not downgrade.
+
+
+## Internal forward migration boundary (#176)
+
+This is an implementation boundary, not an available operator update command.
+After authenticated target staging, the transaction holds the existing backup/restore
+lock continuously. Normal selection creates a fresh old-version backup at the explicit
+destination or current policy destination, then strictly reverifies it. An explicit
+existing archive accepts its age but must match the old application/schema exactly.
+The snapshot does not include ordinary application writes after capture.
+
+`prepared` records successful recovery verification, not completed service shutdown.
+Every attempt must stop/disable the backup timer, stop its oneshot and stop/disable
+web/runtime/graphics before migration. Failed quiescence leaves old DB/assets/symlink
+and attempts every retirement step. A kill just after `prepared` can leave old services
+running; rerun must retire them and prove no managed UID processes remain.
+
+`migrating` is persisted before staged-target database upgrade/check. Interrupted
+old-head data requires a new strict recovery gate; exact target-head data may commit
+only after target check. Same-schema updates still run upgrade/check. Unknown,
+intermediate or corrupt data stays stopped for operator recovery. Before commit,
+existing old-version same-version restore remains available after the updater exits
+and releases the lock. The updater never invokes restore itself.
+
+`committed` is finish-forward only. Old assets/symlink remain intact in this slice,
+but old services must not restart against migrated data. Activation and full installed
+lifecycle evidence belong to #177/#178. Do not manually switch release bytes or delete
+phase authority to attempt rollback. No backup archive is deleted by this transaction.

@@ -24,6 +24,12 @@ SERVICE_SPEC = importlib.util.spec_from_file_location(
 services = importlib.util.module_from_spec(SERVICE_SPEC)
 sys.modules[SERVICE_SPEC.name] = services
 SERVICE_SPEC.loader.exec_module(services)
+COMMAND_SPEC = importlib.util.spec_from_file_location(
+    "postcardscene_install_command", ROOT / "install_command.py"
+)
+command_module = importlib.util.module_from_spec(COMMAND_SPEC)
+sys.modules[COMMAND_SPEC.name] = command_module
+COMMAND_SPEC.loader.exec_module(command_module)
 HOST_SPEC = importlib.util.spec_from_file_location(
     "test_install_host", ROOT / "install_host.py"
 )
