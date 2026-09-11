@@ -222,6 +222,7 @@ def test_reset_preserves_all_unrelated_durable_state(app, caplog):
 def test_known_diagnostics_and_errors_do_not_disclose_auth_values(
     app, monkeypatch, caplog
 ):
+    caplog.set_level("INFO")
     client = app.test_client()
     assert login(client).status_code == 302
     csrf = token(client, "/")
