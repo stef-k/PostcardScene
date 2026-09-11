@@ -124,6 +124,8 @@ SUPPORT_NAMES = (
     "install_host.py",
     "install_services.py",
     "install_preflight.py",
+    "install_update.py",
+    "install_update_state.py",
     "runtime-requirements.txt",
 )
 MANIFEST_NAME = "release-manifest.json"
@@ -152,6 +154,8 @@ def literal_assignments(data, names):
             continue
         target = node.targets[0]
         if isinstance(target, ast.Name) and target.id in names:
+            if target.id in values:
+                raise InstallError("duplicate_literal_identity")
             values[target.id] = ast.literal_eval(node.value)
     return values
 
@@ -172,18 +176,7 @@ def wheel_identity(data, version):
             "application_id": constants["APPLICATION_ID"],
             "alembic_head": constants["SCHEMA_REVISION"],
         }
-        revisions = {}
-        for name in wheel.namelist():
-            if name.startswith("postcardscene/migrations/versions/") and name.endswith(
-                ".py"
-            ):
-                values = literal_assignments(
-                    wheel.read(name), ("revision", "down_revision")
-                )
-                if "revision" in values:
-                    revisions[values["revision"]] = values["down_revision"]
-        if set(revisions) - set(revisions.values()) != {schema["alembic_head"]}:
-            raise InstallError("invalid_release_schema")
+        migration_graph(wheel, schema)
         if metadata["Version"] != version:
             raise InstallError("invalid_release_identity")
         return metadata["Requires-Python"], schema
@@ -244,3 +237,79 @@ def validate_manifest(bundle, pinned):
     if manifest["requires_python"] != python or manifest["schema"] != schema:
         raise InstallError("invalid_release_identity")
     return members
+
+
+def migration_graph(wheel, schema):
+    """Require the entire packaged graph to be one finite, unambiguous chain."""
+    revisions = {}
+    for name in wheel.namelist():
+        if not name.startswith(
+            "postcardscene/migrations/versions/"
+        ) or not name.endswith(".py"):
+            continue
+        values = literal_assignments(
+            wheel.read(name),
+            ("revision", "down_revision", "branch_labels", "depends_on"),
+        )
+        if not values and name.endswith("/__init__.py"):
+            continue
+        revision = values.get("revision")
+        parent = values.get("down_revision")
+        if (
+            not {"revision", "down_revision"}.issubset(values)
+            or values.get("branch_labels") is not None
+            or values.get("depends_on") is not None
+            or not isinstance(revision, str)
+            or not re.fullmatch(r"[a-zA-Z0-9_]{1,128}", revision)
+            or revision in revisions
+            or parent is not None
+            and not isinstance(parent, str)
+        ):
+            raise InstallError("invalid_release_schema")
+        revisions[revision] = parent
+    if (
+        type(schema["application_id"]) is not int
+        or schema["application_id"] != 0x5053434E
+        or not isinstance(schema["alembic_head"], str)
+    ):
+        raise InstallError("invalid_release_schema")
+    visited = set()
+    cursor = schema["alembic_head"]
+    while cursor is not None:
+        if cursor not in revisions or cursor in visited:
+            raise InstallError("invalid_release_schema")
+        visited.add(cursor)
+        cursor = revisions[cursor]
+    if visited != set(revisions):
+        raise InstallError("invalid_release_schema")
+    return revisions
+
+
+def inspect_wheel(data, filename, assets):
+    """Complete stored/target wheel identity, with no archived code execution."""
+    version = validate_wheel(data, filename, assets)
+    python, schema = wheel_identity(data, version)
+    with zipfile.ZipFile(io.BytesIO(data)) as wheel:
+        graph = migration_graph(wheel, schema)
+    return {
+        "version": version,
+        "wheel_sha256": hashlib.sha256(data).hexdigest(),
+        "requires_python": python,
+        "schema": schema["alembic_head"],
+        "application_id": schema["application_id"],
+        "revisions": graph,
+    }
+
+
+def require_forward_schema(current, target):
+    # Shared revision names also retain their ancestry; equal heads cannot hide
+    # a divergent predecessor graph. No live database is opened here.
+    if (
+        current["application_id"] != target["application_id"]
+        or current["schema"] not in target["revisions"]
+        or any(
+            target["revisions"].get(r, False) != p
+            for r, p in current["revisions"].items()
+        )
+    ):
+        raise InstallError("incompatible_update_schema")

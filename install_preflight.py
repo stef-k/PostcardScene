@@ -363,7 +363,7 @@ def storage_check(host, installation="clean"):
 
         path = Path(root)
         for ancestor in reversed(
-            path.parents if installation == "preserved" else (path, *path.parents)
+            path.parents if installation != "clean" else (path, *path.parents)
         ):
             if not host.exists(str(ancestor)):
                 continue
@@ -433,11 +433,15 @@ def service_check(host, seat, installation="clean"):
         ):
             raise Rejected("existing_installation_unrecognized")
     # systemd can retain inactive not-found entries after daemon-reload.
-    allowed = set(UNITS) if installation == "preserved" else set()
+    allowed = set(UNITS) if installation != "clean" else set()
     if unit_names(host) - allowed:
         raise Rejected("existing_service_unrecognized")
     for unit in UNITS:
         state = service_state(host, unit)
+        if installation == "installed_managed":
+            if state["LoadState"] != "loaded":
+                raise Rejected("existing_service_unrecognized")
+            continue
         if (
             state["LoadState"] != "not-found"
             or state["ActiveState"] != "inactive"
@@ -536,10 +540,10 @@ def chromium_snap(host):
 
 def preflight(host=None, *, seat="logind", installation="clean"):
     # Internal prerequisite reuse only. The installer must separately recognize
-    # removed_preserved before requesting this mode; the CLI exposes no switch.
+    # removed_preserved/installed_managed before these modes; no CLI switch.
     host = host or Host()
     try:
-        if installation not in ("clean", "preserved"):
+        if installation not in ("clean", "preserved", "installed_managed"):
             raise Rejected("unsupported_installation_mode")
         if seat not in ("logind", "seatd"):
             raise Rejected("unsupported_seat_authority")
@@ -552,12 +556,20 @@ def preflight(host=None, *, seat="logind", installation="clean"):
         seat_packages = ("seatd",) if seat == "seatd" else ()
         for package in packages + seat_packages:
             package_available(host, package, distro, release)
+        if installation == "installed_managed" and any(
+            not package_status(host, package) for package in packages + seat_packages
+        ):
+            raise Rejected("update_prerequisites_missing")
         tools = tuple(tool_check(host, p, e) for p, e in TOOLS)
         browser = (
             chromium_snap(host)
             if distro == "ubuntu"
             else tool_check(host, "chromium", "chromium")
         )
+        if installation == "installed_managed" and any(
+            tool.state != "installed" for tool in (*tools, browser)
+        ):
+            raise Rejected("update_prerequisites_missing")
         return Result(
             True,
             (),
