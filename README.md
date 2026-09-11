@@ -131,7 +131,8 @@ packaged services. Repeat invocations fail closed without resetting credentials.
 preserving configuration, durable DB/admin state, private signing key and identities.
 Use the installed [read-only doctor](docs/operations/installation.md#installed-read-only-diagnostics-141)
 for bounded host diagnostics. Published bundles require [external checksum and manifest verification](docs/operations/installation.md#verified-github-release-bundles-143); [forward update](docs/operations/installation.md#managed-forward-update-177) is available;
-installed update lifecycle evidence remains #178.
+the single installed-Linux lane covers a CI-only synthetic predecessor and
+interrupted forward recovery (see the linked guide for provenance and limits).
 Privileged Linux CI proves two-UID software permissions, not physical Pi support.
 
 ## Development

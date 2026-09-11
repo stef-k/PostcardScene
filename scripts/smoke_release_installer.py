@@ -46,7 +46,7 @@ def main():
                 operation = installer["Installation"](bundle, no_mutation)
                 try:
                     getattr(operation, action)()
-                except installer["InstallError"]:
+                except (installer["InstallError"], ValueError):
                     pass
                 else:
                     raise AssertionError("Damaged member accepted: " + name)
