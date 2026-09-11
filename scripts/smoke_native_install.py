@@ -389,7 +389,7 @@ def prepare_smoke_bundle(bundle, entrypoint):
     write_manifest(bundle, Path(sys.argv[1]).name.split("-")[1], sha)
 
 
-def lifecycle_smoke(entrypoint, installer, runtime, web, shared):
+def lifecycle_smoke(entrypoint, installer, runtime, web, shared, *, before_remove=None):
     # Runtime/web are real systemd services; graphics start alone is substituted
     # because this x86 VM has no supported seat/display. No ownership gate is bypassed.
     before = {
@@ -503,6 +503,8 @@ def lifecycle_smoke(entrypoint, installer, runtime, web, shared):
             env=host.ENV,
         )
         permissions(runtime, web, shared)
+        if before_remove is not None:
+            before_remove()
         entrypoint.Installation(bundle).remove()
         assert (
             host.service_state(preflight, "getty@tty1.service")["LoadState"] == "masked"

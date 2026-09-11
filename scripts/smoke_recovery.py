@@ -224,13 +224,19 @@ def recovery_smoke(entrypoint, host, preflight):
         authority(host, preflight, version, wheel)
         host.command(("/usr/bin/systemctl", "stop", *host.SERVICES))
         runtime, web, shared, _ = host.preserved_identities()
+
+        def recheck_recovery():
+            assert verify(archive) == identity
+            assert pair == {p.name: p.read_bytes() for p in destination.iterdir()}
+
         scheduled_lifecycle(
             entrypoint,
             host,
             preflight,
-            lambda: lifecycle_smoke(entrypoint, host, runtime, web, shared),
+            lambda: lifecycle_smoke(
+                entrypoint, host, runtime, web, shared, before_remove=recheck_recovery
+            ),
         )
-        assert verify(archive) == identity
         assert pair == {p.name: p.read_bytes() for p in destination.iterdir()}
         lost_host(entrypoint, bundle, host, preflight, version, wheel)
         assert inputs == {p.name: p.read_bytes() for p in bundle.iterdir()}
