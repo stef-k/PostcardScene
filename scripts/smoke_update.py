@@ -14,6 +14,7 @@ from pathlib import Path
 
 from release_bundle import extract_archive, verify_checksums
 from smoke_recovery import CONFIG, KEY, clean_install, lost_host, state
+from smoke_update_migration import ancestor_migration
 
 PHASE = Path("/opt/postcardscene/update-state.json")
 ACTIVE = Path("/opt/postcardscene/venv")
@@ -171,6 +172,7 @@ def main():
                 root / f"backups-{interrupted}",
                 interrupted=interrupted,
             )
+        ancestor_migration(target_entry, target)
     print(
         "Installed Linux software authority only; no ARM64/Pi/HDMI/4K/acceleration/audio proof."
     )

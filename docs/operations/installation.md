@@ -810,8 +810,8 @@ then runs uninterrupted and SIGKILL-resumed public updates at staging, prepared,
 migrating and committed boundaries. Systemd/runtime/web, locks, backup/reverify,
 database commands and doctor installation checks are real; x86 ARM64/package
 preflight and graphics activation/observation are substituted. Both versions have
-the same schema: upgrade/check prove a compatible no-op, with ancestor migration
-and finer interruption failures covered separately by root contracts.
+the same schema: upgrade/check prove a compatible no-op, with a separate installed-target ancestor fixture proving real migration
+and root contracts covering finer interruption failures.
 
 See the [#144 evidence audit](../architecture/installation-recovery-and-operations.md#managed-update-evidence-and-144-audit-178)
 for provenance and coverage. This is installed Linux software evidence, never

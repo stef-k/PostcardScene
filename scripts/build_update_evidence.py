@@ -93,7 +93,7 @@ def main():
         "synthetic_commit": sha,
         "version": "0.0.0",
         "method": "local unpushed commit; normal clean-tree builder require_tag=False",
-        "limitation": "same-schema update; ancestor migration covered by root contracts",
+        "limitation": "same-schema update; ancestor migration uses separate installed-target fixture",
     }
     (output / "provenance.json").write_text(json.dumps(evidence, indent=2) + "\n")
     print(json.dumps(evidence), flush=True)

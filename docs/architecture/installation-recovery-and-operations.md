@@ -475,8 +475,8 @@ unknown-head, post-activation failure, partial retirement and timer/final cleanu
 coverage. No extra CI lane or historical release matrix is introduced.
 
 The first pair is same-schema: upgrade/check still execute, but this is not a
-cross-release schema transition. Existing recognized ancestor/root migration tests
-supply separate migration evidence. Future real releases should use the immediately
+cross-release schema transition. A separate installed-target fixture executes upgrade/check from recognized
+`0011_display_power_settings` to target head, preserving prior data. Future real releases should use the immediately
 previous supported release when available. The x86 preflight/graphics substitutions
 prove software authority only, never ARM64/Pi/HDMI/4K/acceleration/audio capability.
 
@@ -575,7 +575,7 @@ verification evidence only; #144 must reverify at use and #160 owns same-version
 restore authority. #165 exposes DB-only authenticated policy/status and private-
 snapshot doctor diagnostics; both remain advisory and perform no destination I/O.
 Managed destructive restore is implemented by #170 below. #161 composes the
-installed recovery evidence; installed update evidence follows #178 below.
+installed recovery evidence; installed update evidence is described in #178 above.
 See [manual operations](../operations/installation.md#manual-sensitive-backups-158)
 for command usage, size limits and confidentiality responsibilities.
 
@@ -679,7 +679,7 @@ replacement installation. Host-specific installation state remains untouched;
 loss followed by a clean exact-release install and replacement-host recovery.
 The existing installed-Linux lane verifies original durable state and exact config/
 key bytes, catalog invalidation, scheduled retention and install/doctor authority.
-Only graphics activation is simulated; installed update evidence follows #178 below.
+Only graphics activation is simulated; installed update evidence is described in #178 above.
 
 
 ### Persisted backup policy and daily due state (#163)
