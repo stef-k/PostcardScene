@@ -315,3 +315,86 @@ Potential privileged/device operations include:
 Prefer normal Linux group/device permissions where possible. If elevation is necessary, use a narrowly scoped helper/service exposing only exact allowlisted operations and validated arguments.
 
 Subprocesses should be invoked with argument vectors rather than untrusted shell construction. Avoid `shell=True` for application-controlled external commands.
+
+## V0 trust-boundary audit (#134)
+
+This implementation audit starts from `b10808db4c669cf0597a70fb1ef6f7165aa95d23`
+and consumes #22/#64/#83/#111/#124/#125/#131–#133. It covers shipped capabilities,
+including those awaiting runtime/physical integration; it does not certify a
+release candidate, dependencies, artifacts or backups (#135). Outcomes are
+`clear`, `hardened here`, `blocking issue required`, and `physical evidence`.
+Test paths below are relative to `tests/`; they identify regression evidence,
+not physical device proof.
+
+| Boundary / ingress | Validator / owner | Authority granted | Process / UID boundary | Public diagnostic exposure | Regression evidence | Outcome |
+| --- | --- | --- | --- | --- | --- | --- |
+| Web Source URL and detached target | `web_selection` exact URL-only schema; `WebRenderer`; Chromium caller/final-URL validation | HTTP/HTTPS navigation, including intentional LAN/loopback targets; no userinfo, extra headers, cookie/token injection or arbitrary CDP | Untrusted runtime Chromium; no Flask browser work | URL hidden from target repr and renderer errors; full URL only in authenticated Source management | `test_web_selection.py`, `test_web_sources.py`, `test_web_renderer.py` | `clear` |
+| Browser startup/profile/CDP | `ChromiumLaunchSpec`, context-marked `Profile`, `_cdp.PageControl` | One private profile/process/control session; deny downloads before content; reject caller file/script/data/extension/internal schemes; no broad file-access flags | Distinct trusted-image/untrusted-web roots and groups; runtime UID, separate from web signing authority; minimal child environment | No URL/profile/token/CDP port or raw browser output; private CDP logger does not propagate | `test_chromium.py` profile, launch isolation, malformed metadata/protocol and cleanup cases; download-order/environment assertions strengthened here | `clear` |
+| Filesystem Source form/catalog identity | `PathPolicy`, `validate_source`, descriptor-relative traversal; `mounted_source` deepest NFS/NFS4/CIFS coverage | Read only beneath trusted roots; no descendant symlinks/special files; no mount command or root-policy edit in Flask | DB-only control health; runtime catalog and spawned mounted operations | Authenticated Source forms show configured paths; anonymous requests and health/error rows do not disclose them | `test_filesystem_source.py`, `test_local_directory.py`, `test_mounted_source.py`, `test_sources.py` | `clear` |
+| Image/video bytes and catalog metadata | Shared no-follow `open_image_item` / `_open_media_item`; fresh Source snapshots; pinned-file mount check | Selected regular file only; image token routes or inherited video FD, never arbitrary media path API | Runtime-owned helpers; private image loopback server and mpv socketpair; no Flask media serving | Fixed failures, no original path/token in HTTP errors or access logs | `test_image_safe_open.py`, `test_image_delivery.py`, `test_video_file.py`; `test_catalog_metadata.py` decoder-open race and mounted-local rejection | `hardened here`: metadata now uses the existing pinned opener instead of reopening a checked pathname |
+| Installed identities, DB and panel socket | Versioned units; `install_host.preserved_identities`; doctor identity checks; `PanelControl` / `panel_client` | Shared SQLite/WAL/SHM and fixed `status`, `test_on`, `test_off` protocol; no endpoint replacement | `postcardscene-web:postcardscene` versus runtime `postcardscene`; web has no supplementary device groups, capabilities or Wayland access; parent 0750, socket 0660 | Closed panel vocabulary only; no device selector/backend argument crosses the socket | `test_web_service.py`, `test_panel_control.py`, `test_display_ui.py`, `test_doctor.py`; existing `scripts/smoke_native_install.py` two-UID Linux lane | `clear` for software; device behavior is `physical evidence` |
+| Config, status, errors and logs | Trusted config loader; typed runtime/status results; production `safe_diagnostics`; auth/recovery and doctor owners | Host configuration is executable host authority, never web-editable; public results grant no new authority | Signing key private to web; runtime configuration contains only its selected fields; no full parent environment to graphics children | No signing/password/hash/session/cookie/CSRF authority, raw CEC/DDC selectors, arbitrary environment, subprocess output or secret command lines in application diagnostics | `test_auth.py::test_known_diagnostics_and_errors_do_not_disclose_auth_values`, `test_web_server.py`, `test_runtime_service.py`, `test_configuration.py`, `test_resource_health.py`, `test_power_command.py`, `test_doctor.py` | `clear` |
+
+### Complete application-owned subprocess inventory
+
+The audit inspected Python `subprocess`, `multiprocessing`, `os.execve` and the
+packaged systemd/labwc launch assets, including indirect users of shared runners.
+Every external invocation is an argument vector; none uses `shell=True` or
+constructs an untrusted shell program. Trusted host executable/package choices
+are separate from Source/Widget/HTTP input. Python `-c` installation snippets are
+fixed shipped code, not user command strings. Build/CI smoke scripts are tooling,
+not V0 appliance entry points. Existing privileged lifecycle commands are listed
+for completeness only; #134 adds no root command, sudo rule or setuid helper.
+
+| Family / ingress | Validator / owner and granted authority | Process / UID | Output and cleanup boundary | Regression evidence | Outcome |
+| --- | --- | --- | --- | --- | --- |
+| Chromium (`chromium/_launch.py`) / host launch spec, validated target | Absolute package launcher, code-owned flags, private profile; URL travels only over private CDP | Runtime, separate pinned process group per context | stdout/stderr discarded; failed group retirement retains profile/process ownership and blocks replacement | `test_chromium.py`, `test_web_renderer.py` | `clear` |
+| mpv playback (`video_player.py`) / pinned media FD and audio policy | `command_words`, read-only regular FD, `AudioPolicy`/`intended_device`; no config/scripts/autoload/references; fixed IPC operations | Runtime, pinned process group, inherited media and socketpair FDs only | No media filename in argv; stdout/stderr discarded; cleanup uncertainty prevents replacement | `test_video_player.py`, `test_video_file.py` | `clear` |
+| mpv surface probe (`mpv_probe.py` through `_capability.HelperProcess`) / host launcher | Inert native-Wayland surface; no media/audio/scripts | Runtime pinned group | Capped private Wayland trace, fixed status; retained cleanup authority | `test_graphics_helpers.py`, `test_graphics_surfaces.py` | `clear` |
+| GTK overlay (`overlay.py` through `HelperProcess`) / fixed helper and control state | Absolute system Python, packaged helper, bounded closed JSON/action protocol | Runtime pinned group, private inherited pipes | stderr discarded; protocol text never rendered as an error; failed retirement blocks launch | `test_graphics_helpers.py`, `test_graphics_input.py`, `test_controls.py` | `clear` |
+| labwc and input emitter (`graphics/cli.py`, packaged XML/systemd) / host seat and local keys | Fixed `execve` vector, packaged config, allowlisted seat environment; fixed emitter path plus one typed action; no autostart/shutdown commands | Graphics/runtime UID; input socket inside owner-only 0700 Wayland root | Launcher/emitter failures fixed; labwc's own journal output is host diagnostics, not a public application feed; systemd owns cgroup retirement | `test_graphics_session.py`, `test_graphics_input.py`, `test_runtime_service.py` | `clear`; real seat/device behavior is `physical evidence` |
+| wlr-randr (`output_probe.run_command`) / selected HDMI connector and advertised mode | Fixed `/usr/bin/wlr-randr`; bounded connector/mode parsing; output owner and shared mutation guard | Runtime; doctor may query only under appropriate runtime identity | Capped stdout, discarded stderr, safe connector/mode codes only; failed reaping is fatal shared cancellation before guard release | `test_graphics_output_command.py`, `test_graphics_output.py`, `test_output_monitor.py` | `clear` |
+| CEC, DDC, signal (`power/_command.py`) / host selectors and panel intent | Fixed cec-ctl/ddcutil/wlopm; bounded `/dev/cecN`, DDC number/bus, selected HDMI-A-N; TV power, D6, or signal operations only | Runtime device groups; never Flask; signal shares output mutation guard | Capped capture/private signal trace; fixed result vocabulary; unreaped command latches owner against another command/backend | `test_power_command.py`, `test_power_backends.py`, `test_panel_coordinator.py` | `clear`; physical confirmation is `physical evidence` |
+| Mounted scan/metadata, image-frame, mounted-video helpers (`mounted_source.py`, `image_delivery.py`, `video_file_worker.py`) / validated Source and selection | Fixed Python spawn targets, shared path authority; image helper token routes; video SCM_RIGHTS transfer | Runtime children, private Pipe/socketpair; image listener loopback only | Fixed IPC failures; bounded terminate/join/kill; incomplete traversal never authorizes deletion; unreapable read helper is an error, not successful cleanup | `test_mounted_source.py`, `test_catalog_metadata.py`, `test_image_delivery_lifecycle.py`, `test_video_file.py` | `hardened here` for metadata read authority; other launch contracts `clear` |
+| Doctor child and systemctl query (`doctor/bounded.py`) / closed check identifiers | Fixed check functions/unit names; systemctl show and read-only graphics query; no dynamic config execution | Invoking host identity; no impersonation/device escalation | Child stdout/stderr suppressed; capped tool result, closed schema; check process group killed at deadline | `test_doctor.py` | `clear` |
+| Backup worker and restore systemctl (`backup/__init__.py`, `restore_host.py`) / owned operation/path | Fixed isolated Python module and operation; fixed managed unit set; destination validation remains #27 | Existing web-UID CLI/oneshot; restore is explicit root host operation, never Flask | Worker stderr discarded, bounded result pipe; inherited mutation lock prevents duplicate mutators; restore failure remains fail-stopped | `test_backup.py`, `test_backup_scheduled.py`, `test_restore_host.py`, `test_restore_execution.py` | `clear` for launch boundary; archive/recovery audit excluded |
+| Native preflight (`install_preflight.Host.command`) / fixed host/package/tool queries | Closed distro/tool/package selectors; systemd-detect-virt, dpkg/dpkg-query, apt-cache, systemctl, snap, Python/GI and tool-version probes | Existing host-admin preflight | Minimal environment, capped capture and fixed reports; group cleanup on exit/deadline | `test_install_preflight.py` | `clear` |
+| Managed install/remove/update (`install_command.command`, `install_host`, `install_services`, `install_update*`) / authenticated shipped lifecycle code | Fixed apt-get/snap, user/group provisioning, systemd-tmpfiles/systemctl, isolated Python venv/pip/Flask/schema helpers; package/path/phase authority owned by #26 | Existing root CLI; explicit runtime/web child UID with supplementary groups cleared | Noninteractive output discarded or bounded; interactive admin password prompt never puts password in argv; fixed CLI errors; inherited update/recovery lock and fail-stopped phase ownership | `test_native_install.py`, `test_update_transaction.py`, `test_update_recovery.py`, installed-Linux lane | `clear` for launch boundary; artifact/update audit excluded |
+
+### Findings and deliberate residual limits
+
+The local finding is a check/open race in catalog image metadata: Pillow formerly
+received a pathname after validation. A regression reproduced reading an outside
+image when that name became a symlink. Metadata now passes the existing pinned
+no-follow stream to Pillow, checks the opened mount for mounted Sources and
+rechecks that descriptor's freshness. No new filesystem policy or decoder exists.
+The audit found no substantial finding requiring a blocking issue.
+
+LAN/loopback web targets are intentional browser network authority. Normal page
+scripts and browser-origin rules still apply; V0 supplies neither a network
+allowlist nor a server-side fetch/proxy/scanner. Do not configure credentials in
+URLs or sign the kiosk into administration. One replaceable untrusted profile
+shares ordinary site state across Sources; there is no per-Source isolation or
+supported login/session provisioning.
+
+Loopback CDP is private from the LAN and application API, **not Unix-UID-authenticated**.
+Its random port and protected metadata do not constitute isolation from malicious
+local host processes. Trusted/untrusted browser groups run under the same runtime
+UID; OS/browser compromise, hostile host administrators and local process inspection
+are outside this frozen boundary. Browser sandbox/TLS protections are not disabled;
+the URL validator and profile separation are not a generic OS sandbox.
+
+Host-controlled media roots/ancestors and Linux mount administration remain trusted.
+The deepest mount and pinned-file checks reject local fallthrough, but do not
+authenticate server/export identity at the same mountpoint or freeze in-place
+file writes. Read-only helpers cannot be guaranteed reapable during kernel
+uninterruptible sleep; they report incomplete/error and rely on outer host/service
+recovery. Mutable renderer/panel/output ownership instead fails stopped as above.
+
+Application diagnostics discard or sanitize child output. The directly exec'd
+labwc service retains native protected journald diagnostics under #62; it receives
+fixed launch/configuration authority, not configured URL/password arguments.
+Do not expose that journal, private profiles or process command lines as a public
+status feed. #66/#116/#127 retain real package, seat, device, HDMI and panel evidence;
+software tests and the installed-Linux lane cannot close those gates. #135 retains
+exact-candidate security/dependency closure.

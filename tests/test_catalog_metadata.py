@@ -143,6 +143,26 @@ def test_metadata_does_not_follow_replacement_at_decoder_open(catalog, monkeypat
     assert inspected == [(20, 10)]
 
 
+def test_metadata_rejects_local_file_for_mounted_source(catalog, monkeypatch):
+    from postcardscene.filesystem_source import MediaEntry
+
+    _, _, root, policy = catalog
+    path = root / "image.jpg"
+    Image.new("RGB", (20, 10)).save(path)
+    info = path.stat()
+    entry = MediaEntry("image.jpg", "image", info.st_size, info.st_mtime_ns)
+
+    def no_decode(*args, **kwargs):
+        pytest.fail("Local mountpoint fallback reached the decoder")
+
+    monkeypatch.setattr(Image, "open", no_decode)
+    result = metadata.inspect_image(
+        "mounted_directory", {"path": str(root), "recursive": True}, policy, entry
+    )
+    assert result.status == "error"
+    assert result.width is None
+
+
 def _mounted(catalog):
     from postcardscene.domain import Source
 
