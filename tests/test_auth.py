@@ -10,10 +10,12 @@ from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 
 from postcardscene.accounts import Administrator, set_password
+from postcardscene.configuration import load_runtime_config
 from postcardscene.doctor import Report, bounded
 from postcardscene.domain import SOURCE_KINDS, WIDGET_KINDS
 from postcardscene.filesystem_source import PathPolicy, validate_source
 from postcardscene.image_selection import validate_image_configuration
+from postcardscene.panel_client import _decode
 from postcardscene.persistence import Base, Database, DatabaseError
 from postcardscene.schema import migration_config, upgrade_database
 from postcardscene.session_secret import initialize_secret, read_secret
@@ -260,6 +262,10 @@ def test_known_diagnostics_and_errors_do_not_disclose_auth_values(
     )
     assert result.exit_code != 0
     rendered += result.output + caplog.text
+    with pytest.raises(ValueError) as error:
+        _decode(json.dumps({"version": 1, "outcome": injected, "status": {}}))
+    rendered += str(error.value)
+    assert app.secret_key not in rendered.encode()
     assert all(value not in rendered for value in values)
 
 
@@ -267,6 +273,8 @@ def test_known_diagnostics_and_errors_do_not_disclose_auth_values(
     "field", ["password", "api_key", "bearer_token", "client_secret", "credentials"]
 )
 def test_v0_semantic_configuration_has_no_provider_credential_fields(tmp_path, field):
+    assert field.upper() not in create_app().config
+    assert field.upper() not in load_runtime_config()
     secret = {field: "test-only provider value"}
     validators = (
         lambda: validate_source(
@@ -294,3 +302,27 @@ def test_v0_semantic_configuration_has_no_provider_credential_fields(tmp_path, f
         "session_id",
     }
     assert not any(field in table.columns for table in Base.metadata.tables.values())
+
+
+@pytest.mark.parametrize("damage", ["missing", "corrupt"])
+def test_recovery_requires_existing_signing_authority(app, damage):
+    database = app.extensions["postcardscene.database"]
+    with sqlite3.connect(database.path) as connection:
+        before = tuple(connection.iterdump())
+    path = app.config["SESSION_SECRET_PATH"]
+    if damage == "missing":
+        path.unlink()
+    else:
+        path.write_bytes(b"corrupt authority")
+    result = app.test_cli_runner().invoke(
+        args=["auth", "reset-password", "--username", "admin"],
+        input=f"{PASSWORD}\n{PASSWORD}\n",
+    )
+    assert result.exit_code != 0
+    assert PASSWORD not in result.output
+    with sqlite3.connect(database.path) as connection:
+        assert tuple(connection.iterdump()) == before
+    if damage == "missing":
+        assert not path.exists()
+    else:
+        assert path.read_bytes() == b"corrupt authority"
