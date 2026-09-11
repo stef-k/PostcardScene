@@ -24,7 +24,11 @@ _PRODUCTION_WORKER = mounted._mounted_worker
 
 def _healthy_worker(connection, configuration, policy, operation):
     info = f"1 0 0:1 / {policy.allowed_roots[0]} rw - nfs server:/export rw\n"
-    with patch.object(Path, "read_text", return_value=info):
+
+    def mount_text(path):
+        return "mnt_id:\t1\n" if path.parent == Path("/proc/self/fdinfo") else info
+
+    with patch.object(Path, "read_text", mount_text):
         _PRODUCTION_WORKER(connection, configuration, policy, operation)
 
 
@@ -45,7 +49,9 @@ def _metadata_mount_loss(connection, configuration, policy, operation):
     if not isinstance(operation, tuple):
         return _healthy_worker(connection, configuration, policy, operation)
     info = f"1 0 0:1 / {policy.allowed_roots[0]} rw - cifs server:/export rw\n"
-    with patch.object(Path, "read_text", side_effect=[info, info, ""]):
+    with patch.object(
+        Path, "read_text", side_effect=[info, info, "mnt_id:\t1\n", info, ""]
+    ):
         _PRODUCTION_WORKER(connection, configuration, policy, operation)
 
 
@@ -101,22 +107,40 @@ def test_freshness_race_leaves_pending(catalog, monkeypatch):
     _, _, root, _ = catalog
     path = root / "image.jpg"
     Image.new("RGB", (20, 10)).save(path)
-    resolve = metadata.resolve_item_path
-    calls = 0
+    open_image = Image.open
 
-    def changed_before_recheck(*args):
-        nonlocal calls
-        calls += 1
-        if calls == 2:
-            Image.new("RGB", (10, 40)).save(path)
-        return resolve(*args)
+    def changed_during_inspection(*args, **kwargs):
+        image = open_image(*args, **kwargs)
+        Image.new("RGB", (10, 40)).save(path)
+        return image
 
     with monkeypatch.context() as m:
-        m.setattr(metadata, "resolve_item_path", changed_before_recheck)
+        m.setattr(Image, "open", changed_during_inspection)
         scan(catalog)
     assert snapshot(catalog)["image.jpg"][1:5] == ("pending", None, None, None)
     scan(catalog)
     assert snapshot(catalog)["image.jpg"][1:5] == ("ready", 10, 40, "portrait")
+
+
+def test_metadata_does_not_follow_replacement_at_decoder_open(catalog, monkeypatch):
+    _, _, root, _ = catalog
+    path = root / "image.jpg"
+    Image.new("RGB", (20, 10)).save(path)
+    outside = root.parent / "private.jpg"
+    Image.new("RGB", (90, 80)).save(outside)
+    open_image = Image.open
+    inspected = []
+
+    def replace_before_decode(stream, **kwargs):
+        path.unlink()
+        path.symlink_to(outside)
+        image = open_image(stream, **kwargs)
+        inspected.append(image.size)
+        return image
+
+    monkeypatch.setattr(Image, "open", replace_before_decode)
+    scan(catalog)
+    assert inspected == [(20, 10)]
 
 
 def _mounted(catalog):
@@ -145,7 +169,7 @@ def test_mounted_catalog_metadata_never_opens_in_parent(catalog, monkeypatch):
 
     monkeypatch.setattr(r, "inspect_mounted_images", checked_batch)
     monkeypatch.setattr(Image, "open", forbidden)
-    monkeypatch.setattr(metadata, "resolve_item_path", forbidden)
+    monkeypatch.setattr(metadata, "open_image_item", forbidden)
     scan(catalog, metadata_batch_size=2)
     assert batches == [2, 2, 1]
     assert all(
