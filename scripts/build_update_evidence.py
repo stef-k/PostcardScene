@@ -25,6 +25,9 @@ def predecessor(output):
         def run(*args, **kwargs):
             return subprocess.run(args, cwd=source, check=True, timeout=300, **kwargs)
 
+        # A shallow CI checkout may have the baseline only in FETCH_HEAD; a
+        # clone does not promise to transfer objects unreachable from its refs.
+        run("git", "fetch", "--no-tags", "origin", BASELINE)
         run("git", "checkout", "--detach", BASELINE)
         project = source / "pyproject.toml"
         original = project.read_text()
