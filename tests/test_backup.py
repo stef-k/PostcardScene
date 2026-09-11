@@ -93,6 +93,22 @@ def test_fixed_sensitive_archive_round_trip_and_cli(built, capsys):
     assert before == {p.name: p.read_bytes() for p in path.parent.iterdir()}
 
 
+def test_valid_pair_substitution_changes_complete_recovery_identity(built):
+    scratch, path, _ = built
+    selected = backup.verify(path)
+    (scratch / "session.key").write_bytes(b"x" * 32)
+    (scratch / path.name).unlink()
+    substitute = archive.build(
+        scratch, datetime(2026, 9, 10, tzinfo=timezone.utc), "0.1.0.dev0", progress
+    )
+    path.write_bytes(substitute.read_bytes())
+    sidecar(path)
+    rechecked = backup.verify(path)
+    assert rechecked.archive_filename == selected.archive_filename
+    assert rechecked.archive_sha256 != selected.archive_sha256
+    assert rechecked != selected
+
+
 @pytest.mark.parametrize(
     "damage", ["missing", "wrong", "archive", "member", "manifest", "database"]
 )
