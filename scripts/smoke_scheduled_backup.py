@@ -14,16 +14,20 @@ TIMER = "postcardscene-backup.timer"
 
 def web_python(code, *args):
     web = pwd.getpwnam("postcardscene-web")
-    result = subprocess.run(
-        (PYTHON, "-I", "-B", "-c", code, *args),
-        user=web.pw_uid,
-        group=web.pw_gid,
-        extra_groups=[],
-        umask=0o077,
-        cwd="/",
-        capture_output=True,
-        timeout=30,
-    )
+    try:
+        result = subprocess.run(
+            (PYTHON, "-I", "-B", "-c", code, *args),
+            user=web.pw_uid,
+            group=web.pw_gid,
+            extra_groups=[],
+            umask=0o077,
+            cwd="/",
+            capture_output=True,
+            timeout=30,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        # Inline evidence code can contain private Source/configuration values.
+        raise AssertionError("Installed backup policy operation unavailable") from None
     assert result.returncode == 0, "Installed backup policy operation failed"
     return result.stdout
 
