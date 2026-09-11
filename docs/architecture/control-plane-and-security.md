@@ -168,12 +168,49 @@ Expected initial authority:
 
 Issue #15 uses a single SQLAlchemy administrator (explicit `0002_administrator` migration), Werkzeug scrypt hashes, Flask-Login strong session protection and Flask-WTF CSRF. Logout/reset rotate its revocable login identity; all sessions are revoked.
 
-Host CLI commands provision a protected persistent signing file and bootstrap/reset the administrator without database editing. Cookies are HttpOnly/SameSite=Lax, age-bounded to 12 hours; Secure is transport-derived in production and configurable for development. README owns setup/recovery details; #133 retains the remaining secret authority decisions.
+Host CLI commands provision a protected persistent signing file and bootstrap/reset the administrator without database editing. Cookies are HttpOnly/SameSite=Lax, age-bounded to 12 hours; Secure is transport-derived in production and configurable for development. [Managed recovery](../operations/runtime.md#local-administrator-recovery-133) owns the installed procedure; README covers development setup.
 
-The production transport is frozen below. Remaining security decisions include:
+### V0 secret authority and credential persistence (#133)
 
-- credential-at-rest strategy before long-lived third-party credentials are stored
-- master-key/secret recovery behavior
+V0 does not implement or permit persistence of long-lived third-party provider
+credentials: no provider passwords, API keys, bearer tokens, client secrets or
+similar credentials in SQLite, trusted `/etc/postcardscene/config.py`, URLs,
+Source/Widget JSON or any other persistence surface. Current semantic configuration
+validators accept only their owned fields; trusted executable host configuration
+and free-text URLs are not a secret detector. Operators must not embed credentials
+in URL paths, queries or fragments either. No feature may use these surfaces as a
+credential store. There is no encrypted credential table, vault, keyring, KMS or
+master-key hierarchy in V0.
+
+The first credentialed V1/V2 integration must introduce a separately reviewed
+credential-at-rest design under #29 security authority **before persistence**.
+It must define authenticated/encrypted storage, key authority, backup/recovery and
+re-entry for that concrete provider. The session signing key is not an encryption
+master key.
+
+The protected 32-byte signing file is the sole signing/verification authority.
+Configured `SECRET_KEY` and `SECRET_KEY_FALLBACKS` are non-authoritative. Missing
+keys fail normal requests closed; unsafe or corrupt keys fail startup. Ordinary
+startup never creates or replaces lost authority. Key loss/corruption is not
+password recovery: it requires explicit installation/recovery action. Initialization
+never replaces existing authority. Key bytes belong only in the protected file,
+process memory and the sensitive #27 archive, never SQLite, trusted config,
+command lines, logs/status/doctor output or release artifacts.
+
+Administrator passwords remain scrypt hash-only; the local host-authorized CLI
+prompts without echo and offers no plaintext persistence or web recovery bypass.
+Reset changes only the password hash and persisted session identity, revoking all
+previous browser sessions while preserving unrelated durable state. Errors and
+diagnostics must not disclose passwords/hashes, session identities, key bytes,
+session cookies or CSRF tokens. Browser cookies and CSRF form fields remain their
+intended protocol surfaces, not diagnostics.
+
+#27's unchanged sensitive recovery set classifies administrator password hash and
+session identity as durable SQLite state, `session.key` as durable sensitive secret
+authority needed for faithful signing continuity, and provider credentials as
+**none in V0**. Restore recovers matching database/key authority consistently;
+archive manifests contain only the existing identity/classification/checksums,
+never secret values.
 
 No external telemetry/analytics is enabled by default.
 
