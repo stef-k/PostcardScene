@@ -130,7 +130,7 @@ def retire_old(state, target, preflight):
     if os.path.lexists(old):
         host.validate_tree(old, 0, 0, payload=True, allow_missing_links=True)
         shutil.rmtree(old)
-        assets.sync(host.RELEASES)
+    assets.sync(host.RELEASES)
 
 
 def finish_locked(state, target, preflight, run):

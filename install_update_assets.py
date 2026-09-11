@@ -37,7 +37,7 @@ def replace_file(path, target, old=None):
     if inspect_file(path, target, old):
         if os.path.lexists(scratch(path)):
             scratch(path).unlink()
-            sync(path.parent)
+        sync(path.parent)
         return
     pending = scratch(path)
     if not os.path.lexists(pending):
@@ -49,8 +49,12 @@ def replace_file(path, target, old=None):
             os.fchmod(stream.fileno(), 0o644)
             stream.write(target)
             stream.flush()
-            os.fsync(stream.fileno())
     host.validate_asset(pending, target)
+    fd = os.open(pending, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
     os.replace(pending, path)
     sync(path.parent)
 
@@ -76,7 +80,7 @@ def replace_link(state):
     if converged:
         if os.path.lexists(pending):
             pending.unlink()
-            sync(host.ROOT)
+        sync(host.ROOT)
         return
     if not os.path.lexists(pending):
         pending.symlink_to(host.RELEASES / state.to_version / "venv")

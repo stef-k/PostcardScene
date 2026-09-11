@@ -3,6 +3,7 @@
 import json
 import os
 import sys
+from contextlib import contextmanager
 from dataclasses import replace
 
 import pytest
@@ -132,6 +133,7 @@ def test_committed_finishes_forward_under_one_lock(committed):
         "asset_sync",
         "retirement",
         "timer_enable",
+        "lock_release",
         "timer_start",
         "state_before",
         "state_after",
@@ -142,6 +144,7 @@ def test_hard_interruption_exact_target_rerun(committed, monkeypatch, boundary):
     assets = finish.assets
     replace_path, sync, rmtree = os.replace, assets.sync, finish.shutil.rmtree
     remove = finish.update.state_files.remove
+    mutation_lock = finish.transaction.recovery.mutation_lock
     fired = False
 
     def interrupt():
@@ -149,6 +152,13 @@ def test_hard_interruption_exact_target_rerun(committed, monkeypatch, boundary):
         if not fired:
             fired = True
             raise Killed
+
+    @contextmanager
+    def released():
+        with mutation_lock() as fd:
+            yield fd
+        if boundary == "lock_release":
+            interrupt()
 
     def replace_file(source, destination):
         kind = "link" if destination == finish.host.ROOT / "venv" else "asset"
@@ -197,6 +207,7 @@ def test_hard_interruption_exact_target_rerun(committed, monkeypatch, boundary):
         return result
 
     with monkeypatch.context() as patch:
+        patch.setattr(finish.transaction.recovery, "mutation_lock", released)
         patch.setattr(os, "replace", replace_file)
         patch.setattr(assets, "sync", synced)
         patch.setattr(finish.shutil, "rmtree", retire)
@@ -361,3 +372,46 @@ def test_asset_write_interruption_preserves_active_bytes(
     else:
         finish.assets.replace_file(asset, b"target-unit", b"old-unit")
         assert asset.read_bytes() == b"target-unit" and not pending.exists()
+
+
+def test_reused_scratch_is_fsynced_before_replace(committed, monkeypatch):
+    finish, target, _, _, _, _, _ = committed
+    asset = next(iter(finish.host.asset_bytes(target.wheel)))
+    pending = finish.assets.scratch(asset)
+    pending.write_bytes(b"target-unit")
+    inode = pending.stat().st_ino
+    events = []
+    fsync, replace_path = os.fsync, os.replace
+
+    def synced(fd):
+        if os.fstat(fd).st_ino == inode:
+            events.append("file-sync")
+        fsync(fd)
+
+    def replaced(source, destination):
+        events.append("replace")
+        replace_path(source, destination)
+
+    monkeypatch.setattr(os, "fsync", synced)
+    monkeypatch.setattr(os, "replace", replaced)
+    finish.assets.replace_file(asset, b"target-unit", b"old-unit")
+    assert events == ["file-sync", "replace"]
+
+
+def test_converged_rerun_persists_asset_and_release_parents(committed, monkeypatch):
+    finish, target, _, pf, run, _, _ = committed
+    state = finish.update.state_files.read()
+    finish.execute(target, pf, run=run)
+    # Simulate committed authority surviving final unlink on reboot.
+    finish.update.state_files.write(state)
+    synced = []
+    sync = finish.assets.sync
+
+    def persist(directory):
+        synced.append(directory)
+        sync(directory)
+
+    monkeypatch.setattr(finish.assets, "sync", persist)
+    finish.execute(target, pf, run=run)
+    expected = {p.parent for p in finish.host.asset_bytes(target.wheel)}
+    assert expected | {finish.host.ROOT, finish.host.RELEASES} <= set(synced)

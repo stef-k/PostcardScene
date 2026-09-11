@@ -25,8 +25,8 @@ INPUT_HASHES = {
     "install_update_recovery.py": "9f73ea1c7af10b1c9c7c87fe0c46fb0b0bcdc23ccc11c6f6ada20e7d26577743",
     "install_update_database.py": "6a165ead4c9911578be1d297d29aae8cfc7139287659197d1abfc4410cd9bc3a",
     "install_update_transaction.py": "0424baf5491f6f76147de1b0c40d8460f545fac579f1d3abaf37cb4dbba9cf2e",
-    "install_update_assets.py": "6d20e1fd1aca97b06c026b4e0512aa6bf284f8c57a9750d09958c40572b2e459",
-    "install_update_finish.py": "2a6fa977c2e3b34e2c491be228fc53c88563aeea1753a8b07662590c9cae6320",
+    "install_update_assets.py": "073f31cd9c404f5f9749eeb4583cc76425685df949b1625a109e690e80646a6c",
+    "install_update_finish.py": "36657eb38e8141f7c0dcf7210c3ded1f7fdf17629840a08bd4afe7a52c042a3c",
     "install_command.py": "dbacdbca6c89f46ea4d4cfd52c72cc3a74e4111cbaaf0de51dd74479d770a653",
 }
 
