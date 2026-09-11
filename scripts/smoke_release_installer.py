@@ -30,22 +30,30 @@ def main():
     def no_mutation(*args, **kwargs):
         raise AssertionError("Host mutation during manifest rejection")
 
-    try:
-        manifest["members"]["install.py"]["sha256"] = "0" * 64
-        manifest_path.write_text(json.dumps(manifest))
-        util.module_from_spec = only_validator
-        for action in ("install", "remove", "update"):
-            operation = installer["Installation"](bundle, no_mutation)
-            try:
-                getattr(operation, action)()
-            except installer["InstallError"] as error:
-                assert str(error) == "release_member_mismatch"
-            else:
-                raise AssertionError("Damaged manifest accepted")
-            assert operation.host is None
-    finally:
-        util.module_from_spec = module_from_spec
-        manifest_path.write_bytes(original)
+    # Every fixed helper and runtime requirement is pinned; other members are
+    # authenticated by the manifest. Exercise update on the actual extracted bytes.
+    for name in (
+        *installer["INPUT_HASHES"],
+        f"postcardscene-{version}-py3-none-any.whl",
+        "release-manifest.json",
+    ):
+        path = bundle / name
+        saved = path.read_bytes()
+        try:
+            path.write_bytes(saved + b"\ncorrupt")
+            util.module_from_spec = only_validator
+            for action in ("install", "remove", "update"):
+                operation = installer["Installation"](bundle, no_mutation)
+                try:
+                    getattr(operation, action)()
+                except (installer["InstallError"], ValueError):
+                    pass
+                else:
+                    raise AssertionError("Damaged member accepted: " + name)
+                assert operation.host is None
+        finally:
+            util.module_from_spec = module_from_spec
+            path.write_bytes(saved)
     result = subprocess.run(
         [sys.executable, "-I", "-B", str(bundle / "install.py"), "--help"],
         check=True,

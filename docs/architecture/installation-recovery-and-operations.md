@@ -219,6 +219,12 @@ install_services.py        # exact managed systemd host support #164
 install_preflight.py       # standalone read-only install support #139
 install_update.py          # internal pre-mutation update primitives #175
 install_update_state.py    # exact durable phase-file primitives #175
+install_command.py         # bounded managed subprocesses #176
+install_update_recovery.py # old-version recovery/shared flock #176
+install_update_database.py # interrupted DB identity #176
+install_update_transaction.py # quiescence/migration/commit #176
+install_update_assets.py   # atomic target assets/symlink #177
+install_update_finish.py   # activation/retirement/finalization #177
 release-manifest.json      # release child #143
 ```
 
@@ -414,7 +420,7 @@ and inherited mutation fd. `install_command` owns that shared subprocess boundar
 Only exact target application/version/ID/schema output permits `committed`. Migration
 failure preserves disabled units and old assets/symlink; after commit there is no
 old-app restart, automatic restore or downgrade. Public activation/cleanup follows #177 below; full
-installed update evidence remains #178. Existing #27 APIs and behavior are unchanged.
+installed update evidence is specified below. Existing #27 APIs and behavior are unchanged.
 
 
 ### Committed finish-forward update (#177)
@@ -445,8 +451,49 @@ no-device/no-hardlink safety, including confined dangling links after interrupte
 removal, rather than an intact old wheel. No other release path gains deletion
 permission. Timer enablement precedes shared-lock release; timer start/active
 verification follows it. Fsynced phase removal is last, and ordinary target-only
-installed classification is required for success. #178 owns installed lifecycle
-evidence; these contracts do not establish physical Pi/HDMI support.
+installed classification is required for success. These contracts do not establish
+physical Pi/HDMI support.
+
+
+### Managed update evidence and #144 audit (#178)
+
+The single PR-only Quality installed-Linux lane builds a CI-only `0.0.0`
+predecessor from immutable parent `fde2cd540220e53c19d726147aa8956f45ce0d91`.
+A separate temporary repository changes only `pyproject.toml` version and its
+`uv.lock` entry (runtime export stays byte-identical), then makes one local unpushed
+synthetic commit. Its unchanged normal builder runs with `require_tag=False` only
+through a test helper. Both SHAs and final archive checksums are recorded; no tag
+or historical release is created. The candidate uses its own normal release builder.
+
+External checksums precede extracted code execution. The target bundle's public
+CLI performs uninterrupted and SIGKILL-resumed updates with real two-UID durable
+state, shared flock, old-version creation/reverify, quiescence, exact staged-target
+upgrade/check, asset/symlink activation, doctor and final managed classification.
+The representative interruptions cover staging, prepared-before-stop, migrating,
+and committed target-symlink scratch. Focused root tests retain finer atomic-write,
+unknown-head, post-activation failure, partial retirement and timer/final cleanup
+coverage. No extra CI lane or historical release matrix is introduced.
+
+The first pair is same-schema: upgrade/check still execute, but this is not a
+cross-release schema transition. A separate installed-target fixture executes upgrade/check from recognized
+`0011_display_power_settings` to target head, preserving prior data. Future real releases should use the immediately
+previous supported release when available. The x86 preflight/graphics substitutions
+prove software authority only, never ARM64/Pi/HDMI/4K/acceleration/audio capability.
+
+#144 acceptance maps to #175 identity/staging/state contracts, #176 continuous
+recovery/quiescence/migration contracts, #177 committed finish-forward contracts,
+and #178 release/installed/interruption evidence plus operator/release documentation.
+The installed drill compares all non-catalog durable rows, exact config/key/conflict
+bytes and identities, retains recovery archives and requires target-only ordinary
+`installed_managed` authority. No update semantics are deferred to #145. Full Quality
+must pass on the delivery head before closure, and merge remains required before
+marking the child complete. #26 remains open for #145's later cross-epic candidate gate.
+
+Before `committed`, #160 old-version same-version recovery remains available only
+while old assets/symlink are authoritative and after the updater releases the lock.
+After `committed`, recovery is finish-forward only; old bytes cannot authorize
+rollback. `VerifiedBackup` stays in memory, never persisted authorization. Backup
+archives remain #27-owned and are never deleted by update cleanup.
 
 
 ## Installed doctor (#141)
@@ -528,7 +575,7 @@ verification evidence only; #144 must reverify at use and #160 owns same-version
 restore authority. #165 exposes DB-only authenticated policy/status and private-
 snapshot doctor diagnostics; both remain advisory and perform no destination I/O.
 Managed destructive restore is implemented by #170 below. #161 composes the
-installed recovery evidence; installed update lifecycle evidence remains #178.
+installed recovery evidence; installed update evidence is described in #178 above.
 See [manual operations](../operations/installation.md#manual-sensitive-backups-158)
 for command usage, size limits and confidentiality responsibilities.
 
@@ -632,7 +679,7 @@ replacement installation. Host-specific installation state remains untouched;
 loss followed by a clean exact-release install and replacement-host recovery.
 The existing installed-Linux lane verifies original durable state and exact config/
 key bytes, catalog invalidation, scheduled retention and install/doctor authority.
-Only graphics activation is simulated; installed update lifecycle evidence remains #178.
+Only graphics activation is simulated; installed update evidence is described in #178 above.
 
 
 ### Persisted backup policy and daily due state (#163)

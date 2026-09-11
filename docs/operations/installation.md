@@ -8,8 +8,7 @@ see [Runtime and services](runtime.md); for graphics and panel operation, see
 [Display, rendering and panel control](display.md).
 
 Forward update is available through the verified target bundle's installer; see
-[managed forward update](#managed-forward-update-177). Installed-Linux update
-lifecycle evidence remains #178. Preserve uncertain interrupted state: ordinary
+[managed forward update](#managed-forward-update-177). Preserve uncertain interrupted state: ordinary
 install/remove do not adopt extra releases, and scratch never proves a phase.
 
 ## Release inputs (#138)
@@ -79,16 +78,16 @@ sudo python3 -B install.py remove
 Substitute the chosen release version consistently. Keep the extracted directory
 private and unchanged, containing exactly the wheel, `runtime-requirements.txt`,
 `install.py`, `install_inputs.py`, `install_host.py`, `install_services.py`,
-`install_preflight.py` and
-`release-manifest.json`. Place downloads, checksum files and diagnostics outside
+`install_preflight.py`, `install_command.py`, the seven `install_update*.py`
+helpers and `release-manifest.json`. Place downloads, checksum files and diagnostics outside
 it. The same bundle supports clean install, remove and compatible preserved-state
 reinstall through the lifecycle described below.
 
 The fixed schema-1 manifest records version/tag/source SHA, package Python range,
 managed target classes, packaged SQLite application/Alembic identity, and exact
-size/SHA-256 for each of the other six members. It does not hash itself.
+size/SHA-256 for every other member. It does not hash itself.
 `install_inputs.py` checks this closed schema and extracted member set before
-host/preflight helper execution or any install/remove/reinstall host mutation.
+host/preflight helper execution or any install/remove/update host mutation.
 The input validator itself first passes the code-owned pin in `install.py`;
 all existing helper/requirements pins remain mandatory. `install.py` is the
 initial bootstrap authority authenticated by the external archive checksum;
@@ -111,7 +110,7 @@ assets are checked outside the checkout. This is generic Linux artifact evidence
 the existing privileged lane owns real two-UID remove/reinstall evidence. Neither
 proves ARM64 provisioning, physical Pi/HDMI behavior or final security closure.
 Manual backup and same-version managed restore are available below. Forward
-update is documented below; #178 retains installed update lifecycle evidence.
+update and its installed-Linux evidence are documented below.
 
 ## Read-only managed-host preflight (#139)
 
@@ -217,7 +216,7 @@ explicit seatd inspection remains available; this initial command does not selec
 seatd. Failed preflight or a non-root/non-interactive invocation changes nothing.
 Existing accounts, roots, config or units fail closed, including repeat invocations;
 installation never adopts legacy deployments, resets an administrator or replaces
-a signing key. Exact preserved-state reinstall is documented below; updates remain #144.
+a signing key. Exact preserved-state reinstall is documented below; forward updates use the target bundle command below.
 
 The mutation sequence is:
 
@@ -403,7 +402,7 @@ initialization. It then recreates replaceable authority, atomically refreshes th
 conflict record from current host state, reserves graphics and activates services.
 Operator getty/display-manager changes made while removed become the state
 restored by the next removal. Installing older bytes is not database rollback;
-unproven compatibility requires the future update/restore workflow.
+unproven compatibility requires the documented update/restore workflow.
 
 On any failure, preserve config, DB, key, marker and remaining assets. Inspect
 protected service/package diagnostics and reconcile the reported phase manually;
@@ -504,7 +503,7 @@ WAL/quick/FK integrity. Repeated list/verify do not change destination contents.
 The immutable returned identity includes the exact final hash and filename for
 future recovery checks; it does not authorize restore, migration or rollback.
 Scheduled execution/retention and advisory UI/doctor status are described below.
-Update (#144) remains unavailable. Restore first uses #169
+Forward update uses the target bundle command below. Restore first uses #169
 root-only preparation: a fresh root-private local `/tmp`
 candidate is fully checked before any host mutation. It requires the exact installed
 application version/current schema, a valid DB with an Administrator, canonical
@@ -700,33 +699,17 @@ memory. Any later recheck must equal that complete identity (basename, final SHA
 creation UTC, application version, SQLite application ID, schema revision and catalog
 classification). A different valid pair cannot be silently substituted. No persisted
 history/doctor result authorizes mutation, and no universal backup-age threshold is
-imposed here. Installed update lifecycle evidence remains #178; restore is not downgrade.
+imposed here. `VerifiedBackup` is never persisted as update authorization; restore is not downgrade.
 
 
 ## Internal forward migration boundary (#176)
 
-This is the migration boundary used by the public update command below.
-After authenticated target staging, the transaction holds the existing backup/restore
-lock continuously. Normal selection creates a fresh old-version backup at the explicit
-destination or current policy destination, then strictly reverifies it. An explicit
-existing archive accepts its age but must match the old application/schema exactly.
-The snapshot does not include ordinary application writes after capture.
-
-`prepared` records successful recovery verification, not completed service shutdown.
-Every attempt must stop/disable the backup timer, stop its oneshot and stop/disable
-web/runtime/graphics before migration. Failed quiescence leaves old DB/assets/symlink
-and attempts every retirement step. A kill just after `prepared` can leave old services
-running; rerun must retire them and prove no managed UID processes remain.
-
-`migrating` is persisted before staged-target database upgrade/check. Interrupted
-old-head data requires a new strict recovery gate; exact target-head data may commit
-only after target check. Same-schema updates still run upgrade/check. Unknown,
-intermediate or corrupt data stays stopped for operator recovery. Before commit,
-existing old-version same-version restore remains available after the updater exits
-and releases the lock. The updater never invokes restore itself.
-
-`committed` is finish-forward only. Do not manually switch release bytes or delete
-phase authority to attempt rollback. No backup archive is deleted by this transaction.
+The updater holds the canonical backup/restore lock from recovery through target
+post-checks. `prepared` proves strict verification, not quiescence; `migrating`
+requires stopped/disabled units and no managed UID processes; `committed` requires
+exact staged-target DB validation and allows finish-forward only. See the public
+command and interruption table below for recovery actions. The snapshot excludes
+application writes after capture. The updater never invokes restore itself.
 
 ## Managed forward update (#177)
 
@@ -763,5 +746,73 @@ The backup timer is enabled under the shared lock and started after lock release
 The phase file is removed last; success requires ordinary one-release target
 `installed_managed` authority. Doctor catalog/storage/backup warnings and physical
 capability degradation do not substitute for, or invalidate, successful required
-installation checks. Root/failure tests are software evidence; installed update
-lifecycle evidence remains #178, and Raspberry Pi/HDMI evidence remains separate.
+installation checks. The single installed-Linux lane exercises this public CLI
+from an extracted candidate; Raspberry Pi/HDMI evidence remains separate.
+
+
+### Update downtime and interruption recovery
+
+Staging and backup run before service disruption. Allow downtime from timer/app
+quiescence through migration, activation and doctor checks; its length depends on
+the database and host. The snapshot captures state at backup time, not later writes
+before shutdown. No apt/snap upgrades or service identity changes occur.
+
+Use an existing absolute backup destination accessible to `postcardscene-web`:
+
+```bash
+sudo python3 -B install.py update --backup-destination /absolute/backup-directory
+# Alternatively, explicitly accept the age of one old-version recovery point:
+sudo python3 -B install.py update --recovery-archive /absolute/path/to/backup.tar.gz
+```
+
+The default command without either option uses the configured backup destination
+and creates a fresh backup. Retain the selected archive and sidecar outside the
+bundle. One canonical `/var/lib/postcardscene-web/backup.lock` flock remains held
+continuously from fresh creation/strict verification through application post-checks.
+
+After an interrupted command exits, inspect the root-owned
+`/opt/postcardscene/update-state.json` and systemd status locally. Preserve the exact
+verified target bundle. Do not edit/delete phase state, scratch or release paths to
+force acceptance. Re-run the same update command for the following recognized states:
+
+| Observed state | Supported next action |
+| --- | --- |
+| No phase; inactive same-target staging residue | Exact target rerun validates and discards only recognized safe staging prefixes, then stages again. Foreign residue requires manual inspection. |
+| `prepared` | Old services may still run or be partly retired. Rerun obtains a strict recovery point and re-proves full quiescence. |
+| `migrating` | Rerun inspects the DB: exact source needs a new recovery gate; exact target can finish commit; same-schema still runs upgrade/check. Unknown/intermediate/corrupt state stays stopped. |
+| `committed` | Exact target rerun finishes forward, including partial old-release cleanup and timer/state finalization. Never start old application bytes or switch the symlink back. |
+
+Staging residue and `.postcardscene-update.new` siblings are scratch, never extra
+phases. A state-file scratch sibling cannot authorize mutation even if it contains
+valid JSON. Asset scratch must contain exact target bytes with safe metadata;
+partially written or foreign scratch fails closed for host-administrator inspection.
+
+Before `committed` only, while old symlink/assets remain authoritative, the existing
+[same-version restore](#managed-same-version-restore-170) may recover the old version
+**after the updater exits and releases the lock**. Independently verify the old
+archive using the old installed backup command before restore. Then rerun the exact
+target updater. After `committed`, #160 is not rollback authority: finish forward
+only. Failed activation retains target durable state and attempts to retire every
+service; inspect reported retirement failures before reboot. Update cleanup never
+deletes backups, and old release retention never provides a rollback slot.
+
+### First-release update evidence (#178)
+
+CI derives unpublished version `0.0.0` from immutable baseline
+`fde2cd540220e53c19d726147aa8956f45ce0d91` in a temporary repository. Only version
+and version-derived lock data change, followed by a local unpushed synthetic commit
+and the unchanged normal release builder (`require_tag=False` from a test helper).
+Both SHAs and archive hashes appear in build output; `v0.0.0` manifest metadata
+is not a real tag or supported release. Never install this fixture outside CI.
+
+The single privileged lane retains install/remove/reinstall/restore evidence,
+then runs uninterrupted and SIGKILL-resumed public updates at staging, prepared,
+migrating and committed boundaries. Systemd/runtime/web, locks, backup/reverify,
+database commands and doctor installation checks are real; x86 ARM64/package
+preflight and graphics activation/observation are substituted. Both versions have
+the same schema: upgrade/check prove a compatible no-op, with a separate installed-target ancestor fixture proving real migration
+and root contracts covering finer interruption failures.
+
+See the [#144 evidence audit](../architecture/installation-recovery-and-operations.md#managed-update-evidence-and-144-audit-178)
+for provenance and coverage. This is installed Linux software evidence, never
+ARM64 provisioning, Pi/HDMI/4K/acceleration/audio/physical graphics or #145 closure.

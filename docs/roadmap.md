@@ -268,6 +268,11 @@ explicit bootstrap and versioned service activation. Real two-UID Linux CI prove
 software/DAC behavior; #143 adds final artifact verification while physical Pi
 gates remain open. See [managed operations](operations/installation.md#managed-initial-installation-140).
 
+#144 implements recovery-backed forward update through #175–#178: verified target
+bundle, continuous backup lock, explicit migration and finish-forward-only durable
+commit. The single installed-Linux lane uses an unpublished synthetic predecessor;
+#145 retains exact-candidate closure and no physical support gate is closed by CI.
+
 ### Backup and restore
 
 Back up PostcardScene's own durable state, not the user's external media libraries.

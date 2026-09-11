@@ -33,14 +33,16 @@ jobs:
 
   installed-linux:
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
         with:
           version: "0.12.10"
           python-version: "3.12"
-      - run: uv build --wheel --no-sources
+      - run: git fetch --no-tags origin fde2cd540220e53c19d726147aa8956f45ce0d91
+      - name: Build frozen CI predecessor and current native candidate
+        run: python3 -B scripts/build_update_evidence.py /tmp/postcardscene-update-artifacts
       - run: sudo apt-get update && sudo apt-get install --yes python3-venv
       - name: Prepare trusted parent in the disposable runner
         run: |
@@ -56,4 +58,6 @@ jobs:
               os.removexattr(path, "system.posix_acl_default")
           PYTHON
       - name: Real two-UID installed Linux software evidence
-        run: sudo /usr/bin/python3 -B scripts/smoke_native_install.py dist/*.whl
+        run: sudo /usr/bin/python3 -B scripts/smoke_native_install.py /tmp/postcardscene-update-artifacts/candidate/*.whl
+      - name: Public forward update and bounded interruption evidence
+        run: sudo /usr/bin/python3 -B scripts/smoke_update.py /tmp/postcardscene-update-artifacts
