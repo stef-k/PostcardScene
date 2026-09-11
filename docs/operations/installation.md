@@ -105,8 +105,8 @@ wheel in a fresh supported Python venv. Installed metadata, entry points and
 assets are checked outside the checkout. This is generic Linux artifact evidence;
 the existing privileged lane owns real two-UID remove/reinstall evidence. Neither
 proves ARM64 provisioning, physical Pi/HDMI behavior or final security closure.
-Manual backup is available through #158 below. Forward update (#144) and restore
-(#160) remain unavailable.
+Manual backup and same-version managed restore are available below. Forward
+update (#144) remains unavailable.
 
 ## Read-only managed-host preflight (#139)
 
@@ -490,8 +490,8 @@ WAL/quick/FK integrity. Repeated list/verify do not change destination contents.
 The immutable returned identity includes the exact final hash and filename for
 future recovery checks; it does not authorize restore, migration or rollback.
 Scheduled execution/retention and advisory UI/doctor status are described below.
-The final restore command (#170) and update (#144) remain unavailable. #169 provides
-only an internal root-only preparation API: a fresh root-private local `/tmp`
+Update (#144) remains unavailable. Restore first uses #169
+root-only preparation: a fresh root-private local `/tmp`
 candidate is fully checked before any host mutation. It requires the exact installed
 application version/current schema, a valid DB with an Administrator, canonical
 literal-only config and a 32-byte signing key. Older-schema retention ownership is
@@ -499,6 +499,67 @@ insufficient. Local candidate revalidation needs no further destination reads.
 The caller owns successful sensitive scratch cleanup; failures attempt local cleanup
 and report a fixed category if cleanup is uncertain. No services are stopped and no
 current config, DB, key or catalog state is replaced by preparation.
+
+
+## Managed same-version restore (#170)
+
+On an existing managed host, or after a clean installation of the **exact matching
+release** on a replacement host, run:
+
+```bash
+sudo /opt/postcardscene/venv/bin/postcardscene-backup restore /mounted/backups/postcardscene-YYYYMMDDTHHMMSSZ-IDENTITY.tar.gz
+```
+
+Use the actual archive filename and keep its sibling `.sha256` beside it. Root is
+required. Preparation fully verifies the archive into root-private local `/tmp`
+scratch before inspecting or changing the installation. After preparation, restore
+performs no backup-destination I/O; a vanished destination does not prevent recovery.
+The existing managed config/DB/key may have corrupt contents, but their filesystem
+ownership, modes, regular-file/one-link authority and managed unit layout must be
+intact. A missing/unsafe target or unsafe existing lock requires operator repair of that authority.
+
+Restore exclusively creates the canonical web-owned `backup.lock` if absent,
+then validates and takes the shared inode nonblocking; `operation_busy`
+means no services were changed. It persistently stops/disables the backup timer and
+graphics/runtime/web, stops the backup oneshot and requires both service UIDs to be
+quiescent. These units stay disabled across a reboot during replacement. Exact old
+config/DB/WAL/SHM/key bytes, ownership, modes, timestamps and extended attributes are
+captured into private rollback scratch without opening the old DB through SQLite.
+Incoming config/DB/key are atomically replaced on their respective filesystems.
+Old sidecars are discarded; archived sidecars are never restored.
+
+Before commit, restored config/key/DB and Administrator authority must validate.
+All derived MediaItems and catalog freshness are invalidated; Sources, accounts,
+settings, compositions, schedules and backup policy remain. No media/NAS scan runs.
+After commit, services are enabled/started in managed order. The timer is enabled,
+the shared lock released, and the timer started/required active **even when restored
+backup policy is disabled**. A replacement host's unavailable backup destination
+may remain advisory; restore does not rewrite that policy or require doctor `ready`.
+
+Failure results are fixed and omit private values:
+
+- `restore_failed_stopped`: replacement did not begin; units remain retired.
+- `restore_failed_rolled_back`: exact previous bytes/metadata were proven restored;
+  the command still failed and all units remain stopped/disabled.
+- `restore_manual_recovery_required`: retirement or rollback could not be proven.
+  Keep units stopped/disabled and inspect the root-private
+  `/tmp/postcardscene-rollback-*` scratch, including `rollback-metadata.json`, for
+  manual recovery. Preserve this sensitive material before reboot or `/tmp` cleanup.
+- `restore_activation_failed`: restored data was committed and retained; activation
+  failed and all unit retirement actions were attempted. Inspect systemd before
+  manually enabling/starting anything; this result is never a healthy mixed state.
+- `restore_cleanup_uncertain`: sensitive local scratch cleanup could not be proven;
+  inspect the root-private restore/rollback scratch. Committed data is not rolled back.
+  If another restore error also occurred, that host outcome stays in `error` and
+  cleanup uncertainty appears separately as `cleanup: restore_cleanup_uncertain`.
+
+Successful restore or proven rollback removes its rollback scratch; candidate
+scratch is cleaned once no worker owns it. Scratch and archives are sensitive and
+PostcardScene does not encrypt them. Release payload, conflict metadata, packages,
+users/groups, systemd/PAM assets, external media and host cache/runtime state are
+not restored. Updates, application downgrade, web restore and physical Pi evidence
+remain outside this command. Disposable Linux evidence simulates only graphics
+activation while exercising installed root/DAC, runtime/web and timer behavior.
 
 
 ## Scheduled backups and retention (#164)
