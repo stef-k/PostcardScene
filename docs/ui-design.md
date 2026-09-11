@@ -106,7 +106,7 @@ proportionate. A later explicit issue must own that decision.
 Vendor official production/minified third-party assets locally under packaged
 `web/static/vendor`. Bootstrap CSS and `bootstrap.bundle.min.js` are unmodified
 upstream 5.3.8 distributions, with license and provenance alongside them. Runtime
-pages require no CDN or internet access. See the [vendored notice](../src/postcardscene/web/static/vendor/bootstrap-5.3.8/README.md).
+pages require no CDN or internet access. See the [vendored notice](https://github.com/stef-k/PostcardScene/blob/main/src/postcardscene/web/static/vendor/bootstrap-5.3.8/README.md).
 
 Serve first-party CSS/JS source directly, readable and unminified. Do not add
 parallel generated `.min.*` files, source maps, precompressed `.gz`/`.br` variants,

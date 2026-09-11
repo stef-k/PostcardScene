@@ -27,7 +27,7 @@ release inputs.
 The GitHub Release artifact set is one native archive, the same application wheel
 for audit/development, and external `SHA256SUMS`. No optional SBOM is adopted in
 this change; dependency/security assessment remains with #135.
-See [development checks](../../README.md#release-input-development) and the
+See [development checks](https://github.com/stef-k/PostcardScene/blob/main/README.md#release-input-development) and the
 [release contract](../architecture/installation-recovery-and-operations.md#deterministic-release-inputs-138).
 
 ## Verified GitHub Release bundles (#143)

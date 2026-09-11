@@ -18,8 +18,8 @@ MEDIA_ALLOWED_ROOTS = ["/srv/postcardscene-media"]
 This is an example, not a default. Choose absolute paths appropriate to your host;
 the filesystem root `/` is not permitted. After changing host configuration,
 restart the web and runtime processes to load it. See the README's
-[configuration setup](../README.md#control-shell-development) and
-[runtime setup](../README.md#runtime-development) for development entrypoints.
+[configuration setup](https://github.com/stef-k/PostcardScene/blob/main/README.md#control-shell-development) and
+[runtime setup](https://github.com/stef-k/PostcardScene/blob/main/README.md#runtime-development) for development entrypoints.
 
 Allowed roots are trusted host policy. The Source form shows them as read-only
 guidance and cannot change them. With empty or invalid allowed roots, the Sources
