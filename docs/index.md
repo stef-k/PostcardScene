@@ -9,6 +9,8 @@ PostcardScene is a self-hosted ambient media and information display appliance
 for Linux. Its web interface configures Sources, Widgets, Scenes and Sequences;
 a separate runtime owns the display and background work.
 
+[View on GitHub](https://github.com/stef-k/PostcardScene)
+
 V0 is under development. The guides distinguish implemented capabilities from
 unfinished playback integration and unverified physical Raspberry Pi/HDMI support.
 Check the relevant support and evidence limits before deploying an appliance.
