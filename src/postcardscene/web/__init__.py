@@ -15,6 +15,7 @@ from postcardscene.web.backup import backup
 from postcardscene.web.control import control
 from postcardscene.web.database import init_database
 from postcardscene.web.display import display
+from postcardscene.web.response_policy import control_response
 from postcardscene.web.scenes import scenes
 from postcardscene.web.schedule import schedule
 from postcardscene.web.sequences import sequences
@@ -52,6 +53,7 @@ def create_app(
     if config is not None:
         app.config.from_mapping(config)
     init_database(app)
+    app.after_request(control_response)
     init_auth(app)
     app.register_blueprint(control)
     app.register_blueprint(settings)

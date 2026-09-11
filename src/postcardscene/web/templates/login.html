@@ -7,7 +7,7 @@
       <div class="card-body p-4 p-md-5">
         <p class="eyebrow">Your ambient display</p>
         <h1 id="login-title" class="h2 mb-4">Log in to PostcardScene</h1>
-        {% if failed %}<p class="alert alert-danger" role="alert">Incorrect username or password.</p>{% endif %}
+        {% if failed %}<p class="alert alert-danger" role="alert">Unable to log in. Check your credentials and try again later.</p>{% endif %}
         <form method="post" action="{{ url_for('auth.login') }}">
           {{ form.hidden_tag() }}
           {% for field in [form.username, form.password] %}

@@ -520,8 +520,10 @@ with the same database/key until expiry or revocation; browser restore behavior
 may preserve browser-session cookies. Production forces Secure false for
 `direct_http` and true for `reverse_proxy_https`, retaining HttpOnly/SameSite=Lax
 and the 12-hour limit. Development may configure Secure explicitly for HTTPS.
-#132 owns login-abuse protection and broader headers; #133 owns the remaining
-secret/recovery and provider-credential boundary.
+Login failures are limited to five per client IP per five minutes, with bounded
+process-memory state and strict control-origin response headers; see the
+[control-plane operations guide](docs/operations/runtime.md#production-control-plane-131).
+#133 owns the remaining secret/recovery and provider-credential boundary.
 
 ## Documentation
 
