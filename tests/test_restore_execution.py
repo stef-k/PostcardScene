@@ -337,28 +337,38 @@ def test_activation_and_cleanup_failure_keep_host_outcome(managed, monkeypatch, 
     assert calls[-1] == "stop"
 
 
-def test_manual_recovery_and_candidate_cleanup_failure(monkeypatch, capsys):
-    from types import SimpleNamespace
+def test_manual_recovery_and_candidate_cleanup_failure(managed, monkeypatch, capsys):
+    import json
 
     from postcardscene.backup import cli
 
-    def fail(*args):
-        raise BackupError("restore_manual_recovery_required")
+    _, candidate, calls = managed
+    original_cleanup = restore.cleanup_staging
+    roots = set(Path("/tmp").glob("postcardscene-rollback-*"))
+
+    def fail(*args, **kwargs):
+        raise OSError("private rollback failure")
 
     def cleanup_failure(root, identity):
+        # The candidate fixture owns its separate staged files; this is the
+        # command's empty private root allocated before the injected preparation.
         root.rmdir()
         raise OSError("private scratch failure")
 
-    monkeypatch.setattr(restore, "require_root", lambda: None)
-    monkeypatch.setattr(
-        restore, "prepare_restore", lambda *args: SimpleNamespace(root_identity=None)
-    )
-    monkeypatch.setattr(engine, "execute", fail)
+    monkeypatch.setattr(restore, "prepare_restore", lambda *args: candidate)
+    monkeypatch.setattr(engine, "validate_data", fail)
+    monkeypatch.setattr(files, "rollback", fail)
     monkeypatch.setattr(restore, "cleanup_staging", cleanup_failure)
-    assert cli.main(["restore", "archive"]) == 1
-    import json
-
-    assert json.loads(capsys.readouterr().out) == {
-        "error": "restore_manual_recovery_required",
-        "cleanup": "restore_cleanup_uncertain",
-    }
+    try:
+        assert cli.main(["restore", "archive"]) == 1
+        assert json.loads(capsys.readouterr().out) == {
+            "error": "restore_manual_recovery_required",
+            "cleanup": "restore_cleanup_uncertain",
+        }
+        assert calls == ["stop", "stop"]
+        remaining = set(Path("/tmp").glob("postcardscene-rollback-*")) - roots
+        assert len(remaining) == 1
+    finally:
+        for root in set(Path("/tmp").glob("postcardscene-rollback-*")) - roots:
+            info = root.stat()
+            original_cleanup(root, (info.st_dev, info.st_ino))
