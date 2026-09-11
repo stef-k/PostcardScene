@@ -33,13 +33,19 @@ def state(action):
 
 
 def backup_cli(*args):
-    return json.loads(
-        web_python(
-            "import sys; from postcardscene.backup.cli import main; "
-            "raise SystemExit(main(sys.argv[1:]))",
-            *args,
-        )
+    web = pwd.getpwnam("postcardscene-web")
+    result = subprocess.run(
+        ("/opt/postcardscene/venv/bin/postcardscene-backup", *args),
+        user=web.pw_uid,
+        group=web.pw_gid,
+        extra_groups=[],
+        umask=0o077,
+        cwd="/",
+        capture_output=True,
+        timeout=60,
     )
+    assert result.returncode == 0, "Canonical installed backup CLI failed"
+    return json.loads(result.stdout)
 
 
 def verify(archive):
@@ -165,7 +171,9 @@ def recovery_smoke(entrypoint, host, preflight):
         root = Path(temp)
         # The root-private bundle and web-private backup destination survive every
         # product teardown; scheduled retention uses a separate TemporaryDirectory.
-        root.chmod(0o711)
+        # The bounded destination walker opens each ancestor directory read-only.
+        # Only these container names are public; both children remain private.
+        root.chmod(0o755)
         bundle = root / "release"
         bundle.mkdir(mode=0o700)
         prepare_smoke_bundle(bundle, entrypoint)
@@ -238,6 +246,7 @@ def recovery_smoke(entrypoint, host, preflight):
             != json.loads(expected)["application_settings"]
         )
         fresh_marker = marker.read_bytes()
+        assert not (KEY.parent / "backup.lock").exists()
         # Replacement UIDs need not match the lost host. Root restore can read the
         # untouched pair; strict API rechecks also run as root from this point.
         restore_archive(archive)
