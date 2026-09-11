@@ -410,7 +410,7 @@ def asset_bytes(wheel):
     return assets
 
 
-def validate_tree(root, uid, gid, *, payload=False):
+def validate_tree(root, uid, gid, *, payload=False, allow_missing_links=False):
     # No mount crossing, hardlinks, devices or service-controlled symlink traversal.
     for line in (
         read_regular(Path("/proc/self/mountinfo"), 1024 * 1024).decode().splitlines()
@@ -433,7 +433,7 @@ def validate_tree(root, uid, gid, *, payload=False):
             ):
                 raise InstallError("unsafe_removal_tree")
             if stat.S_ISLNK(info.st_mode) and payload:
-                resolved = path.resolve(strict=True)
+                resolved = path.resolve(strict=not allow_missing_links)
                 if not resolved.is_relative_to(root) and not (
                     path.parent.name == "bin"
                     and path.name.startswith("python")

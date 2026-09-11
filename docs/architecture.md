@@ -196,7 +196,8 @@ evidence. #143 retains final published-bundle manifest/member authentication.
 path in memory and required to compare equal on later verification. Persisted
 backup status is advisory. #175 adds internal [pre-mutation update primitives](architecture/installation-recovery-and-operations.md#forward-update-preparation-175);
 #176 adds the internal [recovery-locked commit](architecture/installation-recovery-and-operations.md#recovery-locked-forward-commit-176).
-Public forward update remains unavailable until #177–#178 complete.
+#177 completes [public finish-forward update](architecture/installation-recovery-and-operations.md#committed-finish-forward-update-177);
+#178 retains installed update lifecycle evidence.
 
 ## Open architectural decisions
 

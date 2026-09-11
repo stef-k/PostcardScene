@@ -91,6 +91,14 @@ def prepared_state(current, target):
 
 def commit(current, target, state, preflight, point, run, destination, archive):
     lock_fd = point.lock_fd
+    if state is not None and state.phase == "committed":
+        import postcardscene_install_update_finish as finish
+
+        _, coherent = finish.recognize(target, preflight)
+        if not coherent:
+            quiesce(preflight, run)
+        target_database(target, run, lock_fd, upgrade=False)
+        return state
     if state is None or state.phase == "prepared":
         point.select(destination, archive)
         if state is None:
@@ -100,10 +108,6 @@ def commit(current, target, state, preflight, point, run, destination, archive):
     else:
         quiesce(preflight, run)
         head = database.classify(state, target.identity["application_id"])
-        if state.phase == "committed":
-            # Commit cannot be undone, even if an operator restored an old DB.
-            target_database(target, run, lock_fd, upgrade=False)
-            return state
         if state.from_schema != state.to_schema and head == "target":
             target_database(target, run, lock_fd, upgrade=False)
             state = replace(state, phase="committed")
@@ -142,10 +146,22 @@ def transaction(target, preflight, *, destination=None, archive=None, run=None):
             if state is not None:
                 update.require_state_target(state, current, target)
             point = recovery.Recovery(current, lock_fd, run)
-            committed = commit(
-                current, target, state, preflight, point, run, destination, archive
-            )
-            yield committed
+            try:
+                committed = commit(
+                    current, target, state, preflight, point, run, destination, archive
+                )
+                yield committed
+            except (Exception, KeyboardInterrupt) as error:
+                persisted = update.state_files.read()
+                if persisted is not None and persisted.phase == "committed":
+                    try:
+                        quiesce(preflight, run)
+                    except (Exception, KeyboardInterrupt) as cleanup:
+                        error.add_note(
+                            "Committed update retirement uncertain; preserve target authority."
+                        )
+                        raise error from cleanup
+                raise
     except (Exception, KeyboardInterrupt) as error:
         if initial is None:
             try:
