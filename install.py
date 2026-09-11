@@ -15,13 +15,17 @@ from pathlib import Path
 # Reviewed #138/#139 input pins, checked against source by release-input validation.
 # These are installer inputs, not a release manifest or published-bundle schema.
 INPUT_HASHES = {
-    "install_inputs.py": "a1b8917c0d4c2cd10d998379355e3bde3ff39264e5dccb2f8e6db9865e797957",
+    "install_inputs.py": "82d23f5cdb9db262064166ec2ea84e5c3cc94c40fa602c451ac6fa4eed119759",
     "install_services.py": "0974c2f102098dfcb5a6ab1a71d18930bd1b28bb02f4eab8e62e7065a2245ee8",
-    "install_host.py": "557689661b510ed02caf83dc7b9967a28d030e37c4d1f979e4174270e2bffa73",
+    "install_host.py": "3bddc1701d1e8990f3db757ef5df1247393e61d528b3023e3b9582572176efb0",
     "install_preflight.py": "634d686f7267e56a297b129a92acbcc7a28ca4b6ebf6532ef85de5334aa63b2f",
     "install_update_state.py": "5979eea7b598c27b157e5f8f91230453d8d2430c1e2c613ea2f8ef3b53ece5d9",
     "install_update.py": "d943a1d5c2fc4febcf11d5317e420f4ec78bbf985dd9269be8c778f693756b58",
     "runtime-requirements.txt": "ad6fd58dc71d7fe2b6da10432cf8bd4ed3f485231f1ed72392aad9624de78deb",
+    "install_update_recovery.py": "9f73ea1c7af10b1c9c7c87fe0c46fb0b0bcdc23ccc11c6f6ada20e7d26577743",
+    "install_update_database.py": "551c24536c251a0f4315819bfd4310b671795f8d491349dce0bec0114ea90a3d",
+    "install_update_transaction.py": "4ef85fa3e856ad2046e16e23a41deca32b2aeb9d156c7e6aaaf417b390d87837",
+    "install_command.py": "c18f0ad9c007abdf3b3cf5d9cc710401a5d9117d018963b0a4ee2cd75b628977",
 }
 
 
@@ -53,10 +57,14 @@ def load_support(bundle):
     for name in (
         "install_inputs.py",
         "install_services.py",
+        "install_command.py",
         "install_host.py",
         "install_preflight.py",
         "install_update_state.py",
         "install_update.py",
+        "install_update_recovery.py",
+        "install_update_database.py",
+        "install_update_transaction.py",
     ):
         spec = importlib.util.spec_from_loader(
             "postcardscene_" + name[:-3], loader=None

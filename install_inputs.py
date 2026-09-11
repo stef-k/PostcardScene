@@ -121,11 +121,15 @@ def validate_inputs(bundle, members, assets):
 SUPPORT_NAMES = (
     "install.py",
     "install_inputs.py",
+    "install_command.py",
     "install_host.py",
     "install_services.py",
     "install_preflight.py",
     "install_update.py",
     "install_update_state.py",
+    "install_update_recovery.py",
+    "install_update_database.py",
+    "install_update_transaction.py",
     "runtime-requirements.txt",
 )
 MANIFEST_NAME = "release-manifest.json"

@@ -7,13 +7,12 @@ import os
 import pwd
 import re
 import shutil
-import signal
 import stat
-import subprocess
 import time
 import zipfile
 from pathlib import Path
 
+from postcardscene_install_command import command as command
 from postcardscene_install_services import (
     AUXILIARY_UNITS,
     SERVICES,
@@ -42,45 +41,6 @@ SESSION_SECRET_PATH = "/var/lib/postcardscene-web/session.key"
 TRUSTED_HOSTS = ["localhost", "127.0.0.1", "[::1]"]
 MEDIA_ALLOWED_ROOTS = ()
 """
-ENV = {
-    "PATH": "/usr/sbin:/usr/bin:/sbin:/bin",
-    "LC_ALL": "C",
-    "LANG": "C",
-    "HOME": "/root",
-}
-
-
-def command(args, *, interactive=False, user=None, timeout=300):
-    options = {}
-    environment = dict(ENV)
-    if user:
-        account = pwd.getpwnam(user)
-        options.update(user=account.pw_uid, group=account.pw_gid, extra_groups=[])
-        environment.update(
-            HOME=account.pw_dir, POSTCARDSCENE_CONFIG="/etc/postcardscene/config.py"
-        )
-    with subprocess.Popen(
-        args,
-        env=environment,
-        cwd="/",
-        umask=0o007 if user else 0o022,
-        stdin=None if interactive else subprocess.DEVNULL,
-        stdout=None if interactive else subprocess.DEVNULL,
-        stderr=None if interactive else subprocess.DEVNULL,
-        start_new_session=not interactive,
-        **options,
-    ) as process:
-        try:
-            status = process.wait(timeout=timeout)
-        except BaseException:
-            if interactive:
-                process.kill()
-            else:
-                os.killpg(process.pid, signal.SIGKILL)
-            process.wait()
-            raise
-        if status:
-            raise InstallError("command_failed")
 
 
 def trusted_parent(path):
