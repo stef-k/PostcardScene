@@ -510,8 +510,8 @@ creating it. Missing authority leaves setup/database commands available but web
 returns 503; unsafe permissions, symlinks or malformed keys fail startup. Keep this
 sensitive installation state across process restarts. Do not delete/regenerate it
 as routine recovery; intentional replacement requires stopping/restarting every
-web process and invalidates signed sessions. Backup/recovery integration is owned
-by #27/#29. This signing file is not a provider-credential encryption/master key.
+web process and invalidates signed sessions. Loss/corruption is not password recovery. The existing sensitive backup restores
+the matching database and key; see [backup/recovery](docs/operations/installation.md#manual-sensitive-backups-158). This signing file is not a provider-credential encryption/master key.
 
 Sessions use Flask-Login strong protection, browser-session cookies (no remember
 me), a 12-hour signed-cookie age limit, HttpOnly, SameSite=Lax, no Domain, and
@@ -523,7 +523,9 @@ and the 12-hour limit. Development may configure Secure explicitly for HTTPS.
 Login failures are limited to five per client IP per five minutes, with bounded
 process-memory state and strict control-origin response headers; see the
 [control-plane operations guide](docs/operations/runtime.md#production-control-plane-131).
-#133 owns the remaining secret/recovery and provider-credential boundary.
+V0 prohibits persisted long-lived third-party credentials, including in config,
+URLs and Source/Widget JSON. Future credentialed integrations require a separately
+reviewed credential-at-rest design. See [managed administrator recovery](docs/operations/runtime.md#local-administrator-recovery-133).
 
 ## Documentation
 

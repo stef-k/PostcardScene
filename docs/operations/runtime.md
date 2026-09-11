@@ -343,3 +343,46 @@ wiring remain #104; physical power and panel protection remain #10. Saving a
 schedule or override does not yet control or prove panel standby/wake, playback,
 or audio suppression. The page sends no runtime commands or hardware probes.
 
+
+
+## Local administrator recovery (#133)
+
+For a forgotten administrator password on a managed installation, use authorized
+host access. There is no web recovery bypass, default password or emailed reset.
+
+1. Stop or restrict web access while recovering; for a stopped service use
+   `sudo systemctl stop postcardscene-web.service`.
+2. Run the packaged reset as the managed web identity with its existing trusted
+   configuration (replace `admin` with the existing username):
+
+   ```bash
+   sudo -u postcardscene-web env POSTCARDSCENE_CONFIG=/etc/postcardscene/config.py /opt/postcardscene/venv/bin/python -m flask --app postcardscene.web:create_app auth reset-password --username admin
+   ```
+
+   Enter and confirm the new password at the hidden prompt, never in arguments.
+   Initial administrator creation uses `auth create-admin` only during bootstrap;
+   it refuses an existing administrator.
+3. A successful reset verifies the existing protected signing key before any
+   password mutation. Do not replace it or run `auth init-secret` to repair a lost
+   key. If verification fails, leave web stopped and investigate installation
+   authority or use the [reviewed same-version recovery](installation.md#managed-same-version-restore-170).
+4. Run `sudo systemctl restart postcardscene-web.service`.
+5. Authenticate with the new password. All previous browser sessions are revoked.
+
+Reset preserves unrelated settings, compositions, schedules, catalog, backup
+policy, managed config and signing-key bytes. Only the administrator password hash
+and session identity change. Passwords remain scrypt hash-only in durable SQLite.
+
+Loss/corruption of `/var/lib/postcardscene-web/session.key` is **not password
+recovery**. Ordinary startup never self-heals it: missing authority fails requests
+closed and invalid authority prevents startup. The key must remain a web-owned,
+one-link regular 0600 file in its private 0700 directory; configured `SECRET_KEY`
+or fallback keys cannot replace it. Keep the matching database and key in sensitive
+backups for faithful signing continuity; never print key/hash/cookie/token values
+in diagnostics or put them in config, command lines or release payloads.
+
+V0 permits no stored long-lived third-party credentials, including in trusted
+config, Source/Widget JSON or URLs (userinfo, path, query or fragment). Use
+credential-free web content and host-managed mounts. The first future credentialed
+integration needs a separately reviewed credential-at-rest design before storing
+anything; V0 provides no provider vault, keyring or master-key system.

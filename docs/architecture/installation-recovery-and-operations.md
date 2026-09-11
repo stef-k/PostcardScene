@@ -522,6 +522,11 @@ for limits, result/exit categories and repair/evidence ownership.
 run as the existing `postcardscene-web` UID, outside Flask/runtime. They neither
 gain privileges nor broaden the private signing key's permissions.
 
+#133 classifies administrator password hashes/session identities as durable SQLite
+state, the signing file as durable sensitive authority for faithful signing
+continuity, and third-party provider credentials as none in V0. This classification
+preserves the existing matching database/key restore and archive mechanics.
+
 The flat gzip/ustar v1 recovery set is exactly `postcardscene.sqlite3`, `config.py`,
 `session.key`, and `backup-manifest.json`. Capture validates the managed canonical
 config, runtime-owned DB, web-owned key and their parent metadata without following

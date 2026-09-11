@@ -58,6 +58,8 @@ def init_auth(app):
         app.secret_key = read_secret(app.config["SESSION_SECRET_PATH"])
     except FileNotFoundError:
         app.secret_key = None
+    # The protected file is the sole signing authority, including verification.
+    app.config["SECRET_KEY_FALLBACKS"] = None
     manager = LoginManager(app)
     manager.login_view = "auth.login"
     manager.login_message = None
