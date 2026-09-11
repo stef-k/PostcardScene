@@ -454,7 +454,15 @@ def service_check(host, seat, installation="clean"):
         ("display-manager.service", "resolve_display_manager"),
     ):
         state = service_state(host, unit)
-        if state["LoadState"] == "loaded":
+        if installation == "installed_managed":
+            if state["ActiveState"] != "inactive" or state["UnitFileState"] not in (
+                "disabled",
+                "static",
+                "masked",
+                "",
+            ):
+                raise Rejected("managed_graphics_conflict")
+        elif state["LoadState"] == "loaded":
             actions.append(action)
     if seat == "logind":
         state = service_state(host, "systemd-logind.service")

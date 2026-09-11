@@ -18,9 +18,9 @@ INPUT_HASHES = {
     "install_inputs.py": "a1b8917c0d4c2cd10d998379355e3bde3ff39264e5dccb2f8e6db9865e797957",
     "install_services.py": "0974c2f102098dfcb5a6ab1a71d18930bd1b28bb02f4eab8e62e7065a2245ee8",
     "install_host.py": "557689661b510ed02caf83dc7b9967a28d030e37c4d1f979e4174270e2bffa73",
-    "install_preflight.py": "b8c7d94aeb51c428c74272c8c43005d9eaa26e481ffc3c6f5fecb3b56a2789cd",
+    "install_preflight.py": "634d686f7267e56a297b129a92acbcc7a28ca4b6ebf6532ef85de5334aa63b2f",
     "install_update_state.py": "5979eea7b598c27b157e5f8f91230453d8d2430c1e2c613ea2f8ef3b53ece5d9",
-    "install_update.py": "cd4b6404f31a7cd3d080a67f2b421729a86177b1100e65fdd4ee65bbbfd904b8",
+    "install_update.py": "d943a1d5c2fc4febcf11d5317e420f4ec78bbf985dd9269be8c778f693756b58",
     "runtime-requirements.txt": "ad6fd58dc71d7fe2b6da10432cf8bd4ed3f485231f1ed72392aad9624de78deb",
 }
 

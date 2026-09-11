@@ -375,3 +375,106 @@ def test_persisted_exact_target_layout_requires_both_identities(managed):
     with pytest.raises(update.InstallError, match="identity_mismatch"):
         update.recognize_current(replace(target, manifest_sha256="d" * 64), preflight)
     assert current.exists() and release.exists()
+
+
+@pytest.mark.parametrize(
+    "failure", ["write", "venv", "ordering", "equal", "downgrade", "invalid", "none"]
+)
+def test_staging_success_or_handled_failure_preserves_current(
+    managed, monkeypatch, failure
+):
+    import subprocess
+
+    update, target, current, preflight = managed
+    release = update.host.RELEASES / target.version
+    original_write = update.host.write_new
+    comparisons = []
+
+    def write(path, content, *args):
+        if failure == "write":
+            path.write_bytes(b"partial")
+            raise OSError("injected write failure")
+        original_write(path, content, *args)
+
+    def run(args, **kwargs):
+        if args[1:4] == ("-I", "-m", "venv"):
+            if failure == "venv":
+                (release / "venv").mkdir()
+                raise OSError("injected venv failure")
+            populate_release(release, target.version, target.wheel, target.requirements)
+        if args[1:4] == ("-I", "-B", "-c"):
+            assert args[0] == str(release / "venv/bin/python")
+            comparisons.append(args)
+            if failure == "ordering":
+                raise update.InstallError("command_failed")
+            # Exercise the real comparator expression while the stage runner is
+            # substituted; archive smoke separately proves its real target venv.
+            versions = {
+                "equal": ("1.0", "1.0.0"),
+                "downgrade": ("2.0", "1.0"),
+                "invalid": ("1.0", "invalid"),
+            }.get(failure, args[-2:])
+            subprocess.run(
+                (sys.executable, *args[1:-2], *versions),
+                check=True,
+                capture_output=True,
+                timeout=30,
+            )
+
+    monkeypatch.setattr(update.host, "write_new", write)
+    if failure == "none":
+        source, staged, state = update.prepare_target(target, preflight, run)
+        assert source["version"] == current.name and staged == target and state is None
+        assert len(comparisons) == 1 and release.exists()
+    else:
+        with pytest.raises(
+            (OSError, update.InstallError, subprocess.CalledProcessError)
+        ):
+            update.prepare_target(target, preflight, run)
+        assert not release.exists()
+    assert current.exists() and update.active_version() == current.name
+    assert update.state_files.read() is None
+
+
+def test_preflight_failure_and_failed_exclusive_creation_cannot_claim_cleanup(
+    managed, monkeypatch
+):
+    update, target, current, preflight = managed
+    monkeypatch.setattr(preflight, "preflight", lambda **kw: SimpleNamespace(ok=False))
+    with pytest.raises(update.InstallError, match="preflight"):
+        update.prepare_target(target, preflight)
+    assert set(update.host.RELEASES.iterdir()) == {current}
+    monkeypatch.setattr(
+        preflight,
+        "preflight",
+        lambda **kw: SimpleNamespace(ok=True, plan=SimpleNamespace(tools=())),
+    )
+    release = update.host.RELEASES / target.version
+
+    def raced_stage(*args, **kw):
+        release.mkdir()
+        (release / "foreign").touch()
+        raise FileExistsError
+
+    monkeypatch.setattr(update.host, "stage_payload", raced_stage)
+    with pytest.raises(FileExistsError):
+        update.prepare_target(target, preflight)
+    assert (release / "foreign").exists() and current.exists()
+
+
+def test_state_write_and_remove_fsync_parent(managed, monkeypatch):
+    update, target, current, _ = managed
+    files = update.state_files
+    original = os.fsync
+    synced = []
+
+    def sync(fd):
+        synced.append(stat.S_IFMT(os.fstat(fd).st_mode))
+        original(fd)
+
+    monkeypatch.setattr(files.os, "fsync", sync)
+    files.write(make_state(update, target, current))
+    assert synced == [stat.S_IFREG, stat.S_IFDIR]
+    assert stat.S_IMODE(files.STATE.stat().st_mode) == 0o600
+    files.remove()
+    assert synced[-1] == stat.S_IFDIR

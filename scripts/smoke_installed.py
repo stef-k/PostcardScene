@@ -4,6 +4,7 @@ import base64
 import hashlib
 import importlib.metadata
 import os
+import runpy
 import subprocess
 import sys
 import tempfile
@@ -17,6 +18,10 @@ from postcardscene.web import create_app
 
 def main():
     expected = sys.argv[1]
+    installer = runpy.run_path(str(Path(sys.argv[2]) / "install.py"))
+    installer["load_support"](Path(sys.argv[2]))
+    update = sys.modules["postcardscene_install_update"]
+    update.require_newer(sys.executable, "0.0.0", expected, update.host.command)
     distribution = importlib.metadata.distribution("postcardscene")
     assert distribution.version == expected
     assert Path(postcardscene.__file__).is_relative_to(Path(sys.prefix))

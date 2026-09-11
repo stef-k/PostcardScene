@@ -115,7 +115,7 @@ def smoke_archive(output, project, scratch, sha):
     env = dict(os.environ)
     env.pop("POSTCARDSCENE_CONFIG", None)
     subprocess.run(
-        [python, "-I", str(smoke), version],
+        [python, "-I", str(smoke), version, str(extracted)],
         cwd=scratch,
         env=env,
         check=True,

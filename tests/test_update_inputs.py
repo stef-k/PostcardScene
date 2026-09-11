@@ -164,6 +164,22 @@ def test_managed_preflight_requires_installed_packages(monkeypatch):
         "update_prerequisites_missing",
     )
     assert not pf.preflight(host).ok
+    host.installed.add("mpv")
+    conflict = (
+        "/usr/bin/systemctl",
+        "show",
+        "display-manager.service",
+        "--no-pager",
+        "--all",
+        "--property=LoadState,ActiveState,UnitFileState",
+    )
+    host.overrides[conflict] = (
+        0,
+        "LoadState=loaded\nActiveState=active\nUnitFileState=enabled\n",
+    )
+    assert pf.preflight(host, installation="installed_managed").reasons == (
+        "managed_graphics_conflict",
+    )
     assert not any(
         c[0] in ("/usr/bin/apt-get", "/usr/sbin/useradd") for c in host.commands
     )

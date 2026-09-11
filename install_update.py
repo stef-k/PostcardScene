@@ -272,8 +272,14 @@ def prepare_target(target, preflight, run=None):
         require_newer(
             str(release / "venv/bin/python"), current["version"], target.version, run
         )
-    except Exception:
+    except (Exception, KeyboardInterrupt) as error:
         if created is not None and os.path.lexists(release):
-            discard_target(target, current["version"], created)
+            try:
+                discard_target(target, current["version"], created)
+            except (OSError, InstallError) as cleanup:
+                error.add_note(
+                    "Staged target cleanup uncertain; preserve for inspection."
+                )
+                raise error from cleanup
         raise
     return current, target, None
