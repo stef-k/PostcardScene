@@ -2,6 +2,7 @@
 
 import os
 import signal
+import sys
 import tempfile
 import time
 from contextlib import contextmanager
@@ -181,10 +182,7 @@ def execute(candidate):
             and identity is not None
             and not (transaction and transaction.preserve)
         ):
-            try:
-                restore.cleanup_staging(scratch, identity)
-            except (Exception, KeyboardInterrupt):
-                raise BackupError("restore_cleanup_uncertain") from None
+            cleanup(scratch, identity, sys.exception())
 
 
 def restore_archive(path):
@@ -198,7 +196,15 @@ def restore_archive(path):
             return {"result": "restore_complete"}
         finally:
             if candidate is not None:
-                try:
-                    restore.cleanup_staging(root, candidate.root_identity)
-                except (Exception, KeyboardInterrupt):
-                    raise BackupError("restore_cleanup_uncertain") from None
+                cleanup(root, candidate.root_identity, sys.exception())
+
+
+def cleanup(root, identity, primary):
+    """Keep the host outcome primary and expose only fixed secondary evidence."""
+    try:
+        restore.cleanup_staging(root, identity)
+    except (Exception, KeyboardInterrupt):
+        if isinstance(primary, BackupError):
+            primary.cleanup_uncertain = True
+        else:
+            raise BackupError("restore_cleanup_uncertain") from None

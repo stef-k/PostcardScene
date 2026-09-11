@@ -466,8 +466,10 @@ are reused; current config/DB/key contents need not be healthy. Exact target and
 unit authority remains mandatory, including only three services and two backup
 auxiliary units. No destination I/O follows candidate preparation.
 
-Root takes the same existing #164 web-owned/shared-group/0600 one-link no-follow
-lock, without creating it or broadening the public web-only entrypoint. The lock
+Root takes the same #164 web-owned/shared-group/0600 one-link no-follow
+lock. If absent, root creates it exclusively under the validated private parent,
+sets its exact authority and validates it normally. An existing inode is never
+replaced or repaired; the public entrypoint remains web-only. The lock
 precedes all systemd changes and covers stop/disable, quiescence, raw rollback
 capture, replacement, validation, catalog invalidation and service activation.
 Timer and services remain persistently disabled throughout the destructive window.
@@ -481,6 +483,8 @@ copy-time size/hash checks, final owners/modes, fsync and atomic replacement pro
 each incoming config/DB/key. No archived sidecar is restored. Pre-commit failure
 attempts exact byte/metadata rollback, retires every unit even after proven rollback,
 and preserves scratch when manual recovery is needed. Uncertain cleanup is visible.
+Secondary cleanup failure preserves the primary restore error and adds the fixed
+JSON field `cleanup: restore_cleanup_uncertain`; it never hides host state.
 
 Commit follows canonical non-executing config validation, exact key authority,
 current DB identity/integrity/Administrator checks and committed catalog

@@ -20,7 +20,7 @@ def operation_lock():
 
 @contextmanager
 def restore_lock():
-    """Root may contend only on the existing web-owned operation inode."""
+    """Root bootstraps or contends on the canonical web-owned operation inode."""
     if os.geteuid() != 0:
         raise BackupError("restore_root_required")
     _, web, shared, private = identities()
@@ -32,6 +32,8 @@ def restore_lock():
 def _checked_lock(web, shared, private, *, create):
     with directory(KEY.parent) as parent:
         require_directory(parent, web, private, 0o700)
+        if not create:
+            _bootstrap_restore_lock(parent, web, shared)
         fd = os.open(
             "backup.lock",
             os.O_RDWR | os.O_NOFOLLOW | os.O_NONBLOCK | (os.O_CREAT if create else 0),
@@ -58,3 +60,22 @@ def _checked_lock(web, shared, private, *, create):
             yield fd
         finally:
             os.close(fd)
+
+
+def _bootstrap_restore_lock(parent, web, shared):
+    try:
+        fd = os.open(
+            "backup.lock",
+            os.O_RDWR | os.O_NOFOLLOW | os.O_CREAT | os.O_EXCL,
+            0o600,
+            dir_fd=parent,
+        )
+    except FileExistsError:
+        return  # Validate the winner; never replace or repair an existing inode.
+    try:
+        os.fchown(fd, web, shared)
+        os.fchmod(fd, 0o600)
+        os.fsync(fd)
+        os.fsync(parent)
+    finally:
+        os.close(fd)

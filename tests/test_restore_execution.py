@@ -183,6 +183,8 @@ def test_candidate_tamper_after_capture_is_rejected(managed, monkeypatch):
 @pytest.mark.parametrize("first", ["web", "root"])
 def test_shared_inode_contention_both_directions(managed, monkeypatch, first):
     ids, candidate, calls = managed
+    if first == "root":
+        (capture.KEY.parent / "backup.lock").unlink()
     # Independent opens, real flock; only the public entry UID is simulated.
     original_uid = os.geteuid
 
@@ -254,14 +256,19 @@ def test_signal_uses_failure_path(managed, monkeypatch, sig):
     assert calls == ["stop", "stop"]
 
 
-def test_restore_lock_does_not_create_and_public_entry_stays_web_only(managed):
-    _, _, _ = managed
+def test_restore_lock_bootstraps_and_public_entry_stays_web_only(managed):
+    ids, _, _ = managed
     lock = capture.KEY.parent / "backup.lock"
     lock.unlink()
-    with pytest.raises(FileNotFoundError):
-        with operation.restore_lock():
-            pass
-    assert not lock.exists()
+    with operation.restore_lock():
+        info = lock.stat()
+        assert (info.st_uid, info.st_gid, stat.S_IMODE(info.st_mode)) == (
+            ids[1],
+            ids[2],
+            0o600,
+        )
+    with operation.restore_lock():
+        assert lock.stat().st_ino == info.st_ino
     with pytest.raises(BackupError, match="web_identity_required"):
         with operation.operation_lock():
             pass
@@ -306,3 +313,52 @@ def test_catalog_failure_discards_generated_sidecars_before_rollback(
         engine.execute(candidate)
     assert before(ids) == original
     assert calls == ["stop", "stop"]
+
+
+@pytest.mark.parametrize("phase", ["activate_services", "activate_timer"])
+def test_activation_and_cleanup_failure_keep_host_outcome(managed, monkeypatch, phase):
+    _, candidate, calls = managed
+    old = capture.DATABASE.read_bytes()
+    original_cleanup = restore.cleanup_staging
+
+    def fail(*args):
+        raise OSError("private failure")
+
+    def cleanup_failure(*args):
+        original_cleanup(*args)
+        fail()
+
+    monkeypatch.setattr(host, phase, fail)
+    monkeypatch.setattr(restore, "cleanup_staging", cleanup_failure)
+    with pytest.raises(BackupError, match="^restore_activation_failed$") as caught:
+        engine.execute(candidate)
+    assert caught.value.cleanup_uncertain
+    assert capture.DATABASE.read_bytes() != old
+    assert calls[-1] == "stop"
+
+
+def test_manual_recovery_and_candidate_cleanup_failure(monkeypatch, capsys):
+    from types import SimpleNamespace
+
+    from postcardscene.backup import cli
+
+    def fail(*args):
+        raise BackupError("restore_manual_recovery_required")
+
+    def cleanup_failure(root, identity):
+        root.rmdir()
+        raise OSError("private scratch failure")
+
+    monkeypatch.setattr(restore, "require_root", lambda: None)
+    monkeypatch.setattr(
+        restore, "prepare_restore", lambda *args: SimpleNamespace(root_identity=None)
+    )
+    monkeypatch.setattr(engine, "execute", fail)
+    monkeypatch.setattr(restore, "cleanup_staging", cleanup_failure)
+    assert cli.main(["restore", "archive"]) == 1
+    import json
+
+    assert json.loads(capsys.readouterr().out) == {
+        "error": "restore_manual_recovery_required",
+        "cleanup": "restore_cleanup_uncertain",
+    }

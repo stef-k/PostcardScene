@@ -34,6 +34,29 @@ raise SystemExit(cli.main(["restore", sys.argv[1]]))
 """
 
 
+ARCHIVE_FIXTURE = """
+import hashlib
+import shutil
+import sqlite3
+import sys
+from datetime import datetime, timezone
+from importlib.metadata import version
+from pathlib import Path
+from postcardscene.backup.archive import build
+root = Path(sys.argv[1])
+with sqlite3.connect("/var/lib/postcardscene/postcardscene.sqlite3") as source:
+    with sqlite3.connect(root / "postcardscene.sqlite3") as target:
+        source.backup(target)
+for source in ("/etc/postcardscene/config.py", "/var/lib/postcardscene-web/session.key"):
+    shutil.copyfile(source, root / Path(source).name)
+archive = build(root, datetime.now(timezone.utc), version("postcardscene"), lambda: None)
+archive.with_name(archive.name + ".sha256").write_text(
+    hashlib.sha256(archive.read_bytes()).hexdigest() + "  " + archive.name + "\\n"
+)
+print(archive.name)
+"""
+
+
 def restore_smoke():
     web = pwd.getpwnam("postcardscene-web")
     runtime = pwd.getpwnam("postcardscene")
@@ -42,22 +65,16 @@ def restore_smoke():
     ) as temp:
         destination = Path(temp)
         os.chown(destination, web.pw_uid, web.pw_gid)
+        # Build an earlier archive fixture without manual/scheduled mutation on
+        # this fresh host. SQLite's backup API supplies a consistent source DB.
         result = subprocess.run(
-            (
-                "/opt/postcardscene/venv/bin/postcardscene-backup",
-                "create",
-                "--destination",
-                temp,
-            ),
-            user=web.pw_uid,
-            group=web.pw_gid,
-            extra_groups=[],
-            umask=0o007,
+            (PYTHON, "-I", "-B", "-c", ARCHIVE_FIXTURE, temp),
             capture_output=True,
             timeout=180,
             check=True,
         )
-        archive = destination / json.loads(result.stdout)["archive_filename"]
+        archive = destination / result.stdout.decode().strip()
+        assert not (KEY.parent / "backup.lock").exists()
         config = Path("/etc/postcardscene/config.py")
         marker = Path("/opt/postcardscene/service-conflicts.json")
         preserved = {path: path.read_bytes() for path in (config, marker, KEY)}

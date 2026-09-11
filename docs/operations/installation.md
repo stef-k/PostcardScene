@@ -516,9 +516,10 @@ scratch before inspecting or changing the installation. After preparation, resto
 performs no backup-destination I/O; a vanished destination does not prevent recovery.
 The existing managed config/DB/key may have corrupt contents, but their filesystem
 ownership, modes, regular-file/one-link authority and managed unit layout must be
-intact. A missing/unsafe target or lock requires operator repair of that authority.
+intact. A missing/unsafe target or unsafe existing lock requires operator repair of that authority.
 
-Restore takes the existing web-owned `backup.lock` nonblocking; `operation_busy`
+Restore exclusively creates the canonical web-owned `backup.lock` if absent,
+then validates and takes the shared inode nonblocking; `operation_busy`
 means no services were changed. It persistently stops/disables the backup timer and
 graphics/runtime/web, stops the backup oneshot and requires both service UIDs to be
 quiescent. These units stay disabled across a reboot during replacement. Exact old
@@ -549,6 +550,8 @@ Failure results are fixed and omit private values:
   manually enabling/starting anything; this result is never a healthy mixed state.
 - `restore_cleanup_uncertain`: sensitive local scratch cleanup could not be proven;
   inspect the root-private restore/rollback scratch. Committed data is not rolled back.
+  If another restore error also occurred, that host outcome stays in `error` and
+  cleanup uncertainty appears separately as `cleanup: restore_cleanup_uncertain`.
 
 Successful restore or proven rollback removes its rollback scratch; candidate
 scratch is cleaned once no worker owns it. Scratch and archives are sensitive and

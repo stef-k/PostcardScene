@@ -48,7 +48,10 @@ def main(argv=None):
             "timezone_unavailable",
         }:
             category = "backup_failed"
-        print(json.dumps({"error": category}))
+        result = {"error": category}
+        if getattr(error, "cleanup_uncertain", False):
+            result["cleanup"] = "restore_cleanup_uncertain"
+        print(json.dumps(result))
         return 1
     except (Exception, KeyboardInterrupt):
         print('{"error":"backup_failed"}')
