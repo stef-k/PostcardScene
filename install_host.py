@@ -12,6 +12,7 @@ import time
 import zipfile
 from pathlib import Path
 
+from postcardscene_install_command import ENV as ENV
 from postcardscene_install_command import command as command
 from postcardscene_install_services import (
     AUXILIARY_UNITS,

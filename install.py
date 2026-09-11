@@ -17,7 +17,7 @@ from pathlib import Path
 INPUT_HASHES = {
     "install_inputs.py": "82d23f5cdb9db262064166ec2ea84e5c3cc94c40fa602c451ac6fa4eed119759",
     "install_services.py": "0974c2f102098dfcb5a6ab1a71d18930bd1b28bb02f4eab8e62e7065a2245ee8",
-    "install_host.py": "3bddc1701d1e8990f3db757ef5df1247393e61d528b3023e3b9582572176efb0",
+    "install_host.py": "7e6f06d40d5d448208c5d4a04aad263bbeae01c9fe166d5b2d74c66a866910bb",
     "install_preflight.py": "634d686f7267e56a297b129a92acbcc7a28ca4b6ebf6532ef85de5334aa63b2f",
     "install_update_state.py": "5979eea7b598c27b157e5f8f91230453d8d2430c1e2c613ea2f8ef3b53ece5d9",
     "install_update.py": "d943a1d5c2fc4febcf11d5317e420f4ec78bbf985dd9269be8c778f693756b58",
