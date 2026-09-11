@@ -51,7 +51,23 @@ def instrument(host, preflight, selected):
     ]
 
     def state(observer, unit):
-        result = service_state(observer, unit)
+        try:
+            result = service_state(observer, unit)
+        except host.InstallError:
+            print(
+                "Unavailable unit state:",
+                unit,
+                observer.Host().command(
+                    (
+                        "/usr/bin/systemctl",
+                        "show",
+                        unit,
+                        "--property=LoadState,ActiveState,UnitFileState",
+                    )
+                ),
+                flush=True,
+            )
+            raise
         if unit == GRAPHICS and graphics_active:
             result["ActiveState"] = "active"
         return result
@@ -117,7 +133,13 @@ def instrument(host, preflight, selected):
                     assert check["state"] == "degraded", check
                     check["state"] = "ready"
             return json.dumps(data)
-        return command(args, **options)
+        result = command(args, **options)
+        if args == ("/usr/bin/systemctl", "start", "postcardscene-runtime.service"):
+            # Runtime Wants=graphics can start it indirectly despite the explicit
+            # start substitution. Stop that unsupported display launch on this VM;
+            # the weak dependency leaves the real runtime service running.
+            command(("/usr/bin/systemctl", "stop", GRAPHICS))
+        return result
 
     host.service_state = state
     host.command = run
