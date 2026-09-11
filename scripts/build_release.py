@@ -162,17 +162,19 @@ def build(output, require_tag=True):
         smoke_archive(output, project, scratch, sha)
     (output / "release-notes.md").write_text(
         f"# PostcardScene {version}\n\nSource: `{sha}`; tag: `v{version}`.\n\n"
-        "This candidate supplies the native install/remove bundle, external checksums "
+        "This candidate supplies the native install/remove/update bundle, external checksums "
         "and an extracted-member integrity gate. Compatible reinstall preserves config, "
         "database/admin state, signing key and service identities.\n\n"
         f"Packaged schema: `{manifest['schema']['alembic_head']}`. "
         "Clean installation explicitly initializes the schema; reinstall does not migrate. "
-        "Manual backup is available; forward update and restore remain unavailable.\n\n"
+        "Recovery-backed forward update and same-version restore are available. Updates use "
+        "the verified target bundle, preserve config/key/durable state, and finish only "
+        "forward after durable commit; retained old bytes are never a rollback slot.\n\n"
         "Managed targets remain ARM64 Ubuntu Server 24.04/26.04 and Raspberry Pi OS "
         "64-bit / Debian 13 Trixie, with CPython 3.11–3.14. Generic artifact smoke "
         "does not prove physical Pi/HDMI support or complete V0 security/recovery gates.\n\n"
         "Verify SHA256SUMS from this GitHub Release before executing extracted installer code. "
-        "See docs/operations/installation.md at the exact tag for install/remove instructions. "
+        "See docs/operations/installation.md at the exact tag for install/remove/update and recovery instructions. "
         "Different repacked bytes require new checksums and candidate evidence.\n"
     )
     if "GITHUB_OUTPUT" in os.environ:
