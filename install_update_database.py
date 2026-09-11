@@ -4,6 +4,7 @@ import os
 import sqlite3
 import stat
 import tempfile
+import time
 from pathlib import Path
 
 import postcardscene_install_host as host
@@ -22,7 +23,7 @@ def signature(path):
     return info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns
 
 
-def copy_database(directory):
+def copy_database(directory, deadline):
     # Services are quiescent and the mutation lock is held. Snapshot signatures
     # still reject changes; SQLite never opens the installed file or its sidecars.
     paths = (host.DATABASE, Path(str(host.DATABASE) + "-wal"))
@@ -42,6 +43,8 @@ def copy_database(directory):
             with os.fdopen(out, "wb") as destination:
                 remaining = expected[2]
                 while remaining:
+                    if time.monotonic() >= deadline:
+                        raise InstallError("update_database_inspection_timeout")
                     block = source.read(min(1024 * 1024, remaining))
                     if not block:
                         raise InstallError("update_database_unrecognized")
@@ -53,15 +56,19 @@ def copy_database(directory):
 
 
 def classify(state, application_id):
+    deadline = time.monotonic() + 120
     try:
         with tempfile.TemporaryDirectory(
             prefix="postcardscene-update-", dir="/tmp"
         ) as name:
-            path = copy_database(Path(name))
+            path = copy_database(Path(name), deadline)
             connection = sqlite3.connect(
                 path.as_uri() + "?mode=rw", uri=True, timeout=5
             )
             try:
+                connection.set_progress_handler(
+                    lambda: int(time.monotonic() >= deadline), 1000
+                )
                 if (
                     connection.execute("PRAGMA application_id").fetchone()
                     != (application_id,)
@@ -72,7 +79,7 @@ def classify(state, application_id):
                 ):
                     raise InstallError("update_database_unrecognized")
                 revisions = connection.execute(
-                    "SELECT version_num FROM alembic_version"
+                    "SELECT version_num FROM alembic_version LIMIT 2"
                 ).fetchall()
             finally:
                 connection.close()

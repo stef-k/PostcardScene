@@ -30,7 +30,8 @@ def command(
         environment.update(
             HOME=account.pw_dir, POSTCARDSCENE_CONFIG="/etc/postcardscene/config.py"
         )
-    with subprocess.Popen(
+    deadline = time.monotonic() + timeout
+    process = subprocess.Popen(
         args,
         env=environment,
         cwd="/",
@@ -45,20 +46,32 @@ def command(
         start_new_session=not interactive,
         pass_fds=pass_fds,
         **options,
-    ) as process:
+    )
+    try:
+        output = capture_output(process, timeout) if capture else None
+        status = process.wait(timeout=max(0, deadline - time.monotonic()))
+        if status:
+            raise InstallError("command_failed")
+        return output
+    except BaseException as error:
         try:
-            output = capture_output(process, timeout) if capture else None
-            status = process.wait(timeout=timeout)
-        except BaseException:
             if interactive:
                 process.kill()
             else:
                 os.killpg(process.pid, signal.SIGKILL)
-            process.wait()
-            raise
-        if status:
-            raise InstallError("command_failed")
-        return output
+        except ProcessLookupError:
+            pass
+        try:
+            process.wait(timeout=1)
+        except subprocess.TimeoutExpired as cleanup:
+            error.add_note(
+                "Command cleanup uncertain; inherited mutation lock may remain held."
+            )
+            raise error from cleanup
+        raise
+    finally:
+        if process.stdout is not None:
+            process.stdout.close()
 
 
 def capture_output(process, timeout):

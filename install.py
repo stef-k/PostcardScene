@@ -23,9 +23,9 @@ INPUT_HASHES = {
     "install_update.py": "d943a1d5c2fc4febcf11d5317e420f4ec78bbf985dd9269be8c778f693756b58",
     "runtime-requirements.txt": "ad6fd58dc71d7fe2b6da10432cf8bd4ed3f485231f1ed72392aad9624de78deb",
     "install_update_recovery.py": "9f73ea1c7af10b1c9c7c87fe0c46fb0b0bcdc23ccc11c6f6ada20e7d26577743",
-    "install_update_database.py": "551c24536c251a0f4315819bfd4310b671795f8d491349dce0bec0114ea90a3d",
-    "install_update_transaction.py": "4ef85fa3e856ad2046e16e23a41deca32b2aeb9d156c7e6aaaf417b390d87837",
-    "install_command.py": "c18f0ad9c007abdf3b3cf5d9cc710401a5d9117d018963b0a4ee2cd75b628977",
+    "install_update_database.py": "6a165ead4c9911578be1d297d29aae8cfc7139287659197d1abfc4410cd9bc3a",
+    "install_update_transaction.py": "64163bea47942750465ff577429f75798711351ba53c7dc462559d8d1dfe674f",
+    "install_command.py": "e046c52ecdfd69a76f9fcf6dcbc4916132d256dbb6a0c0b682c7e1d585bd69be",
 }
 
 

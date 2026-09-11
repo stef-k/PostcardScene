@@ -385,6 +385,39 @@ old+target recognition; mixed activation/partial old cleanup is reserved for #17
 No archive path, recovery token, backup result or fourth staging phase is persisted.
 
 
+### Recovery-locked forward commit (#176)
+
+Authenticated `install_update_transaction.transaction()` consumes #175 staging and
+yields only after durable `committed`, retaining the same canonical backup flock
+through its caller context so #177 can activate without a release/reacquire gap.
+The bootstrap mirrors #170's exact root bootstrap/private-parent/inode checks;
+old backup code is never imported into the root installer process. Fixed old-Python
+helpers run as the web identity, with inherited fd for `_create_locked` and ordinary
+strict `verify`. Only the complete immutable verification result and selected path
+are carried in memory. Policy supplies a destination only; no history authorizes work.
+
+After strict verification, write `prepared`, retire the timer/oneshot then each
+service in reverse order, attempting all retirement/inspection steps despite failure.
+Require persistent disabled state, inactivity and no managed UID processes. A phase
+file never proves quiescence. Revalidate the old DB head before entering `migrating`;
+a valid explicit archive cannot authorize initializing an empty/unrecognized live DB.
+
+Interrupted-head classification copies stable main/WAL bytes to private local scratch
+(up to 4 GiB combined, 120-second cooperative copy/SQLite budget). SQLite opens only
+the private copy; source signatures reject changes. Exact application ID, WAL mode,
+quick/foreign-key integrity and one exact old/target revision are required. Unknown
+or intermediate heads fail stopped. Old head needs a new strict recovery point;
+target head needs target `db check`; same-schema reruns still execute upgrade/check.
+
+The authenticated staged Python runs the exact managed Flask `db upgrade` then
+`db check` as web with the fixed config/environment, cwd `/`, bounded time/output,
+and inherited mutation fd. `install_command` owns that shared subprocess boundary.
+Only exact target application/version/ID/schema output permits `committed`. Migration
+failure preserves disabled units and old assets/symlink; after commit there is no
+old-app restart, automatic restore or downgrade. Public activation/cleanup and full
+installed update evidence remain #177/#178. Existing #27 APIs and behavior are unchanged.
+
+
 ## Installed doctor (#141)
 
 `postcardscene-doctor` owns bounded, read-only administrative aggregation of the
@@ -464,7 +497,7 @@ verification evidence only; #144 must reverify at use and #160 owns same-version
 restore authority. #165 exposes DB-only authenticated policy/status and private-
 snapshot doctor diagnostics; both remain advisory and perform no destination I/O.
 Managed destructive restore is implemented by #170 below. #161 composes the
-installed recovery evidence; updates (#144) remain unimplemented.
+installed recovery evidence; public update completion remains #177/#178.
 See [manual operations](../operations/installation.md#manual-sensitive-backups-158)
 for command usage, size limits and confidentiality responsibilities.
 
@@ -568,7 +601,7 @@ replacement installation. Host-specific installation state remains untouched;
 loss followed by a clean exact-release install and replacement-host recovery.
 The existing installed-Linux lane verifies original durable state and exact config/
 key bytes, catalog invalidation, scheduled retention and install/doctor authority.
-Only graphics activation is simulated; #144 remains unimplemented.
+Only graphics activation is simulated; public update completion remains #177/#178.
 
 
 ### Persisted backup policy and daily due state (#163)

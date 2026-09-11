@@ -20,6 +20,7 @@ def transaction(managed, monkeypatch, tmp_path):
     update, target, current, preflight = managed
     engine = sys.modules["postcardscene_install_update_transaction"]
     recovery = engine.recovery
+    monkeypatch.setattr(engine.database, "classify", lambda *a: "old")
     release = update.host.RELEASES / target.version
     release.mkdir()
     populate_release(release, target.version, target.wheel, target.requirements)
@@ -298,3 +299,33 @@ def test_bad_target_check_never_commits(transaction):
         with engine.transaction(target, pf, run=bad):
             pass
     assert engine.update.state_files.read().phase == "migrating"
+
+
+@pytest.mark.parametrize("failure", ["upgrade", "check"])
+def test_handled_migration_failure_remains_fail_stopped(transaction, failure):
+    engine, target, current, pf, run, events, states, _ = transaction
+
+    def fail(args, **kw):
+        if args[-1] == failure:
+            raise OSError("migration failed")
+        return run(args, **kw)
+
+    with pytest.raises(OSError):
+        with engine.transaction(target, pf, run=fail):
+            pass
+    assert engine.update.state_files.read().phase == "migrating"
+    assert engine.update.active_version() == current.name
+    assert all(v["ActiveState"] == "inactive" for v in states.values())
+
+
+def test_committed_rerun_checks_target_without_recovery_or_upgrade(transaction):
+    engine, target, current, pf, run, events, _, _ = transaction
+    engine.update.state_files.write(
+        replace(make_state(engine.update, target, current), phase="committed")
+    )
+    with engine.transaction(target, pf, run=run):
+        pass
+    assert events[-1] == "check"
+    assert not {"create", "verify", "policy", "upgrade"}.intersection(
+        e for e in events if isinstance(e, str)
+    )
