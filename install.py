@@ -26,7 +26,7 @@ INPUT_HASHES = {
     "install_update_database.py": "6a165ead4c9911578be1d297d29aae8cfc7139287659197d1abfc4410cd9bc3a",
     "install_update_transaction.py": "0424baf5491f6f76147de1b0c40d8460f545fac579f1d3abaf37cb4dbba9cf2e",
     "install_update_assets.py": "073f31cd9c404f5f9749eeb4583cc76425685df949b1625a109e690e80646a6c",
-    "install_update_finish.py": "36657eb38e8141f7c0dcf7210c3ded1f7fdf17629840a08bd4afe7a52c042a3c",
+    "install_update_finish.py": "a8c4e665cb4ad6a24788696776deb02844b5939f9b1b7a103c09372441219b61",
     "install_command.py": "dbacdbca6c89f46ea4d4cfd52c72cc3a74e4111cbaaf0de51dd74479d770a653",
 }
 

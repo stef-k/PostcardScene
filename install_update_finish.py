@@ -182,13 +182,19 @@ def execute(target, preflight, *, destination=None, archive=None, run=None):
             raise InstallError("update_final_authority_invalid")
     except (Exception, KeyboardInterrupt) as error:
         if committed is not None:
+            cleanup = None
             try:
                 if update.state_files.read() is None:
                     update.state_files.write(committed)
+            except (Exception, KeyboardInterrupt) as failure:
+                cleanup = failure
+            try:
                 transaction.quiesce(preflight, run)
-            except (Exception, KeyboardInterrupt) as cleanup:
+            except (Exception, KeyboardInterrupt) as failure:
+                cleanup = failure
+            if cleanup is not None:
                 error.add_note(
-                    "Update retirement uncertain; preserve committed target authority."
+                    "Update retirement or phase recovery uncertain; preserve target authority."
                 )
                 raise error from cleanup
         raise

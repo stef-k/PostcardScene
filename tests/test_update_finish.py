@@ -415,3 +415,23 @@ def test_converged_rerun_persists_asset_and_release_parents(committed, monkeypat
     finish.execute(target, pf, run=run)
     expected = {p.parent for p in finish.host.asset_bytes(target.wheel)}
     assert expected | {finish.host.ROOT, finish.host.RELEASES} <= set(synced)
+
+
+def test_phase_recovery_failure_still_retires_all_services(committed, monkeypatch):
+    finish, target, _, pf, run, _, states = committed
+    remove = finish.update.state_files.remove
+
+    def failed_remove():
+        remove()
+        raise OSError("primary unlink fsync failure")
+
+    def failed_write(state):
+        raise OSError("secondary state recovery failure")
+
+    monkeypatch.setattr(finish.update.state_files, "remove", failed_remove)
+    monkeypatch.setattr(finish.update.state_files, "write", failed_write)
+    with pytest.raises(OSError, match="primary unlink fsync failure") as caught:
+        finish.execute(target, pf, run=run)
+    assert "secondary state recovery" in str(caught.value.__cause__)
+    assert all(v["ActiveState"] == "inactive" for v in states.values())
+    assert all(v["UnitFileState"] in {"disabled", "static"} for v in states.values())
