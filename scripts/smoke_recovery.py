@@ -157,7 +157,7 @@ def clean_install(entrypoint, bundle):
 
 
 def recovery_smoke(entrypoint, host, preflight):
-    from smoke_native_install import prepare_smoke_bundle
+    from smoke_native_install import lifecycle_smoke, prepare_smoke_bundle
 
     with tempfile.TemporaryDirectory(
         prefix="postcardscene-recovery-", dir="/tmp"
@@ -211,7 +211,13 @@ def recovery_smoke(entrypoint, host, preflight):
         )
         authority(host, preflight, version, wheel)
         host.command(("/usr/bin/systemctl", "stop", *host.SERVICES))
-        scheduled_lifecycle(entrypoint, host, preflight, lambda: None)
+        runtime, web, shared, _ = host.preserved_identities()
+        scheduled_lifecycle(
+            entrypoint,
+            host,
+            preflight,
+            lambda: lifecycle_smoke(entrypoint, host, runtime, web, shared),
+        )
         assert verify(archive) == identity
         assert pair == {p.name: p.read_bytes() for p in destination.iterdir()}
         lost_host(entrypoint, bundle, host, preflight, version, wheel)
@@ -227,20 +233,23 @@ def recovery_smoke(entrypoint, host, preflight):
             for t in ("source", "widget", "scene", "sequence", "operating_window")
         )
         assert fresh["backup_policy"] != json.loads(expected)["backup_policy"]
+        assert (
+            fresh["application_settings"]
+            != json.loads(expected)["application_settings"]
+        )
+        fresh_marker = marker.read_bytes()
         # Replacement UIDs need not match the lost host. Root restore can read the
         # untouched pair; strict API rechecks also run as root from this point.
         restore_archive(archive)
         assert state("restored") == expected
         assert all(p.read_bytes() == value for p, value in exact.items())
+        assert marker.read_bytes() == fresh_marker
+        assert all(
+            p.read_bytes() == value for p, value in immutable.items() if p != marker
+        )
         authority(fresh_host, fresh_preflight, version, wheel)
         assert verify(archive) == identity
         assert pair == {p.name: p.read_bytes() for p in destination.iterdir()}
-        fresh_host.command(("/usr/bin/systemctl", "stop", *fresh_host.SERVICES))
-        # Retain the pre-existing remove/reinstall evidence on the recovered host.
-        from smoke_native_install import lifecycle_smoke
-
-        runtime, web, shared, _ = fresh_host.preserved_identities()
-        lifecycle_smoke(entrypoint, fresh_host, runtime, web, shared)
     print(
         "Same canonical backup recovered original and clean replacement hosts; graphics simulated."
     )
