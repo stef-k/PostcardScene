@@ -183,7 +183,11 @@ def recovery_smoke(entrypoint, host, preflight):
         destination.mkdir(mode=0o700)
         web = pwd.getpwnam("postcardscene-web")
         os.chown(destination, web.pw_uid, web.pw_gid)
-        CONFIG.write_bytes(CONFIG.read_bytes() + b"# Original recovery configuration\n")
+        CONFIG.write_bytes(
+            CONFIG.read_bytes().replace(
+                b"MEDIA_ALLOWED_ROOTS = ()", b'MEDIA_ALLOWED_ROOTS = ("/private",)'
+            )
+        )
         expected = state("seed")
         exact = {p: p.read_bytes() for p in (CONFIG, KEY)}
         created = backup_cli("create", "--destination", str(destination))

@@ -459,7 +459,9 @@ Each `postcardscene-backup-YYYYMMDDTHHMMSSffffffZ-v<version>.tar.gz` contains ex
 | `backup-manifest.json` | Fixed v1 identity and DB/config/key sizes and SHA-256 hashes. |
 
 The database may contain media catalog rows, classified in the manifest as
-`regenerable_reconcile_required`. Restore invalidates catalog rows/freshness and requires reconciliation. Original media, provider assets, browser profiles, caches/runtime files,
+`regenerable_reconcile_required`. Restore invalidates catalog rows/freshness and
+requires reconciliation. Original media, provider assets, browser profiles,
+caches/runtime files,
 logs, releases/venv, systemd/PAM assets and `service-conflicts.json` are excluded.
 Do not use this archive as a host image or a backup of external media libraries.
 

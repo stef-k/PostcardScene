@@ -52,7 +52,7 @@ def seed():
                 session,
                 name=f"Recovery source {index}",
                 kind="local_directory",
-                configuration={"root": f"/private/recovery-{index}"},
+                configuration={"path": f"/private/recovery-{index}", "recursive": True},
                 enabled=False,
             )
             session.add(
