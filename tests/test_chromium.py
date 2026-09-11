@@ -304,6 +304,9 @@ def test_two_launch_specs_share_policy_and_isolate_authority(
 
     monkeypatch.setenv("DISPLAY", ":99")
     monkeypatch.setenv("SECRET_TOKEN", "secret")
+    monkeypatch.setenv("POSTCARDSCENE_CONFIG", "/private/admin-config.py")
+    monkeypatch.setenv("HOME", "/private/admin-home")
+    monkeypatch.setenv("XDG_CONFIG_HOME", "/private/admin-config")
     monkeypatch.setattr(_launch.subprocess, "Popen", record)
     try:
         browser.ensure_started()
@@ -321,7 +324,25 @@ def test_two_launch_specs_share_policy_and_isolate_authority(
             assert "preexec_fn" not in kwargs
             assert kwargs["env"]["WAYLAND_DISPLAY"] == "wayland-0"
             assert not {"DISPLAY", "SECRET_TOKEN"} & kwargs["env"].keys()
+            assert "POSTCARDSCENE_CONFIG" not in kwargs["env"]
+            assert kwargs["env"]["HOME"] == str(controller.spec.profile_root)
+            assert kwargs["env"]["XDG_CONFIG_HOME"] == str(
+                controller.spec.profile_root / "config"
+            )
             assert os.getpgid(controller._process.pid) == controller._process.pid
+        messages = connections[1].sent
+        denied = next(
+            i
+            for i, message in enumerate(messages)
+            if message["method"] == "Browser.setDownloadBehavior"
+        )
+        navigation = next(
+            i
+            for i, message in enumerate(messages)
+            if message["params"].get("url") == "https://example.test/content"
+        )
+        assert messages[denied]["params"] == {"behavior": "deny"}
+        assert denied < navigation
         with pytest.raises(ChromiumError, match="invalid_url"):
             other.navigate("chrome://settings")
         duplicate = ChromiumController(session, browser.context, browser.spec)

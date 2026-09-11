@@ -399,9 +399,12 @@ pages. Pillow reads headers and header EXIF only, swapping presentation dimensio
 for orientations 5/6/7/8 before portrait/landscape/square classification. PNG trailing
 EXIF is not sought by decoding pixels. Ready unchanged images are not reopened;
 changed freshness clears derived fields. Bad images retain presence with metadata
-`error`; freshness races leave metadata pending for a later reconciliation. Reads
-use #22 safe resolution and recheck size/mtime afterward, retaining its documented
-point-in-time race limitation rather than claiming an atomic filesystem snapshot.
+`error`; changes observed during inspection leave metadata pending for a later
+reconciliation. #134 hardens reads through the shared no-follow `open_image_item`
+descriptor boundary: Pillow never reopens a checked pathname, and size/mtime are
+checked on the pinned file afterward. Mounted metadata also verifies that file's
+mount identity before decoding headers. This prevents symlink/local-mountpoint
+fallthrough without claiming an immutable snapshot of concurrently modified bytes.
 
 Mounted image batches reuse #24's disposable spawn operation, mount guard, streamed
 per-item results/progress, idle timeout and bounded cleanup. The parent never opens

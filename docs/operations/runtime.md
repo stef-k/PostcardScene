@@ -345,6 +345,29 @@ or audio suppression. The page sends no runtime commands or hardware probes.
 
 
 
+## Security audit and host trust (#134)
+
+The [V0 trust-boundary audit](../architecture/control-plane-and-security.md#v0-trust-boundary-audit-134)
+records renderer, media, every application subprocess family, service identities
+and diagnostic authority. Catalog metadata now uses the same pinned no-follow
+file opener as media delivery, including mounted-file identity checking.
+
+Keep media roots/ancestors, executable launchers and Linux mounts under trusted
+host administration. An unavailable NAS must remain a `mounted_directory`; do not
+change it to a local Source to hide the outage. Mount checks do not authenticate
+which server/export was mounted at an authorized path.
+
+Configured web scenes can reach local/LAN services through Chromium. Do not put
+provider credentials in URLs, log into PostcardScene administration in the kiosk,
+share/copy browser profiles, or expose CDP/journal/process inspection through a
+proxy or status page. Loopback CDP is not an isolation boundary against malicious
+local host processes. Keep the dedicated web UID free of runtime device groups;
+the shared group grants DB and fixed panel-protocol access, not Wayland ownership.
+
+The audit fixes the local metadata read race; no separate software blocker was
+identified. Physical Pi/seat/device/HDMI/panel evidence remains #66/#116/#127 and
+exact-release security/dependency closure remains #135.
+
 ## Local administrator recovery (#133)
 
 For a forgotten administrator password on a managed installation, use authorized
