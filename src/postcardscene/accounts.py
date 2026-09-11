@@ -43,11 +43,15 @@ def authenticate(database, username, password):
     if not 1 <= len(username) <= 64 or not 1 <= len(password) <= 128:
         return None
     with database.transaction() as session:
-        admin = session.scalar(
-            select(Administrator).where(Administrator.username == username)
+        admin = session.scalar(select(Administrator).where(Administrator.id == 1))
+        credentials = (
+            (admin.password_hash, admin.session_id, admin.username) if admin else None
         )
-        credentials = (admin.password_hash, admin.session_id) if admin else None
-    if credentials and check_password_hash(credentials[0], password):
+    if (
+        credentials
+        and check_password_hash(credentials[0], password)
+        and credentials[2] == username
+    ):
         return credentials[1]
     return None
 

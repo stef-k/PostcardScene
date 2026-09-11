@@ -194,6 +194,28 @@ Both modes retain HttpOnly, SameSite=Lax and the 12-hour session limit.
 #26/#28 own proxy prerequisites/examples; this command installs no proxy, TLS
 certificate, firewall rule or DNS configuration.
 
+Login protection allows five failures per client IP in a rolling five minutes.
+The fifth still shows ordinary login failure; later POSTs return 429 and a
+`Retry-After` of 1–300 seconds. Wait for that interval before retrying. Successful
+login clears the IP's history. Invalid forms count; CSRF-rejected requests do not
+verify passwords. Failure and throttle pages use the same message and do not
+redisplay submitted credentials. Clients behind the same NAT share the budget.
+
+The limiter lives only in the single web process: restarting it clears history.
+Its 256-IP bound evicts the least recently active entry without an ongoing login;
+expired idle entries are removed first. Concurrent verification reserves slots;
+capacity occupied only by ongoing attempts may return a one-second retry.
+IP churn can evict histories, so this does not make Internet exposure safe.
+The client IP comes exclusively from the Waitress boundary described above.
+
+All control-origin responses, including login and errors, deny framing, disable
+MIME sniffing and referrers, and deny camera/microphone/geolocation/payment.
+Strict CSP permits local scripts/styles/assets and Bootstrap's embedded SVG
+images, without remote assets or inline script/style exceptions. Non-static
+responses remain `Cache-Control: no-store`. The application does **not** emit
+HSTS: configure it at the external same-host HTTPS proxy for secure deployments.
+Direct HTTP remains supported; cookie/session settings are unchanged.
+
 The installed web UID is `postcardscene-web`, primary GID `postcardscene`.
 Runtime retains UID `postcardscene`. Web receives no runtime graphics/device groups
 (DRM/render/video/audio/CEC/input) or access to `/run/postcardscene-wayland`.

@@ -230,6 +230,41 @@ writes limited to shared state plus private temporary buffering. Network and
 fixed panel-client access remain available. #26 installs/provisions it; #29/#134
 retain the final privilege audit.
 
+## Control-origin abuse protection (#132)
+
+The single-process Waitress service owns one memory-only login limiter keyed only
+by `request.remote_addr`, after #131's server boundary. Five failed submissions
+per IP fit in a rolling 300-second monotonic window; the fifth returns ordinary
+401 failure, and later POSTs return 429 with whole-second `Retry-After` (1–300)
+until the oldest failure expires. Success clears that IP's history. Invalid form
+submissions count as failures; CSRF rejection remains 400 without password
+verification. Already-limited POSTs are rejected before form/CSRF processing.
+All login failures and throttles use the same fixed message and blank credential
+fields. Known and unknown usernames both verify the single administrator hash.
+
+Short locked memory operations reserve capacity before verification; no lock is
+held across password hashing or database I/O, and no sleep/delay is inserted.
+In-flight attempts reserve failure slots, with a one-second retry when only
+pending attempts exhaust capacity. At most 256 IP entries are retained. Expired
+idle entries are removed first, then the least recently active entry without an
+in-flight attempt is evicted (ordered access/completion breaks ties). If all 256
+entries are in flight, new IPs receive a one-second retry. Restart clears state;
+shared NAT clients share a budget and IP churn can evict histories. This is bounded
+appliance abuse resistance, not distributed or Internet-scale protection.
+
+One response hook covers control/login/static/error responses with `nosniff`,
+`Referrer-Policy: no-referrer`, `X-Frame-Options: DENY`, and Permissions-Policy
+camera/microphone/geolocation/payment denials. CSP uses `default-src 'self'`,
+self-only scripts/styles/fonts/connections, `object-src 'none'`, `base-uri 'none'`,
+`frame-ancestors 'none'`, `form-action 'self'`, and no frames or workers.
+Images allow only self and `data:` for vendored Bootstrap's embedded SVG controls.
+The template inventory has no inline script/style/event handlers; first-party
+control.js and Bootstrap/CSS need no nonce, hash or unsafe-inline exception.
+No remote asset origins are allowed. This policy covers the control origin only,
+not projected web scenes. Non-static responses retain `Cache-Control: no-store`.
+Flask emits no HSTS; the external same-host HTTPS proxy owns it where appropriate,
+while supported direct HTTP and #15/#131 session/cookie semantics remain intact.
+
 ## Privilege boundaries
 
 The normal Flask service must not run with broad root privileges.
