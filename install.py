@@ -15,17 +15,19 @@ from pathlib import Path
 # Reviewed #138/#139 input pins, checked against source by release-input validation.
 # These are installer inputs, not a release manifest or published-bundle schema.
 INPUT_HASHES = {
-    "install_inputs.py": "82d23f5cdb9db262064166ec2ea84e5c3cc94c40fa602c451ac6fa4eed119759",
+    "install_inputs.py": "99adeb5e24ab1311ef4538e0b331b8bc0f3a70548f2738c27bc9bd67961efe9a",
     "install_services.py": "0974c2f102098dfcb5a6ab1a71d18930bd1b28bb02f4eab8e62e7065a2245ee8",
-    "install_host.py": "7e6f06d40d5d448208c5d4a04aad263bbeae01c9fe166d5b2d74c66a866910bb",
+    "install_host.py": "6b6fbc920304059a68ae4026f1697b49b191d2f1d6fcb0861e6fc8c20ef6d0d6",
     "install_preflight.py": "634d686f7267e56a297b129a92acbcc7a28ca4b6ebf6532ef85de5334aa63b2f",
     "install_update_state.py": "5979eea7b598c27b157e5f8f91230453d8d2430c1e2c613ea2f8ef3b53ece5d9",
-    "install_update.py": "d943a1d5c2fc4febcf11d5317e420f4ec78bbf985dd9269be8c778f693756b58",
+    "install_update.py": "8565bcb3d9ed68b416e3b23c82c1a0dc7fb89a31299e7030b0e4e623305c7e58",
     "runtime-requirements.txt": "ad6fd58dc71d7fe2b6da10432cf8bd4ed3f485231f1ed72392aad9624de78deb",
     "install_update_recovery.py": "9f73ea1c7af10b1c9c7c87fe0c46fb0b0bcdc23ccc11c6f6ada20e7d26577743",
     "install_update_database.py": "6a165ead4c9911578be1d297d29aae8cfc7139287659197d1abfc4410cd9bc3a",
-    "install_update_transaction.py": "64163bea47942750465ff577429f75798711351ba53c7dc462559d8d1dfe674f",
-    "install_command.py": "e046c52ecdfd69a76f9fcf6dcbc4916132d256dbb6a0c0b682c7e1d585bd69be",
+    "install_update_transaction.py": "0424baf5491f6f76147de1b0c40d8460f545fac579f1d3abaf37cb4dbba9cf2e",
+    "install_update_assets.py": "6d20e1fd1aca97b06c026b4e0512aa6bf284f8c57a9750d09958c40572b2e459",
+    "install_update_finish.py": "2a6fa977c2e3b34e2c491be228fc53c88563aeea1753a8b07662590c9cae6320",
+    "install_command.py": "dbacdbca6c89f46ea4d4cfd52c72cc3a74e4111cbaaf0de51dd74479d770a653",
 }
 
 
@@ -65,6 +67,8 @@ def load_support(bundle):
         "install_update_recovery.py",
         "install_update_database.py",
         "install_update_transaction.py",
+        "install_update_assets.py",
+        "install_update_finish.py",
     ):
         spec = importlib.util.spec_from_loader(
             "postcardscene_" + name[:-3], loader=None
@@ -280,6 +284,29 @@ class Installation:
         except (self.host.InstallError, preflight.Rejected) as error:
             raise InstallError(str(error)) from None
 
+    def update(self, destination=None, archive=None):
+        _, host, preflight, members = load_support(self.bundle)
+        self.host = host
+        self.phase = "update"
+        update = sys.modules["postcardscene_install_update"]
+        finish = sys.modules["postcardscene_install_update_finish"]
+        try:
+            target = update.target_inputs(self.bundle, members)
+            finish.execute(
+                target,
+                preflight,
+                destination=destination,
+                archive=archive,
+                run=self.run,
+            )
+        except (
+            host.InstallError,
+            update.inputs.InstallError,
+            preflight.Rejected,
+        ) as error:
+            raise InstallError(str(error)) from None
+        self.phase = "complete"
+
     def recover(self):
         if self.durable:
             if self.activation:
@@ -344,11 +371,19 @@ class Installation:
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=("install", "remove"))
+    parser.add_argument("action", choices=("install", "remove", "update"))
+    recovery = parser.add_mutually_exclusive_group()
+    recovery.add_argument("--backup-destination")
+    recovery.add_argument("--recovery-archive")
     args = parser.parse_args()
+    if args.action != "update" and (args.backup_destination or args.recovery_archive):
+        parser.error("Recovery options require update.")
     operation = Installation(Path(__file__).resolve().parent)
     try:
-        getattr(operation, args.action)()
+        if args.action == "update":
+            operation.update(args.backup_destination, args.recovery_archive)
+        else:
+            getattr(operation, args.action)()
     except (
         InstallError,
         OSError,
@@ -364,6 +399,12 @@ def main():
             print("Install reason: " + str(error), file=sys.stderr)
         if args.action == "install":
             operation.recover()
+        elif args.action == "update":
+            print(
+                "Update incomplete; preserve state and rerun this exact target bundle. "
+                "Committed updates finish forward only.",
+                file=sys.stderr,
+            )
         else:
             print(
                 "Removal incomplete; preserve remaining targets and reconcile manually.",

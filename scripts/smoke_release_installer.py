@@ -34,7 +34,7 @@ def main():
         manifest["members"]["install.py"]["sha256"] = "0" * 64
         manifest_path.write_text(json.dumps(manifest))
         util.module_from_spec = only_validator
-        for action in ("install", "remove"):
+        for action in ("install", "remove", "update"):
             operation = installer["Installation"](bundle, no_mutation)
             try:
                 getattr(operation, action)()
@@ -53,7 +53,7 @@ def main():
         text=True,
         timeout=30,
     )
-    assert "{install,remove}" in result.stdout
+    assert "{install,remove,update}" in result.stdout
     print("Extracted installer identity, pins and pre-mutation manifest gate passed.")
 
 

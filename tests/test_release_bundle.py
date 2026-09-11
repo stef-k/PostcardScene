@@ -10,7 +10,7 @@ from test_native_install import bundle as bundle
 from test_native_install import installer, release
 
 
-@pytest.mark.parametrize("action", ["install", "remove"])
+@pytest.mark.parametrize("action", ["install", "remove", "update"])
 @pytest.mark.parametrize(
     "damage",
     ["missing", "extra", "tag", "schema", "version", "python", "hash", "duplicate"],

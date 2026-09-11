@@ -25,7 +25,7 @@ jobs:
       - run: uv run pytest
       - name: Root-only restore and update contracts
         if: matrix.python == '3.11'
-        run: sudo .venv/bin/python -B -m pytest tests/test_backup_restore.py tests/test_restore_execution.py tests/test_update_host.py tests/test_update_transaction.py tests/test_update_recovery.py
+        run: sudo .venv/bin/python -B -m pytest tests/test_backup_restore.py tests/test_restore_execution.py tests/test_update_host.py tests/test_update_transaction.py tests/test_update_recovery.py tests/test_update_finish.py
       - run: uv build
         if: matrix.python == '3.11'
       - run: uv run python scripts/check_release_inputs.py

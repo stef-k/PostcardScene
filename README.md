@@ -130,7 +130,8 @@ packaged services. Repeat invocations fail closed without resetting credentials.
 [managed remove/reinstall](docs/operations/installation.md#managed-remove-and-reinstall-142),
 preserving configuration, durable DB/admin state, private signing key and identities.
 Use the installed [read-only doctor](docs/operations/installation.md#installed-read-only-diagnostics-141)
-for bounded host diagnostics. Published bundles require [external checksum and manifest verification](docs/operations/installation.md#verified-github-release-bundles-143); updates remain #144.
+for bounded host diagnostics. Published bundles require [external checksum and manifest verification](docs/operations/installation.md#verified-github-release-bundles-143); [forward update](docs/operations/installation.md#managed-forward-update-177) is available;
+installed update lifecycle evidence remains #178.
 Privileged Linux CI proves two-UID software permissions, not physical Pi support.
 
 ## Development

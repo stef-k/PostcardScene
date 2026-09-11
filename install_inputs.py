@@ -130,6 +130,8 @@ SUPPORT_NAMES = (
     "install_update_recovery.py",
     "install_update_database.py",
     "install_update_transaction.py",
+    "install_update_assets.py",
+    "install_update_finish.py",
     "runtime-requirements.txt",
 )
 MANIFEST_NAME = "release-manifest.json"

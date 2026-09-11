@@ -347,8 +347,7 @@ The full fixed support set remains authenticated before any helper execution;
 
 The externally verified executing target bundle remains the only target-code
 entry. Authenticated `install_update.py` supplies internal recognition/staging;
-`install_update_state.py` owns bounded exact phase-file operations. There is no
-public update command yet. #176 owns recovery locking, quiescence and migration;
+`install_update_state.py` owns bounded exact phase-file operations. The public update command is completed by #177. #176 owns recovery locking, quiescence and migration;
 #177 owns committed activation and the public CLI; #178 owns lifecycle evidence.
 
 Recognition reads the current root-controlled release wheel without executing
@@ -381,7 +380,7 @@ SHA/schema. The fixed `.postcardscene-update.new` sibling is non-authoritative;
 only exact safe metadata permits its removal. Writes fsync complete JSON before
 atomic replacement, then fsync the parent; removal also fsyncs the parent.
 Scratch alone never establishes a phase. Exact persisted identities permit intact
-old+target recognition; mixed activation/partial old cleanup is reserved for #177.
+old+target recognition; mixed activation/partial old cleanup follows #177 below.
 No archive path, recovery token, backup result or fourth staging phase is persisted.
 
 
@@ -414,8 +413,40 @@ The authenticated staged Python runs the exact managed Flask `db upgrade` then
 and inherited mutation fd. `install_command` owns that shared subprocess boundary.
 Only exact target application/version/ID/schema output permits `committed`. Migration
 failure preserves disabled units and old assets/symlink; after commit there is no
-old-app restart, automatic restore or downgrade. Public activation/cleanup and full
-installed update evidence remain #177/#178. Existing #27 APIs and behavior are unchanged.
+old-app restart, automatic restore or downgrade. Public activation/cleanup follows #177 below; full
+installed update evidence remains #178. Existing #27 APIs and behavior are unchanged.
+
+
+### Committed finish-forward update (#177)
+
+The target bundle exposes `install.py update` with mutually exclusive backup
+destination/recovery-archive options, as documented in the operations guide.
+`install_update_assets` owns exact old/target file validation and atomic replacement;
+`install_update_finish` owns committed recognition, activation and retirement.
+The persisted target wheel/manifest/schema identity and staged target DB check
+are mandatory under the continuous mutation lock. Before creating mixed assets,
+all app units and the backup timer/oneshot must be persistently quiescent.
+
+Each external asset uses its exact ignored `.postcardscene-update.new` sibling:
+root:root 0644, regular one-link, exact target bytes. Exclusive no-follow creation,
+file fsync, replacement and parent fsync precede daemon-reload and fixed tmpfiles.
+The root-owned target symlink uses the same reserved suffix and parent fsync on
+both sides of replacement. Unknown active or scratch bytes fail closed.
+
+Coherent target DB/assets/symlink authority permits idempotent service activation
+and a bounded root doctor check. All installation-critical results must be ready;
+nonfatal advisory or physical capability warnings are not false installation
+failures. Any activation/check failure attempts every service/timer retirement.
+No old app or DB rollback occurs after committed.
+
+Only after successful target checks may the exact inactive source release be
+recursively removed. A partial source tree needs structural root-owner/no-mount/
+no-device/no-hardlink safety, including confined dangling links after interrupted
+removal, rather than an intact old wheel. No other release path gains deletion
+permission. Timer enablement precedes shared-lock release; timer start/active
+verification follows it. Fsynced phase removal is last, and ordinary target-only
+installed classification is required for success. #178 owns installed lifecycle
+evidence; these contracts do not establish physical Pi/HDMI support.
 
 
 ## Installed doctor (#141)
@@ -497,7 +528,7 @@ verification evidence only; #144 must reverify at use and #160 owns same-version
 restore authority. #165 exposes DB-only authenticated policy/status and private-
 snapshot doctor diagnostics; both remain advisory and perform no destination I/O.
 Managed destructive restore is implemented by #170 below. #161 composes the
-installed recovery evidence; public update completion remains #177/#178.
+installed recovery evidence; installed update lifecycle evidence remains #178.
 See [manual operations](../operations/installation.md#manual-sensitive-backups-158)
 for command usage, size limits and confidentiality responsibilities.
 
@@ -601,7 +632,7 @@ replacement installation. Host-specific installation state remains untouched;
 loss followed by a clean exact-release install and replacement-host recovery.
 The existing installed-Linux lane verifies original durable state and exact config/
 key bytes, catalog invalidation, scheduled retention and install/doctor authority.
-Only graphics activation is simulated; public update completion remains #177/#178.
+Only graphics activation is simulated; installed update lifecycle evidence remains #178.
 
 
 ### Persisted backup policy and daily due state (#163)

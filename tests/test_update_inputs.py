@@ -206,3 +206,22 @@ def test_target_manifest_and_wheel_identity_bound(update, bundle):
         update.require_state_target(
             replace(state, to_manifest_sha256="d" * 64), current, target
         )
+
+
+@pytest.mark.parametrize("option", ["--backup-destination", "--recovery-archive"])
+def test_public_update_cli_passes_string_recovery_paths(monkeypatch, option):
+    from test_native_install import installer
+
+    calls = []
+    monkeypatch.setattr(
+        sys, "argv", ["install.py", "update", option, "/backup/selected"]
+    )
+    monkeypatch.setattr(
+        installer.Installation, "update", lambda self, d, a: calls.append((d, a))
+    )
+    assert installer.main() == 0
+    assert calls == [
+        ("/backup/selected", None)
+        if option == "--backup-destination"
+        else (None, "/backup/selected")
+    ]

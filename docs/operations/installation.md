@@ -7,12 +7,10 @@ Return to [Appliance operations](../operations.md). For installed service operat
 see [Runtime and services](runtime.md); for graphics and panel operation, see
 [Display, rendering and panel control](display.md).
 
-Forward update is not yet an available installer command. #175 supplies internal
-recognition/staging and phase-file primitives; #176 adds the internal recovery-locked
-transaction through database commit. Public activation remains #177–#178. An interrupted staging attempt may leave an inactive
-target release or the reserved `update-state.json.postcardscene-update.new`
-scratch. Preserve uncertain content for inspection: ordinary install/remove do
-not adopt extra releases, and scratch is never proof of a committed update phase.
+Forward update is available through the verified target bundle's installer; see
+[managed forward update](#managed-forward-update-177). Installed-Linux update
+lifecycle evidence remains #178. Preserve uncertain interrupted state: ordinary
+install/remove do not adopt extra releases, and scratch never proves a phase.
 
 ## Release inputs (#138)
 
@@ -107,13 +105,13 @@ an earlier archive checksum or readiness result.
 
 Quality and release smoke consume the just-built archive, verify external sums,
 safely extract its exact fixed members, validate installer pins/manifest and the
-`install`/`remove` surface, then install its binary hash-locked dependencies and
+`install`/`remove`/`update` surface, then install its binary hash-locked dependencies and
 wheel in a fresh supported Python venv. Installed metadata, entry points and
 assets are checked outside the checkout. This is generic Linux artifact evidence;
 the existing privileged lane owns real two-UID remove/reinstall evidence. Neither
 proves ARM64 provisioning, physical Pi/HDMI behavior or final security closure.
 Manual backup and same-version managed restore are available below. Forward
-update (#144) remains unavailable.
+update is documented below; #178 retains installed update lifecycle evidence.
 
 ## Read-only managed-host preflight (#139)
 
@@ -702,12 +700,12 @@ memory. Any later recheck must equal that complete identity (basename, final SHA
 creation UTC, application version, SQLite application ID, schema revision and catalog
 classification). A different valid pair cannot be silently substituted. No persisted
 history/doctor result authorizes mutation, and no universal backup-age threshold is
-imposed here. Public update completion remains #177–#178; restore is not downgrade.
+imposed here. Installed update lifecycle evidence remains #178; restore is not downgrade.
 
 
 ## Internal forward migration boundary (#176)
 
-This is an implementation boundary, not an available operator update command.
+This is the migration boundary used by the public update command below.
 After authenticated target staging, the transaction holds the existing backup/restore
 lock continuously. Normal selection creates a fresh old-version backup at the explicit
 destination or current policy destination, then strictly reverifies it. An explicit
@@ -727,7 +725,43 @@ intermediate or corrupt data stays stopped for operator recovery. Before commit,
 existing old-version same-version restore remains available after the updater exits
 and releases the lock. The updater never invokes restore itself.
 
-`committed` is finish-forward only. Old assets/symlink remain intact in this slice,
-but old services must not restart against migrated data. Activation and full installed
-lifecycle evidence belong to #177/#178. Do not manually switch release bytes or delete
+`committed` is finish-forward only. Do not manually switch release bytes or delete
 phase authority to attempt rollback. No backup archive is deleted by this transaction.
+
+## Managed forward update (#177)
+
+Verify the external checksum and extract the **target** release as described above.
+From that directory run:
+
+```bash
+sudo python3 -B install.py update [--backup-destination PATH | --recovery-archive PATH]
+```
+
+No bundle URL or archive argument selects executable code. Without an explicit
+recovery archive, the updater creates and strictly reverifies a fresh old-version
+backup, using the supplied destination or the managed backup policy destination.
+No available destination means failure before disruption. An explicit absolute
+recovery archive accepts its age for this attempt, but must verify against the
+current application and schema. The two recovery options are mutually exclusive.
+
+After durable commit, rerun the same exact target bundle to finish forward; no
+new old-schema backup or migration is needed. The updater converges each managed
+asset and the active symlink through exact reserved `.postcardscene-update.new`
+siblings and atomic replacement. Foreign bytes or unsafe scratch are refused;
+preserve them for manual inspection. An interrupted incomplete scratch write is
+not an authorized target sibling and is not silently repaired.
+
+Target services and installation-critical doctor checks must succeed before the
+old release is retired. Partial old-release deletion resumes only for the exact
+inactive source path, after target authority and deletion safety are re-proven.
+The old release is diagnostic retention, not a rollback slot. Activation failure
+retires every app unit and the backup timer best-effort and preserves committed
+state for a forward rerun. Config, signing key, identities, service-conflict record
+and backups are preserved.
+
+The backup timer is enabled under the shared lock and started after lock release.
+The phase file is removed last; success requires ordinary one-release target
+`installed_managed` authority. Doctor catalog/storage/backup warnings and physical
+capability degradation do not substitute for, or invalidate, successful required
+installation checks. Root/failure tests are software evidence; installed update
+lifecycle evidence remains #178, and Raspberry Pi/HDMI evidence remains separate.

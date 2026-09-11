@@ -235,6 +235,17 @@ def prepare_target(target, preflight, run=None):
     if os.geteuid() != 0:
         raise InstallError("root_required")
     run = run or host.command
+    state = state_files.read()
+    if state is not None and state.phase == "committed":
+        import postcardscene_install_update_finish as finish
+
+        finish.recognize(target, preflight)
+        current = dict(
+            version=state.from_version,
+            wheel_sha256=state.from_wheel_sha256,
+            schema=state.from_schema,
+        )
+        return current, target, state
     current, state = recognize_current(target, preflight)
     result = preflight.preflight(installation="installed_managed")
     if not result.ok or any(t.state != "installed" for t in result.plan.tools):

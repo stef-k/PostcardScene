@@ -18,7 +18,14 @@ ENV = {
 
 
 def command(
-    args, *, interactive=False, user=None, timeout=300, capture=False, pass_fds=()
+    args,
+    *,
+    interactive=False,
+    user=None,
+    timeout=300,
+    capture=False,
+    pass_fds=(),
+    accepted_statuses=(0,),
 ):
     if interactive and (capture or pass_fds):
         raise ValueError("Interactive commands cannot capture or inherit descriptors.")
@@ -50,7 +57,7 @@ def command(
     try:
         output = capture_output(process, timeout) if capture else None
         status = process.wait(timeout=max(0, deadline - time.monotonic()))
-        if status:
+        if status not in accepted_statuses:
             raise InstallError("command_failed")
         return output
     except BaseException as error:
