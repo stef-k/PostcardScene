@@ -327,7 +327,7 @@ PostcardScene-owned presentation is viewport-driven. The active logical browser/
 
 For V0 image presentation, a single image sizes against its current region and a portrait pair divides that current region into two equal vertical columns. `contain`/`cover`, centering, overlays, and later multi-region composition operate against the available region rather than hard-coded output pixels. PostcardScene-owned layout should remain structurally usable at a different safe mode or aspect ratio even when that mode is outside the formally validated support matrix. Third-party web pages may impose their own responsive limitations; PostcardScene must still provide the correct current browser viewport without resolution-specific wrappers.
 
-Fixed logical-pixel values are acceptable only when intentionally part of an interaction contract, such as a small edge reveal target. They must not define media or Scene geometry. Automated renderer/composition checks should include the supported reference viewports plus at least one non-reference viewport where a practical test seam exists, so accidental 1080p/4K hard-coding is caught before physical qualification.
+Fixed logical-pixel values remain valid for intentional local details such as bounded spacing, minimums, typography, or an edge reveal target; they must not encode an assumed output resolution or become whole-Scene/media bounds. Automated renderer/composition checks should include the supported reference viewports plus at least one non-reference viewport where a practical test seam exists, so accidental 1080p/4K hard-coding is caught before physical qualification.
 
 Rich scenes should primarily be rendered with Chromium using HTML/CSS/JavaScript.
 
