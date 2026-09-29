@@ -21,6 +21,8 @@ For photography-oriented installations, a useful target is:
 
 A 55-inch 4K television currently represents an attractive price/size class for a primary PostcardScene installation, but size is an installation choice rather than a project requirement.
 
+The 1080p and 4K values above are hardware qualification baselines, not renderer layout targets. PostcardScene-owned presentation derives from the active logical viewport, so changing from a validated 1080p mode to a validated 4K mode must not require a different Scene/layout configuration. A lower or unusual safe fallback mode is not automatically part of the V0 support claim, but the application should still avoid structural breakage caused by fixed 1080p/4K coordinates.
+
 ## Compatibility requirements and evidence
 
 A promising specification sheet is not sufficient evidence that a display is compatible with every PostcardScene appliance function.
@@ -78,6 +80,7 @@ If either candidate, or another display, becomes reference hardware, record at l
 - exact model and relevant firmware version;
 - Raspberry Pi/host model and OS/kernel/graphics stack;
 - successful 1080p and intended 4K resolution/refresh operation;
+- the same PostcardScene Scene/layout configuration remains correctly viewport-driven at the tested 1080p and 4K modes, without resolution-specific layout profiles;
 - Chromium and mpv targeting the intended display;
 - HDMI-CEC standby, wake, and reported-state behaviour where supported;
 - HDMI disconnect/reconnect behaviour;
