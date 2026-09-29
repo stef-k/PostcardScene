@@ -13,6 +13,7 @@ configuration, everyday use and appliance operations.
 
 - Run comfortably on a Raspberry Pi-class Linux device connected to a modern TV or monitor.
 - Target at least 1080p, with a physically validated 4K path as the preferred display target.
+- Keep PostcardScene-owned scene presentation viewport-driven and resolution-agnostic; 1080p and 4K are support/qualification baselines, not separate layout implementations.
 - Play high-quality images and videos from local storage and mounted network storage.
 - Maintain a bounded media catalog so large local/NAS libraries do not need to be rescanned for every scene transition.
 - Pair consecutive portrait images side-by-side when that makes better use of a landscape display.
