@@ -184,6 +184,7 @@ PostcardScene owns a Linux graphical display session; this is separate from phys
 - Follow the graphics/session model selected by #31.
 - Do not add a general desktop environment or interactive display manager unless the issue's evidence requires it.
 - Chromium and mpv must target the same intended display/session predictably.
+- Treat 1080p and 4K as support/evidence baselines, not rendering coordinate systems. PostcardScene-owned Scene/media layout must derive from the active logical viewport/region and must not fork geometry by output resolution.
 - Preserve safe blank/background behavior while renderers are unavailable.
 - Handle boot without a display and later hotplug/reconnect according to the supported runtime contract.
 - Hardware-specific 1080p/4K, GPU/decode/audio/CEC claims require representative physical evidence; CI cannot prove HDMI hardware behavior.
