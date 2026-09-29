@@ -56,6 +56,7 @@ Do not copy the user's original media into PostcardScene merely to index it.
 - automatic pairing of two consecutive distinct portraits, with landscape/square/unpaired single fallback (#56)
 - caller-owned first/lookahead grouping with consumed count; no image-owned stream
 - `fit=contain|cover`, default contain, with fixed black background and centered position
+- viewport-driven image/pair geometry with no separate 1080p/4K layout branch; fit/crop and pair regions derive from the active content region
 - correct orientation/EXIF presentation behavior
 - Chromium image presentation through trusted disposable delivery (#57) and the shared #31 controller (#58)
 - useful 1080p/validated-4K quality without unnecessary source recompression
@@ -213,6 +214,7 @@ protection/playback enforcement, Display UI and physical evidence remain later
 - safe blank/background state during boot/renderer restart
 - EDID/display discovery and deterministic mode selection
 - 1080p minimum and physically validated supported 4K baseline
+- output-mode qualification remains separate from renderer geometry; PostcardScene-owned presentation derives from the active logical viewport and must not assume fixed 1080p/4K coordinates
 - boot with no display connected plus later hotplug/reconnect
 - hardware acceleration/video decode/audio-output baseline
 - bounded cache/log growth and disk-space diagnostics
