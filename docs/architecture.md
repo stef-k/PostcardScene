@@ -29,6 +29,12 @@ The implementation should remain portable enough to run on other supported Linux
 
 The web application exists to configure, observe, and control the display appliance. The long-running runtime/player is the product execution environment.
 
+### Rendering is viewport-driven
+
+1080p and validated 4K are display support and qualification baselines, not scene coordinate systems. PostcardScene-owned Scene and Widget presentation must derive geometry from the active logical viewport and the region assigned to the content. Do not create separate 1080p/4K layouts or encode scene geometry in fixed output-resolution coordinates.
+
+Media fitting/cropping, portrait pairing, overlays, and later rich composition must remain structurally usable when the selected safe display mode or aspect ratio changes. Deliberately fixed logical-pixel interaction affordances may exist where their size is part of the control contract; they must not become a substitute for responsive scene geometry. Hardware support claims remain scoped separately to the modes and display paths that have actually been validated.
+
 ### Keep the server architecture proportionate
 
 Complexity should live in content selection, composition, rendering, media indexing, scheduling, context, hardware integration, recovery, and reliability rather than in unnecessary web-framework or distributed-system machinery.
