@@ -35,7 +35,7 @@ See [development checks](https://github.com/stef-k/PostcardScene/blob/main/READM
 A candidate tag must be exactly `v<pyproject project.version>` (currently
 `v0.1.0.dev0`). Push that already-reviewed tag, or deliberately run the Native
 release workflow **on that tag**. There is no version override or tag creation.
-The workflow validates a clean exact checkout with pinned uv 0.12.10, builds and
+The workflow validates a clean exact checkout with pinned uv 0.13.5, builds and
 smokes final archive bytes, and publishes through a draft. GitHub prerelease
 status follows the validated package/tag version: development and prerelease
 versions (such as `0.1.0.dev0` or `0.1.0rc1`) become prereleases; final stable

@@ -282,29 +282,62 @@ def test_closed_packages_preserve_already_installed_chromium(state):
         )
 
 
-def test_staging_enforces_isolated_hash_locked_binary_install(tmp_path, monkeypatch):
+@pytest.mark.parametrize("bootstrap_failure", [False, True])
+def test_staging_enforces_isolated_hash_locked_binary_install(
+    tmp_path, monkeypatch, bootstrap_failure
+):
     monkeypatch.setattr(host, "directory", lambda path: path.mkdir())
     monkeypatch.setattr(host, "write_new", lambda path, data: path.write_bytes(data))
     calls = []
     release = tmp_path / "0.1.0.dev0"
-    result = host.stage_payload(
+
+    def run(args, **kwargs):
+        calls.append(args)
+        if bootstrap_failure and len(calls) == 2:
+            raise OSError("pip bootstrap failed")
+
+    arguments = (
         release,
         "postcardscene-0.1.0.dev0-py3-none-any.whl",
         b"wheel",
         b"requirements",
         SimpleNamespace(python="/usr/bin/python3"),
-        lambda args, **kw: calls.append(args),
+        run,
     )
+    if bootstrap_failure:
+        with pytest.raises(OSError, match="pip bootstrap failed"):
+            host.stage_payload(*arguments)
+        assert len(calls) == 2
+    else:
+        result = host.stage_payload(*arguments)
+        assert result == str(release / "venv/bin/python")
     assert calls[0] == ("/usr/bin/python3", "-I", "-m", "venv", str(release / "venv"))
-    assert result == str(release / "venv/bin/python")
-    requirements, app = calls[1:3]
+    bootstrap = calls[1]
+    assert bootstrap[:6] == (
+        str(release / "venv/bin/python"),
+        "-I",
+        "-m",
+        "pip",
+        "--isolated",
+        "--disable-pip-version-check",
+    )
+    assert bootstrap[-1] == (
+        "pip @ https://files.pythonhosted.org/packages/3f/06/"
+        "3e4420302363fbb71be3c7f35ce042f54bfca330e3e66b3a2e3c4cca579f/"
+        "pip-26.2.2-py3-none-any.whl#sha256="
+        "fd7f4dfa8190e014013b9f08f3e973f4e4c26ffd179a204895533a7254813a70"
+    )
+    assert {"--no-deps", "--require-hashes", "--only-binary=:all:"} <= set(bootstrap)
+    if bootstrap_failure:
+        return
+    requirements, app = calls[2:4]
     assert requirements[0] == app[0] == result
     assert all(
         option in requirements
         for option in ("--isolated", "--require-hashes", "--only-binary=:all:")
     )
     assert "--no-deps" in app
-    assert "check" in calls[3]
+    assert "check" in calls[4]
 
 
 def test_blank_wheel_record_row_rejected_safely(bundle):
