@@ -145,6 +145,9 @@ Development supports released CPython 3.11–3.14 (`>=3.11,<3.15`) and requires
 [uv](https://docs.astral.sh/uv/getting-started/installation/).
 See [AGENTS.md](AGENTS.md#project-local-development-tooling) for the canonical
 development commands and tooling workflow.
+Use uv CLI 0.13.4 or later; project configuration rejects older versions with
+affected bundled certificate roots. Release tooling is pinned to 0.13.5.
+The separate `uv_build==0.12.10` packaging backend remains unchanged.
 
 ### Release input development
 
@@ -174,7 +177,8 @@ uv 0.13.5 emits hashes by default; it has no `--generate-hashes` flag.
 `--no-header` removes the invocation-dependent comment so the output is byte
 reproducible. Never maintain `runtime-requirements.txt` by hand. The check rejects
 a stale export, checks the pure-Python wheel metadata and complete tracked package
-payload, then creates a disposable venv and uses pip with `--require-hashes
+payload, then creates a disposable venv, bootstraps hash-pinned pip 26.2.2, and
+uses that pip with `--require-hashes
 --only-binary=:all:` for runtime requirements and `--no-deps` for the application
 wheel. It verifies installed imports, entry points, assets and Overview identity.
 It requires network access to the locked dependency wheels and runs once in

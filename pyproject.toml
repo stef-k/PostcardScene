@@ -32,6 +32,10 @@ build-backend = "uv_build"
 [dependency-groups]
 dev = ["pytest", "ruff"]
 
+[tool.uv]
+# Reject CLI versions whose bundled roots trust the compromised emSign CA.
+required-version = ">=0.13.4"
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 

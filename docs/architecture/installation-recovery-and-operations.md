@@ -17,8 +17,9 @@ currently `0.1.0.dev0`; the first stable V0 line is `0.1.x`. No runtime constant
 Git-derived version or environment override is added. Issue #13 adds Flask as the control-plane
 dependency; the core and runtime namespaces remain independent of Flask.
 
-uv and the committed `uv.lock` own project environments and dependency resolution;
-`uv_build` owns builds. Ruff is the sole project-local formatter/linter and pytest
+uv CLI >=0.13.4 and the committed `uv.lock` own project environments and dependency
+resolution; release/CI use 0.13.5. The separate `uv_build==0.12.10` backend owns
+builds and does not fetch dependencies or supply a TLS trust store. Ruff is the sole project-local formatter/linter and pytest
 the test runner. Quality checks locked sync, formatting, lint and the full tests on every supported
 Python series, with one build/package smoke on 3.11. Generic Linux CI proves
 Python portability only, not Raspberry Pi ARM64, graphics, codecs or devices. No mandatory static type checker is introduced;
@@ -196,7 +197,12 @@ in it. Release secret/dependency auditing remains #29's responsibility.
 `uv.lock` remains resolution authority. The generated `runtime-requirements.txt`
 is the exact pip-compatible runtime-only export, with hashes and without the local
 project or development dependencies. A stale export fails the repository package
-check. Clean installation uses `pip install --require-hashes --only-binary=:all:
+check. The managed installer and archive smoke first replace the distro's venv seed
+pip with pip 26.2.2 (vendored certifi 2026.10.19), using the advisory's direct wheel
+URL and SHA-256 before any runtime dependency fetch. Failure stops staging. The
+hash authenticates this first download even with an affected seed trust bundle;
+system Python and pip-less uv project environments are not modified.
+Clean installation then uses `pip install --require-hashes --only-binary=:all:
 -r runtime-requirements.txt`, then installs the application wheel `--no-deps`.
 Targets never resolve fresh unconstrained dependencies or fall back to source
 builds; unavailable compatible wheels fail visibly.
@@ -459,10 +465,12 @@ physical Pi/HDMI support.
 
 The single PR-only Quality installed-Linux lane builds a CI-only `0.0.0`
 predecessor from immutable parent `fde2cd540220e53c19d726147aa8956f45ce0d91`.
-A separate temporary repository changes only `pyproject.toml` version and its
-`uv.lock` entry (runtime export stays byte-identical), then makes one local unpushed
-synthetic commit. Its unchanged normal builder runs with `require_tag=False` only
-through a test helper. Both SHAs and final archive checksums are recorded; no tag
+A separate temporary repository changes `pyproject.toml` version and its
+`uv.lock` entry (runtime export stays byte-identical), then backports #190's
+uv/pip tooling fix and corresponding installer host pin. Product/schema code stays
+frozen. One local unpushed synthetic commit runs its security-patched builder with
+`require_tag=False` through a test helper. Both SHAs, the explicit tooling backport
+and final archive checksums are recorded; no tag
 or historical release is created. The candidate uses its own normal release builder.
 
 External checksums precede extracted code execution. The target bundle's public
