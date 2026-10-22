@@ -145,6 +145,9 @@ Development supports released CPython 3.11–3.14 (`>=3.11,<3.15`) and requires
 [uv](https://docs.astral.sh/uv/getting-started/installation/).
 See [AGENTS.md](AGENTS.md#project-local-development-tooling) for the canonical
 development commands and tooling workflow.
+Use uv CLI 0.13.4 or later; project configuration rejects older versions with
+affected bundled certificate roots. Release tooling is pinned to 0.13.5.
+The separate `uv_build==0.12.10` packaging backend remains unchanged.
 
 ### Release input development
 
@@ -156,7 +159,7 @@ publication. V0 publication belongs on GitHub Releases, with no PyPI publication
 required.
 
 After a deliberate dependency or version change, update `uv.lock` with `uv lock`
-and regenerate the third-party runtime input using pinned uv 0.12.10:
+and regenerate the third-party runtime input using pinned uv 0.13.5:
 
 ```bash
 uv export --format requirements.txt --locked --no-dev --no-emit-project \
@@ -170,11 +173,12 @@ When generated requirements or any installer support module (`install_inputs.py`
 The release-input check requires a clean checkout, builds the final native archive
 with its manifest/external checksums, and validates the exact extracted bytes.
 
-uv 0.12.10 emits hashes by default; it has no `--generate-hashes` flag.
+uv 0.13.5 emits hashes by default; it has no `--generate-hashes` flag.
 `--no-header` removes the invocation-dependent comment so the output is byte
 reproducible. Never maintain `runtime-requirements.txt` by hand. The check rejects
 a stale export, checks the pure-Python wheel metadata and complete tracked package
-payload, then creates a disposable venv and uses pip with `--require-hashes
+payload, then creates a disposable venv, bootstraps hash-pinned pip 26.2.2, and
+uses that pip with `--require-hashes
 --only-binary=:all:` for runtime requirements and `--no-deps` for the application
 wheel. It verifies installed imports, entry points, assets and Overview identity.
 It requires network access to the locked dependency wheels and runs once in

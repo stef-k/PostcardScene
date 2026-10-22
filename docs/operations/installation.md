@@ -35,7 +35,7 @@ See [development checks](https://github.com/stef-k/PostcardScene/blob/main/READM
 A candidate tag must be exactly `v<pyproject project.version>` (currently
 `v0.1.0.dev0`). Push that already-reviewed tag, or deliberately run the Native
 release workflow **on that tag**. There is no version override or tag creation.
-The workflow validates a clean exact checkout with pinned uv 0.12.10, builds and
+The workflow validates a clean exact checkout with pinned uv 0.13.5, builds and
 smokes final archive bytes, and publishes through a draft. GitHub prerelease
 status follows the validated package/tag version: development and prerelease
 versions (such as `0.1.0.dev0` or `0.1.0rc1`) become prereleases; final stable
@@ -111,6 +111,26 @@ the existing privileged lane owns real two-UID remove/reinstall evidence. Neithe
 proves ARM64 provisioning, physical Pi/HDMI behavior or final security closure.
 Manual backup and same-version managed restore are available below. Forward
 update and its installed-Linux evidence are documented below.
+
+### Certificate trust maintenance (#190)
+
+The [uv advisory](https://github.com/advisories/GHSA-hq85-5cpj-mr62) affects the
+CLI's bundled roots before 0.13.4. CI/release now pin 0.13.5; the separate
+`uv_build==0.12.10` backend and runtime lock/export are unchanged. Application
+dependencies contain neither pip nor certifi, and uv project venvs remain pip-less.
+Managed install/reinstall/update and archive smoke create a distro-Python venv,
+then bootstrap pip 26.2.2 with vendored certifi 2026.10.19 before dependency fetches.
+The [Python advisory](https://discuss.python.org/t/109576) supplies its exact wheel
+URL and SHA-256: an affected seed pip must verify that hash before installation.
+Failure stops staging. No system Python packages are changed.
+
+The native archive carries this installer contract, rather than a bundled uv,
+Python, pip or certificate store; the application wheel contains no trust bundle.
+Host apt/snap and Chromium retain distro/browser trust authority: keep host
+security updates current. This patch does not establish browser/OS trust health
+or demonstrate exploitation. On 2026-10-22 the repository had no published GitHub
+releases or tags, so there is no existing artifact to reissue and no version bump.
+Future release candidates must include this fix and fresh final-byte checksums.
 
 ## Read-only managed-host preflight (#139)
 
@@ -226,7 +246,8 @@ The mutation sequence is:
    creating application roots. Package failures retain distro package-manager
    evidence and never trigger package rollback or application-state mutation.
 2. Create a root-controlled `/opt/postcardscene/releases/<wheel-version>/venv`,
-   using the supported distro Python. Install pinned requirements with required
+   using the supported distro Python. Bootstrap hash-pinned pip as described
+   above, then install pinned requirements with required
    hashes and binary-only policy, then the app wheel with `--no-deps`. Check pip
    consistency, installed version, imports, entry points and packaged files before
    bootstrap or activation. No distro-Python pip installation or source build runs.
@@ -799,9 +820,11 @@ deletes backups, and old release retention never provides a rollback slot.
 ### First-release update evidence (#178)
 
 CI derives unpublished version `0.0.0` from immutable baseline
-`fde2cd540220e53c19d726147aa8956f45ce0d91` in a temporary repository. Only version
-and version-derived lock data change, followed by a local unpushed synthetic commit
-and the unchanged normal release builder (`require_tag=False` from a test helper).
+`fde2cd540220e53c19d726147aa8956f45ce0d91` in a temporary repository. Version
+and version-derived lock data change, alongside #190's uv/pip security-tooling
+backport and refreshed installer host pin. Product/schema code remains frozen;
+the local unpushed synthetic commit uses its security-patched normal release
+builder (`require_tag=False` from a test helper). Provenance names the backport.
 Both SHAs and archive hashes appear in build output; `v0.0.0` manifest metadata
 is not a real tag or supported release. Never install this fixture outside CI.
 

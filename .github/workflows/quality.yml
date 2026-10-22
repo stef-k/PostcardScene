@@ -17,7 +17,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
         with:
-          version: "0.12.10"
+          version: "0.13.5"
           python-version: ${{ matrix.python }}
       - run: uv sync --locked
       - run: uv run ruff format --check .
@@ -38,7 +38,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
         with:
-          version: "0.12.10"
+          version: "0.13.5"
           python-version: "3.12"
       - run: git fetch --no-tags origin fde2cd540220e53c19d726147aa8956f45ce0d91
       - name: Build frozen CI predecessor and current native candidate

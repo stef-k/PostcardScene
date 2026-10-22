@@ -139,6 +139,28 @@ def install_packages(plan, run):
         )
 
 
+def bootstrap_pip(python, run):
+    """Replace ensurepip's trust bundle using the advisory's authenticated wheel."""
+    # https://discuss.python.org/t/109576: the hash also protects this first fetch
+    # when the distro's seed pip still trusts the compromised emSign CA.
+    pip = (python, "-I", "-m", "pip", "--isolated", "--disable-pip-version-check")
+    run(
+        (
+            *pip,
+            "install",
+            "--no-cache-dir",
+            "--no-deps",
+            "--require-hashes",
+            "--only-binary=:all:",
+            "pip @ https://files.pythonhosted.org/packages/3f/06/"
+            "3e4420302363fbb71be3c7f35ce042f54bfca330e3e66b3a2e3c4cca579f/"
+            "pip-26.2.2-py3-none-any.whl#sha256="
+            "fd7f4dfa8190e014013b9f08f3e973f4e4c26ffd179a204895533a7254813a70",
+        )
+    )
+    return pip
+
+
 def stage_payload(
     release, wheel_name, wheel, requirements, plan, run, *, on_created=None
 ):
@@ -150,7 +172,7 @@ def stage_payload(
     venv = release / "venv"
     run((plan.python, "-I", "-m", "venv", str(venv)))
     python = str(venv / "bin/python")
-    pip = (python, "-I", "-m", "pip", "--isolated", "--disable-pip-version-check")
+    pip = bootstrap_pip(python, run)
     run(
         (
             *pip,

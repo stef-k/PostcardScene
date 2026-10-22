@@ -3,6 +3,7 @@
 import argparse
 import os
 import re
+import runpy
 import shutil
 import subprocess
 import sys
@@ -87,12 +88,11 @@ def smoke_archive(output, project, scratch, sha):
     venv = scratch / "venv"
     run(sys.executable, "-m", "venv", str(venv))
     python = str(venv / "bin/python")
+    installer = runpy.run_path(str(extracted / "install.py"))
+    host = installer["validate_inputs"](extracted)[-1]
+    pip = host.bootstrap_pip(python, lambda args, **kwargs: run(*args, **kwargs))
     run(
-        python,
-        "-I",
-        "-m",
-        "pip",
-        "--isolated",
+        *pip,
         "install",
         "--require-hashes",
         "--only-binary=:all:",
@@ -100,16 +100,12 @@ def smoke_archive(output, project, scratch, sha):
         str(extracted / "runtime-requirements.txt"),
     )
     run(
-        python,
-        "-I",
-        "-m",
-        "pip",
-        "--isolated",
+        *pip,
         "install",
         "--no-deps",
         str(extracted / wheel_name),
     )
-    run(python, "-I", "-m", "pip", "check")
+    run(*pip, "check")
     smoke = scratch / "smoke_installed.py"
     shutil.copyfile(ROOT / "scripts/smoke_installed.py", smoke)
     env = dict(os.environ)
@@ -129,9 +125,9 @@ def build(output, require_tag=True):
     sha, timestamp = source_identity(project, require_tag)
     if run("uv", "--version", capture_output=True, text=True).stdout.split()[:2] != [
         "uv",
-        "0.12.10",
+        "0.13.5",
     ]:
-        raise ValueError("Release build requires uv 0.12.10")
+        raise ValueError("Release build requires uv 0.13.5")
     exported = run(
         "uv",
         "export",

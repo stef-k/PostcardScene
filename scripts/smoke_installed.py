@@ -10,6 +10,8 @@ import sys
 import tempfile
 from pathlib import Path
 
+from pip._vendor import certifi
+
 import postcardscene
 import postcardscene.runtime
 from postcardscene.session_secret import initialize_secret
@@ -18,6 +20,8 @@ from postcardscene.web import create_app
 
 def main():
     expected = sys.argv[1]
+    assert importlib.metadata.version("pip") == "26.2.2"
+    assert certifi.__version__ == "2026.10.19"
     installer = runpy.run_path(str(Path(sys.argv[2]) / "install.py"))
     installer["load_support"](Path(sys.argv[2]))
     update = sys.modules["postcardscene_install_update"]
